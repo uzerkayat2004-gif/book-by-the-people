@@ -20,7 +20,7 @@ function landPoints(samples: number): [number, number][] {
   }
   return out;
 }
-const DOTS = landPoints(38000);
+const DOTS = landPoints(90000);
 
 function project(lat: number, lng: number, phi: number, theta: number) {
   const la = (lat * Math.PI) / 180;
@@ -43,7 +43,7 @@ function project(lat: number, lng: number, phi: number, theta: number) {
 export function GlobeView({ pins }: { pins: Pin[] }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const flatRef = useRef<HTMLCanvasElement>(null);
-  const phiRef = useRef(-3.1);
+  const phiRef = useRef(-3.75);
   const thetaRef = useRef(0.42);
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const [tip, setTip] = useState<{ name: string; x: number; y: number; left: boolean } | null>(null);
@@ -91,7 +91,7 @@ export function GlobeView({ pins }: { pins: Pin[] }) {
       ctx.beginPath();
       ctx.arc(cx, cy, radius - 0.5, 0, Math.PI * 2);
       ctx.clip();
-      const dot = Math.max(1.1, width * 0.0055);
+      const dot = Math.max(1, width * 0.0036);
       ctx.fillStyle = "#f4f3f0";
       for (const [lat, lng] of DOTS) {
         const point = project(lat, lng, phi, theta);
