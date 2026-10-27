@@ -354,7 +354,7 @@ p.ownbook.wrap a { color: #f3f2ee; text-decoration: underline; text-underline-of
   .scrim .sheet h3 { font-size: 19px; margin: 2px 0 6px; }
   .scrim .sheet .label { font-size: 8px; }
   .scrim .sheet p, .scrim .sheet li { font-size: 11.5px; line-height: 1.4; margin: 0 0 4px; }
-  .scrim .sheet > .btn { min-height: 30px; height: 30px; font-size: 11px; background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.18); margin-top: 10px !important; }
+  .scrim .sheet > .btn:not(.btn--red) { min-height: 30px; height: 30px; font-size: 11px; background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.18); margin-top: 10px !important; }
 }
 /* /book countdown — high and white like live 08 */
 .droppage { padding-top: 44px !important; }
@@ -381,4 +381,15 @@ p.ownbook.wrap a { color: #f3f2ee; text-decoration: underline; text-underline-of
   .page.speak.speak-rec .grow { flex: 1; }
   .page.speak.speak-rec .btn { min-height: 36px !important; height: 36px; font-size: 12px !important; }
   .page.speak.speak-rec .under { font-size: 9px; text-align: center; }
+}
+/* Edit profile sheet — compact like live 31 */
+@media (min-width: 700px) {
+  .scrim .sheet.sheet--profile { width: 376px; max-width: 376px; padding: 10px 14px 16px; }
+  .sheet--profile .stepdots { margin: 4px 0 6px; }
+  .sheet--profile .label { margin-bottom: 0; }
+  .sheet--profile .field { margin-top: 8px; font-size: 10.5px; }
+  .sheet--profile .field > span { margin-bottom: 3px; }
+  .sheet--profile .input { min-height: 36px; height: 36px; font-size: 12px; }
+  .sheet--profile .seg button { min-height: 32px; height: 32px; font-size: 12px; }
+  .sheet--profile > .btn.btn--red { min-height: 36px !important; height: 36px; font-size: 12px !important; margin-top: 14px; }
 }

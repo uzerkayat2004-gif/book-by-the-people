@@ -48,7 +48,7 @@ export function EditProfile({
       </button>
       {open ? (
         <div className="scrim open" onClick={() => setOpen(false)}>
-          <div className="sheet" role="dialog" aria-label="About you" onClick={(event) => event.stopPropagation()}>
+          <div className="sheet sheet--profile" role="dialog" aria-label="About you" onClick={(event) => event.stopPropagation()}>
             <div className="grab" />
             <div className="stepdots">
               <i className="on" />
