@@ -250,3 +250,59 @@ img.logo__mark, .top img.logo__mark { width: 21px; height: 21px; border-radius: 
 .page.admin .makecol .setrow { padding: 8px 0; font-size: 9.5px; }
 .page.admin .makecol .setrow .btn { min-height: 28px; padding: 4px 12px; font-size: 10px; }
 .page.admin .makecol .card.bl .btn--sm { min-height: 28px; font-size: 10px; margin: 6px 0 8px; }
+
+/* Explore + Studio list: book cards with mini covers */
+.page.explore { padding: 96px 0 64px; }
+.exwrap { max-width: 1000px; margin: 0 auto; padding: 0 24px; }
+.explore__h { font-family: var(--display, "Archivo"); font-stretch: 64%; font-weight: 850; text-transform: uppercase; font-size: clamp(40px, 6vw, 64px); line-height: .9; margin: 6px 0 10px; letter-spacing: -.01em; }
+.page.explore .lead { font-family: var(--sans); color: var(--muted, #a7a29a); max-width: 620px; font-size: 15px; line-height: 1.5; margin: 0 0 26px; }
+.explore__sec { font-family: var(--mono, monospace); font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted, #a7a29a); font-weight: 500; margin: 26px 0 12px; }
+.bgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.bcard { display: flex; gap: 14px; align-items: center; padding: 14px 16px 14px 10px; border-radius: 16px; background: #121316; border: 1px solid rgba(255,255,255,.08); color: inherit; text-decoration: none; transition: border-color .2s, transform .2s; min-height: 150px; }
+.bcard:hover { border-color: rgba(229,56,59,.55); transform: translateY(-1px); }
+.bcard__cover { flex: 0 0 92px; }
+.bcard__cover .bk6--compact, .bcard__cover .bk6--compact .bk6__svg { width: 92px; margin: 0; }
+.bcard__body { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.bcard__chips { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.modechip { font-family: var(--mono, monospace); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; padding: 3px 8px; border-radius: 99px; background: rgba(229,56,59,.14); color: #ff7a72; border: 1px solid rgba(229,56,59,.35); }
+.modechip--famous { background: rgba(240,200,120,.12); color: #f1cf8a; border-color: rgba(240,200,120,.35); }
+.modechip--invited { background: rgba(140,170,255,.12); color: #aebfff; border-color: rgba(140,170,255,.32); }
+.modechip--solo { background: rgba(255,255,255,.08); color: #e6e2da; border-color: rgba(255,255,255,.2); }
+.bcard__status { font-family: var(--sans); font-size: 11.5px; color: var(--muted, #a7a29a); }
+.bcard__title { font-family: var(--sans); font-size: 16px; font-weight: 650; }
+.bcard__q { font-family: var(--serif); font-style: italic; font-size: 14.5px; line-height: 1.35; color: #d8d3cb; }
+.bcard__meta { font-family: var(--sans); font-size: 12px; color: var(--muted, #a7a29a); display: flex; gap: 8px; flex-wrap: wrap; }
+.bcard__meta em { font-style: normal; color: #ff6b63; margin-left: auto; }
+.bcard--new { flex-direction: column; align-items: flex-start; justify-content: center; border-style: dashed; border-color: rgba(255,255,255,.18); padding: 18px 20px; gap: 6px; background: transparent; }
+.bcard__plus { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; background: var(--grad-btn, #c8262c); color: #fff; font-size: 22px; line-height: 1; margin-bottom: 4px; }
+.explore__own { margin-top: 34px; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 20px 22px; border-radius: 18px; background: linear-gradient(120deg, #17181c, #3a0d11); border: 1px solid rgba(229,56,59,.25); flex-wrap: wrap; }
+.explore__own b { display: block; font-family: var(--sans); font-size: 17px; margin-bottom: 4px; }
+.explore__own span { font-family: var(--sans); font-size: 13.5px; color: #cfc9c0; }
+@media (max-width: 640px) {
+  .page.explore { padding-top: 84px; }
+  .bgrid { grid-template-columns: 1fr; }
+  .bcard__cover { flex-basis: 76px; }
+  .bcard__cover .bk6--compact, .bcard__cover .bk6--compact .bk6__svg { width: 76px; }
+}
+
+/* My page — sizes measured from live 30-me-page.png */
+.page.me .narrow { width: min(100% - 24px, 404px); padding-top: 0; }
+.page.me .prof { padding: 12px 12px 12px 12px; gap: 10px; border-radius: 14px; }
+.page.me .prof .face { width: 36px; height: 36px; font-size: 13px; }
+.page.me .prof__name { font-size: 13.5px; }
+.page.me .prof__meta { font-size: 10.5px; margin-top: 2px; gap: 4px; }
+.page.me .prof .btn { min-height: 28px; padding: 4px 11px; font-size: 11px; }
+.page.me .sealhead { margin: 20px 0 8px; gap: 6px; }
+.page.me .sealhead svg { width: 11px; height: 11px; }
+.page.me .sealhead .label { font-size: 8.5px; letter-spacing: .12em; }
+.page.me .card.note { padding: 12px 12px; border-radius: 12px; }
+.page.me .card.note p { font-size: 12px; }
+.page.me .btn--big { min-height: 40px; font-size: 11.5px; }
+.page.me .btn--big .rec { width: 10px; height: 10px; }
+.page.me .under { font-size: 9.5px; margin-top: 7px; }
+.page.me .meown { margin-top: 30px; }
+.page.me .meown .label { font-size: 9.5px; letter-spacing: .14em; color: var(--muted); }
+.page.me .meown .btn { min-height: 34px; font-size: 12px; margin-top: 8px; }
+.page.me .mebooks { display: grid; gap: 8px; margin-top: 10px; }
+.page.me .mebook { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: #121316; border: 1px solid rgba(255,255,255,.08); font-family: var(--sans); font-size: 12.5px; color: inherit; text-decoration: none; }
+.page.me .mebook small { color: var(--muted); font-size: 10.5px; }

@@ -31,9 +31,13 @@ export default async function MePage() {
           <div style={{ flex: 1 }}>
             <div className="prof__name">{user.name || "Your name"}</div>
             <div className="prof__meta">
-              {country ? <span>{flagEmoji(country.code)} {user.region ? `${user.region}, ` : ""}{country.name}</span> : null}
-              {user.ageBand ? <span>{user.ageBand}</span> : null}
-              {user.handle ? <span>@{user.handle}</span> : null}
+              {[
+                country ? `${flagEmoji(country.code)} ${user.region ? `${user.region}, ` : ""}${country.name}` : null,
+                user.ageBand || null,
+                user.handle ? `@${user.handle}` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             </div>
           </div>
           <EditProfile
@@ -45,6 +49,10 @@ export default async function MePage() {
           />
         </div>
         <div className="sealhead">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+            <rect x="5" y="11" width="14" height="10" rx="2" />
+            <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+          </svg>
           <span className="label red">Sealed until {when}</span>
         </div>
         <div className="card note">
@@ -67,21 +75,22 @@ export default async function MePage() {
             Add your voice
           </Link>
           <div className="under">{left} left today</div>
-          <Link className="btn btn--block" href="/books/new" style={{ marginTop: 10 }}>
-            Start your own book
-          </Link>
+        </div>
+        <div className="meown">
+          <span className="label">Your books</span>
           {mine.length ? (
-            <div className="chlist4" style={{ marginTop: 16 }}>
+            <div className="mebooks">
               {mine.map((item) => (
-                <Link key={item.id} href={`/studio/${item.slug}`} className="ch4">
-                  <span className="ch4__t">
-                    <b>{item.title}</b>
-                    <small>{item.status}</small>
-                  </span>
+                <Link key={item.id} href={`/studio/${item.slug}`} className="mebook">
+                  <span>{item.title}</span>
+                  <small>{item.status === "PUBLISHED" ? "Released" : item.status === "COLLECTING" ? "Taking voices" : item.status.toLowerCase()} · Studio →</small>
                 </Link>
               ))}
             </div>
           ) : null}
+          <Link className="btn btn--block" href="/books/new">
+            + Start your own book
+          </Link>
         </div>
       </div>
     </main>
