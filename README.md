@@ -9,35 +9,58 @@ Anyone can create a book.
 - **Open.** Anyone with the link, on a public page with a live globe.
 - **Famous voices.** Public quotations the creator pastes, each with a source URL. The app does not invent quotations and does not synthesize a famous person's voice.
 
-The interface follows the live Book by the People design: the same type, color, globe, and page flow. The books, studio, and providers are the v2 app. See `docs/ui-parity.md` for the screen inventory.
+The interface follows the live Book by the People design: the same type, color, globe, and page flow. The books, studio, and providers are the v2 app. 
 
 ## Run it
 
 ```bash
 npm install
-npm run dev
+npm run setup     # prisma db push + seed (wipes and recreates the demo data)
+npm run dev       # http://localhost:43123
 ```
 
-Open [http://127.0.0.1:43123](http://127.0.0.1:43123).
+System tools: `ffmpeg` (24 kHz mono WAV conversion, release video) and `espeak-ng` (mock audiobook voice and sample clips). Optional `MEDIA_FONT` points the video renderer at a TTF if the default font is missing.
 
-The first run creates `data/bbtp.db` and a sample book, **Smarter or lazier**, with playable clips. Those clips are spoken locally by eSpeak NG so the reader works with no API key. They are not recordings of real people. A recording someone makes in the app is stored and played back as they said it.
+### Seeded data (`npm run db:seed`, also run on first `npm run dev`)
 
-Sign in as `demo@bookbythepeople.dev` from the sign-in page (demo mode shows the magic link on screen) to open that book's studio.
+The seed **wipes the local database** and creates:
+
+| Book | Slug | Mode | State | Owner |
+| --- | --- | --- | --- | --- |
+| Book 1 · Is AI making you smarter or lazier? | `smarter-or-lazier` | Open | Released (reader, audiobook, video, share cards, backups history) | `demo@bookbythepeople.dev` |
+| Sunday table | `sunday-table` | Invited | Taking voices | `demo@bookbythepeople.dev` |
+| On the record | `on-the-record` | Famous | Released, real dated quotes with source URLs | `asha@bookbythepeople.dev` |
+| Notes to my younger self | `notes-to-my-younger-self` | Solo | Taking voices | `asha@bookbythepeople.dev` |
+| City at night | `city-at-night` | Open | Taking voices | `rafael@bookbythepeople.dev` |
+
+Sample clips are spoken locally by eSpeak NG so the reader works with no key; they are not recordings of real people. Sign in from `/sign-in` (dev mode shows the magic link on screen; use `localhost`, not `127.0.0.1`, so the cookie matches). Any seeded email works.
+
+### Where things are
+
+| Page | Route |
+| --- | --- |
+| Home (featured book) | `/` (`?stage=before|closed|after`) |
+| Any book | `/b/[slug]`, speak `/b/[slug]/speak`, reader `/b/[slug]/read`, share card `/b/[slug]/c/[voiceId]` |
+| Explore | `/explore` |
+| Create a book | `/books/new` (linked from home, My page, Studio) |
+| Studio (owner only) | `/studio` (your books) and `/studio/[slug]` (Settings · AI at work · Make the book · Release, pill book switcher) |
+| My page | `/me` |
+
+### Tests
 
 ```bash
-npm test          # chapter, quote, spend, and lifecycle tests
-npm run test:e2e  # mock-mode happy path and a visual smoke test per main page
+npm test          # vitest unit tests
+npm run test:e2e  # Playwright: create-book, speak, studio release, reader (needs the dev server on :43123)
+npm run db:seed   # e2e runs create extra books; reseed afterwards
 ```
 
-The sample book is published. The public home matches the live closed screen; `/?stage=after` shows it out, and the reader is at `/b/smarter-or-lazier/read`. `/?stage=before` shows the collecting look. Add-voice steps are `/b/smarter-or-lazier/voice?step=ready` (also `signin`, `about`, `talk`, `check`, `done`). Speak for any book is `/b/[slug]/speak`.
+### Per-book AI keys
 
-`ffmpeg` converts every recording to 24 kHz mono WAV and builds the release video. `espeak-ng` speaks the mock audiobook and the sample clips. One command after install: `npm run setup` (creates the database and seeds the demo). `npm run dev` does that on first start as well.
+The app is free; a creator can paste their own Meta key in Book settings. It is encrypted with AES-256-GCM using `AI_KEY_SECRET` and is never sent back to the browser (the field only shows "saved"). Without a per-book key the server key (`META_API_KEY`) is used; in `AI_MODE=live` with no key at all the Studio shows a clear "add a key" error instead of running.
 
-Reset the local database:
+### Backups
 
-```bash
-rm -rf data && npm run setup
-```
+The Studio's Make the book tab keeps a history of backups (snapshots of voices and drafts) that can be downloaded or restored. Local backups live under `data/`.
 
 ## How a book gets made
 
@@ -117,10 +140,14 @@ Copy `.env.example` to `.env`.
 | `AUTH_DEV_EXPOSE_LINKS` | Show the magic link on the sign-in page. Defaults on outside production |
 | `RESEND_API_KEY`, `EMAIL_FROM` | Optional email delivery |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional Google sign-in. Redirect URL: `{origin}/api/auth/google/callback` |
+| `TTS_PROVIDER`, `TTS_URL`, `TTS_API_KEY` | Audiobook voice. `mock` (espeak-ng, real file) or `http` |
+| `AI_KEY_SECRET` | 32-byte base64 secret that encrypts per-book AI keys |
+| `MEDIA_FONT` | Optional TTF path for the release video titles |
+| `SEED_FORCE` | Set to `1` to allow seeding when `NODE_ENV=production` |
 
 ## Deploy
 
-The app is a Next.js App Router project and can run on Vercel. Use Postgres there (SQLite on the server disk will not persist), set `STORAGE_DRIVER=s3` or another durable bucket, set `AUTH_DEV_EXPOSE_LINKS=false`, and configure Resend or Google so creators can sign in. `ffmpeg` must exist in the transcription environment; Vercel's default runtime does not include it, so live transcription needs a host where `ffmpeg` is installed, or a conversion step in front of the route.
+The app is a Next.js App Router project and can run on Vercel. Use Postgres there (SQLite on the server disk will not persist), set `STORAGE_DRIVER=s3` or another durable bucket, set `AUTH_DEV_EXPOSE_LINKS=false`, `AI_MODE=live`, `AI_KEY_SECRET`, and configure Resend or Google so creators can sign in. `ffmpeg` must exist in the transcription environment; Vercel's default runtime does not include it, so live transcription needs a host where `ffmpeg` is installed, or a conversion step in front of the route.
 
 ## Open questions about the Meta API
 
