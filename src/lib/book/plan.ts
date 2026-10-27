@@ -78,7 +78,7 @@ function phrases(text: string): Set<string> {
 }
 
 function sentenceCase(text: string): string {
-  const clean = text.trim().replace(/\s+/g, " ");
+  const clean = text.trim().replace(/\s+/g, " ").replace(/\bi\b/g, "I");
   return clean ? clean.charAt(0).toUpperCase() + clean.slice(1) : clean;
 }
 
@@ -89,7 +89,9 @@ function sentenceCase(text: string): string {
  */
 const DANGLING = /(ed|al|en|ive|ous|ful|less|ing|ly)$/;
 function endsClean(phrase: string): boolean {
-  const last = phrase.split(" ").pop() ?? "";
+  const parts = phrase.toLowerCase().split(" ");
+  const last = parts[parts.length - 1] ?? "";
+  if (parts.includes("i")) return false;
   return !(last.length > 3 && DANGLING.test(last));
 }
 
