@@ -396,3 +396,5 @@ p.ownbook.wrap a { color: #f3f2ee; text-decoration: underline; text-underline-of
 /* Names marquee — smaller like live 01-home-2 */
 @media (min-width: 980px) { .names4 .nm { font-size: 22px; } }
 @media (min-width: 980px) { .names4 .nrow { width: min(100% - 48px, 788px); margin-left: auto; margin-right: auto; } }
+/* Live Studio has no site footer */
+body:has(.page.admin) .foot4 { display: none; }

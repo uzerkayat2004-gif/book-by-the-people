@@ -40,7 +40,7 @@ const list = [
   ["32-speak-1", "/speak?static=1&step=ready", true, []],
   ["32-speak-language-dropdown", "/speak?static=1&step=ready", true, [`await page.locator("select#language").evaluate(el => { const r = el.getBoundingClientRect(); const c = el.cloneNode(true); c.id = "langlist"; c.size = 24; Object.assign(c.style, { position: "absolute", left: (r.left + scrollX) + "px", top: (r.bottom + scrollY + 2) + "px", width: r.width + "px", height: "auto", zIndex: 50, background: "#1c1c1f", color: "#fff", fontSize: "12px", border: "1px solid #444" }); document.body.appendChild(c); el.style.outline = "2px solid #d23"; window.scrollTo(0, 0); })`]],
   ["33-home-signedin-1", H, true, []],
-  ["33-home-signedin-2", H, true, [bottom]],
+  ["33-home-signedin-2", H, true, [toText("Vote for book 2", 40)]],
   ["34-book-signedin", "/book?static=1&stage=closed", true, []],
 ];
 const browser = await chromium.launch();
