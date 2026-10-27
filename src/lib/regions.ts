@@ -1,0 +1,50 @@
+/** State and region lists from the original prototype. The first entries are the most common. */
+export const REGIONS: Record<string, string[]> = {
+  IN: ["Maharashtra", "Karnataka", "Delhi", "Tamil Nadu", "Uttar Pradesh", "Telangana", "West Bengal", "Gujarat", "Kerala", "Rajasthan", "Madhya Pradesh", "Bihar", "Punjab", "Assam"],
+  US: ["California", "Texas", "New York", "Florida", "Illinois", "Washington", "Massachusetts", "Georgia", "Pennsylvania", "Ohio", "Colorado", "Arizona"],
+  GB: ["London", "South East", "North West", "West Midlands", "Yorkshire", "Scotland", "Wales", "Northern Ireland"],
+  NG: ["Lagos", "Abuja (FCT)", "Kano", "Rivers", "Oyo", "Kaduna", "Enugu"],
+  PK: ["Punjab", "Sindh", "Khyber Pakhtunkhwa", "Islamabad", "Balochistan"],
+  PH: ["Metro Manila", "Calabarzon", "Central Visayas", "Davao"],
+  BR: ["São Paulo", "Rio de Janeiro", "Minas Gerais", "Bahia", "Rio Grande do Sul"],
+  DE: ["Berlin", "Bavaria", "North Rhine-Westphalia", "Hamburg", "Baden-Württemberg"],
+  CA: ["Ontario", "Quebec", "British Columbia", "Alberta"],
+  ID: ["Jakarta", "West Java", "East Java", "Bali", "North Sumatra"],
+  KE: ["Nairobi", "Mombasa", "Kisumu", "Nakuru"],
+  BD: ["Dhaka", "Chattogram", "Rajshahi", "Sylhet"],
+  AU: ["New South Wales", "Victoria", "Queensland", "Western Australia"],
+  AE: ["Dubai", "Abu Dhabi", "Sharjah"],
+  EG: ["Cairo", "Giza", "Alexandria"],
+  MX: ["Mexico City", "Jalisco", "Nuevo León", "Puebla"],
+  FR: ["Île-de-France", "Auvergne-Rhône-Alpes", "Provence-Alpes-Côte d'Azur", "Occitanie"],
+  JP: ["Tokyo", "Osaka", "Kanagawa", "Fukuoka"],
+  ZA: ["Gauteng", "Western Cape", "KwaZulu-Natal"],
+  ES: ["Madrid", "Catalonia", "Andalusia", "Valencia"],
+  NZ: ["Auckland", "Wellington", "Canterbury"],
+  IE: ["Dublin", "Cork"],
+  SG: ["Singapore"],
+  MY: ["Kuala Lumpur", "Penang", "Johor"],
+  NP: ["Bagmati", "Gandaki"],
+  LK: ["Western", "Central"],
+  GH: ["Greater Accra", "Ashanti"],
+  TZ: ["Dar es Salaam", "Arusha"],
+  UG: ["Central", "Western"],
+  IT: ["Lombardy", "Lazio", "Campania"],
+  NL: ["North Holland", "South Holland"],
+  SE: ["Stockholm", "Västra Götaland"],
+  PL: ["Masovia", "Lesser Poland"],
+  TR: ["Istanbul", "Ankara"],
+  SA: ["Riyadh", "Makkah"],
+  AR: ["Buenos Aires", "Córdoba"],
+  CO: ["Bogotá", "Antioquia"],
+  CL: ["Santiago", "Valparaíso"],
+  PE: ["Lima", "Arequipa"],
+  VN: ["Ho Chi Minh City", "Hanoi"],
+  TH: ["Bangkok", "Chiang Mai"],
+};
+
+export const AGE_BANDS = ["18–24", "25–34", "35+"] as const;
+
+export function regionsFor(country: string): string[] {
+  return REGIONS[country] ?? [];
+}

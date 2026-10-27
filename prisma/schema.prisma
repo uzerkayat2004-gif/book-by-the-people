@@ -1,0 +1,205 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String    @id @default(cuid())
+  email       String    @unique
+  name        String?
+  image       String?
+  countryCode String    @default("")
+  region      String    @default("")
+  ageBand     String    @default("")
+  handle      String    @default("")
+  createdAt DateTime  @default(now())
+  books     Book[]
+  sessions  Session[]
+}
+
+model MagicLink {
+  id        String    @id @default(cuid())
+  email     String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Book {
+  id                   String           @id @default(cuid())
+  slug                 String           @unique
+  title                String
+  question             String
+  type                 String
+  coverVibe            String           @default("ember")
+  status               String           @default("COLLECTING")
+  closesAt             DateTime?
+  publishedAt          DateTime?
+  creatorId            String
+  creator              User             @relation(fields: [creatorId], references: [id])
+  inviteToken          String           @unique
+  featured             Boolean          @default(false)
+  pollQuestion         String           @default("What should the next book ask?")
+  bookNumber           Int              @default(1)
+  aiPaused             Boolean          @default(false)
+  showPoll             Boolean          @default(true)
+  voiceLimitPerDay     Int              @default(3)
+  audiobookKey         String?
+  videoKey             String?
+  audiobookBytes       Int              @default(0)
+  videoBytes           Int              @default(0)
+  currentDraftId       String?
+  publishedDraftId     String?
+  generationError      String?
+  generationLog        String?
+  generationStartedAt  DateTime?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  voices               Voice[]
+  drafts               BookDraft[]
+  pollOptions          PollOption[]
+  pollVotes            PollVote[]
+  challenges           VoiceChallenge[]
+  jobs                 PipelineJob[]
+  backups              Backup[]
+}
+
+model Voice {
+  id              String   @id @default(cuid())
+  bookId          String
+  book            Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  contributorName String
+  language        String
+  countryCode     String?
+  handle          String   @default("")
+  ageBand         String   @default("")
+  region          String   @default("")
+  consentAt       DateTime
+  storageKey      String?
+  mimeType        String?
+  durationMs      Int      @default(0)
+  startWord       String   @default("")
+  startWordPassed Boolean  @default(false)
+  originalText    String   @default("")
+  englishText     String   @default("")
+  translated      Boolean  @default(false)
+  turnsJson       String   @default("[]")
+  status          String   @default("PROCESSING")
+  hidden          Boolean  @default(false)
+  rejectReason    String?
+  sourceUrl       String?
+  sourceTitle     String?
+  sourceDate      String   @default("")
+  userId          String   @default("")
+  decision        String   @default("")
+  themeLabel      String   @default("")
+  pipelineStep    String   @default("")
+  checkJson       String   @default("{}")
+  kind            String   @default("voice")
+  createdAt       DateTime @default(now())
+
+  @@index([bookId, createdAt])
+}
+
+model BookDraft {
+  id          String   @id @default(cuid())
+  bookId      String
+  book        Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  version     Int
+  contentJson String
+  note        String   @default("")
+  provider    String   @default("mock")
+  model       String   @default("")
+  createdAt   DateTime @default(now())
+
+  @@unique([bookId, version])
+}
+
+model PollOption {
+  id       String     @id @default(cuid())
+  bookId   String
+  book     Book       @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  label    String
+  position Int        @default(0)
+  votes    PollVote[]
+}
+
+model PollVote {
+  id        String     @id @default(cuid())
+  bookId    String
+  book      Book       @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  optionId  String
+  option    PollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  voterKey  String
+  createdAt DateTime   @default(now())
+
+  @@unique([bookId, voterKey])
+}
+
+model VoiceChallenge {
+  id         String    @id @default(cuid())
+  bookId     String
+  book       Book      @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  language   String
+  startWord  String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+}
+
+model PipelineJob {
+  id        String   @id @default(cuid())
+  bookId    String
+  book      Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  voiceId   String?
+  step      String
+  status    String   @default("pending")
+  attempts  Int      @default(0)
+  lastError String?
+  runAfter  DateTime @default(now())
+  key       String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([bookId, status])
+}
+
+model Backup {
+  id         String   @id @default(cuid())
+  bookId     String
+  book       Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  voiceCount Int      @default(0)
+  label      String
+  note       String   @default("")
+  createdAt  DateTime @default(now())
+}
+
+model AiUsage {
+  id           String   @id @default(cuid())
+  kind         String
+  provider     String
+  model        String
+  bookId       String?
+  voiceId      String?
+  inputTokens  Int      @default(0)
+  cachedTokens Int      @default(0)
+  outputTokens Int      @default(0)
+  audioMs      Int      @default(0)
+  estimatedUsd Float    @default(0)
+  createdAt    DateTime @default(now())
+}

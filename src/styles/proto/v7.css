@@ -1,0 +1,24 @@
+/* ===== v7 ===== */
+/* globe above, country card below with a small gap; glow stays inside the globe box */
+.gwrap__atmo{inset:0;background:radial-gradient(closest-side,transparent 76%,rgba(229,56,59,.2) 80.5%,rgba(229,56,59,.06) 86%,transparent 93%)}
+.hero4__globe .gpanel{margin:14px auto 0}
+@media(min-width:980px){
+  .hero4{align-items:center}
+  .hero4__globe .globebox{max-width:470px}
+  .hero4__globe .gpanel{margin-top:10px;width:min(100%,420px)}
+}
+/* dot name tooltip */
+.gwrap__ov{position:absolute;inset:0;z-index:2;pointer-events:none}
+.gtip{position:absolute;left:0;top:0;width:0;height:0;opacity:0;transition:opacity .18s}
+.gtip.on{opacity:1}.gtip.on.hid{opacity:0}
+.gtip span{position:absolute;left:10px;bottom:8px;white-space:nowrap;font:650 13px/1 var(--sans);color:#fff;padding:8px 11px;border-radius:999px;background:rgba(10,11,14,.92);border:1px solid rgba(255,93,87,.55);box-shadow:0 10px 26px -10px rgba(0,0,0,.9);transform:translateY(4px) scale(.96);transform-origin:left bottom;transition:transform .22s var(--ease)}
+.gtip.on span{transform:none}
+.gtip.l span{left:auto;right:10px;transform-origin:right bottom}
+.gtip::before{content:"";position:absolute;left:-7px;top:-7px;width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 4px rgba(229,56,59,.35)}
+/* hero title is two lines now */
+.hero4__title .w{display:block}
+/* sign-up state field */
+.input[hidden]{display:none!important}
+[data-stfield] .input+.input{margin-top:8px}
+/* studio gate: plain */
+.gate h1{margin-top:28px}

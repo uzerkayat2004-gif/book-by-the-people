@@ -1,0 +1,423 @@
+import "server-only";
+import { randomBytes } from "node:crypto";
+import { transcribeVoice } from "../ai";
+import { convertToWavPcm } from "../audio/convert";
+import { canAcceptVoice, validateSourcedQuote } from "../book/lifecycle";
+import { shouldTranslate, spokenStartWord, wavDurationMs } from "../book/speech";
+import type { Turn } from "../book/types";
+import { prisma } from "../db";
+import { AppError } from "../errors";
+import { countryByCode } from "../countries";
+import { languageByCode } from "../languages";
+import { AGE_BANDS } from "../regions";
+import { ENGLISH_START_WORDS, missingStartWordMessage, pickStartWord } from "../start-words";
+import { deleteAudio, getAudio, putAudio } from "../storage";
+import { getConfig } from "../config";
+import { settleVoice, voicesLeftToday } from "./pipeline";
+import { recordUsage, spendPaused } from "./spend";
+import { syncClosed } from "./books";
+
+const MAX_BYTES = 32 * 1024 * 1024;
+const MAX_MS = 10 * 60 * 1000;
+
+export async function issueChallenge(bookId: string, language: string, preferred?: string) {
+  const book = await prisma.book.findUnique({ where: { id: bookId } });
+  if (!book) throw new AppError("This book does not exist.", 404);
+  const chosen = languageByCode(language);
+  const fixed =
+    preferred && getConfig().aiMode !== "live"
+      ? ENGLISH_START_WORDS.findIndex((word) => word.toLowerCase() === preferred.toLowerCase())
+      : -1;
+  const picked = pickStartWord(chosen.code, fixed >= 0 ? fixed : randomBytes(2).readUInt16BE(0));
+  const challenge = await prisma.voiceChallenge.create({
+    data: {
+      bookId,
+      language: chosen.code,
+      startWord: picked.word,
+      expiresAt: new Date(Date.now() + 20 * 60 * 1000),
+    },
+  });
+  return {
+    challengeId: challenge.id,
+    startWord: challenge.startWord,
+    english: picked.english,
+    language: challenge.language,
+    languageName: chosen.name,
+  };
+}
+
+export async function ingestRecording(input: {
+  bookId: string;
+  viewerId: string | null;
+  invite: string | null;
+  challengeId: string;
+  name: string;
+  countryCode: string | null;
+  handle: string;
+  ageBand: string;
+  region: string;
+  consent: boolean;
+  durationMs: number;
+  clientTranscript: string | null;
+  audio: Buffer;
+  mimeType: string;
+  ip: string;
+}) {
+  if (!input.consent) throw new AppError("Consent is required before a voice can be kept.");
+  const name = cleanName(input.name);
+
+  const found = await prisma.book.findUnique({ where: { id: input.bookId } });
+  if (!found) throw new AppError("This book does not exist.", 404);
+  const closed = await syncClosed(found);
+  const book = { ...found, status: closed.status, closesAt: closed.closesAt };
+  const challenge = await prisma.voiceChallenge.findUnique({ where: { id: input.challengeId } });
+  if (!challenge || challenge.bookId !== book.id || challenge.consumedAt || challenge.expiresAt.getTime() < Date.now()) {
+    throw new AppError("Say the word on the page. Ask for a new word if this one expired.");
+  }
+
+  const gate = canAcceptVoice({
+    bookType: book.type,
+    status: book.status,
+    closesAt: book.closesAt?.getTime() ?? null,
+    creatorId: book.creatorId,
+    inviteToken: book.inviteToken,
+    viewerId: input.viewerId,
+    providedInvite: input.invite,
+    now: Date.now(),
+    paused: false,
+  });
+  if (!gate.ok) throw new AppError(gate.reason, 403);
+  if (await spendPaused(book.id)) throw new AppError("Voices are paused right now", 429);
+  const left = await voicesLeftToday(book.id, input.viewerId);
+  if (left <= 0) throw new AppError("You've used today's 3 voices. 0 left today.", 429);
+
+  if (input.audio.length < 80 || input.audio.length > MAX_BYTES) {
+    throw new AppError("That recording is empty or larger than 32 MB.");
+  }
+  const durationMs = Math.round(
+    input.durationMs || wavDurationMs(input.audio) || 0,
+  );
+  if (durationMs > MAX_MS) throw new AppError("Keep the recording under 10 minutes.");
+
+  const profile = cleanProfile(input);
+  const languageName = languageByCode(challenge.language).name;
+  let audio = input.audio;
+  let mimeType = input.mimeType;
+  try {
+    audio = await convertToWavPcm(input.audio);
+    mimeType = "audio/wav";
+  } catch {
+    audio = input.audio;
+  }
+  const heardInput = {
+    audio,
+    language: challenge.language,
+    startWord: challenge.startWord,
+    durationMs: Math.max(durationMs, 0),
+    clientTranscript: getConfig().aiMode === "mock" ? input.clientTranscript : null,
+    keywords: [name],
+    seed: `${book.id}:${name}:${challenge.id}`,
+  };
+
+  let heard;
+  try {
+    heard = await transcribeVoice(heardInput);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Transcription failed.";
+    const voice = await storeVoice({
+      bookId: book.id,
+      name,
+      language: challenge.language,
+      countryCode: profile.countryCode,
+      handle: profile.handle,
+      ageBand: profile.ageBand,
+      region: profile.region,
+      audio,
+      mimeType,
+      durationMs: Math.max(durationMs, 0),
+      startWord: challenge.startWord,
+      status: "FAILED",
+      userId: input.viewerId,
+      rejectReason: message,
+    });
+    await consumeChallenge(challenge.id);
+    return voice;
+  }
+
+  if (heard.audioMs > 0 || heard.usage.inputTokens > 0 || heard.usage.outputTokens > 0) {
+    await recordUsage({
+      kind: "transcribe",
+      provider: heard.provider,
+      model: heard.model,
+      bookId: book.id,
+      audioMs: heard.audioMs,
+      usage: heard.usage,
+    });
+  }
+
+  if (!spokenStartWord(heard.originalText, challenge.startWord)) {
+    await consumeChallenge(challenge.id);
+    throw new AppError(missingStartWordMessage(challenge.startWord, languageName), 422, "start-word");
+  }
+
+  const voice = await storeVoice({
+    bookId: book.id,
+    name,
+    language: challenge.language,
+    countryCode: profile.countryCode,
+    handle: profile.handle,
+    ageBand: profile.ageBand,
+    region: profile.region,
+    audio,
+    mimeType,
+    durationMs: heard.durationMs || Math.max(durationMs, 0),
+    startWord: challenge.startWord,
+    status: "READY",
+    originalText: heard.originalText,
+    englishText: heard.englishText,
+    translated: heard.translated,
+    turns: heard.turns,
+    startWordPassed: true,
+    userId: input.viewerId,
+  });
+  await consumeChallenge(challenge.id);
+  try {
+    return (await settleVoice(voice.id)) ?? voice;
+  } catch {
+    return voice;
+  }
+}
+
+export async function retryTranscription(voiceId: string, userId: string) {
+  const voice = await prisma.voice.findUnique({ include: { book: true }, where: { id: voiceId } });
+  if (!voice || voice.book.creatorId !== userId) throw new AppError("That voice is not in your studio.", 404);
+  if (voice.status !== "FAILED" || !voice.storageKey) throw new AppError("Only a failed recording can be tried again.");
+  if (await spendPaused(voice.bookId)) throw new AppError("Voices are paused right now", 429);
+  const audio = await getAudio(voice.storageKey);
+  await prisma.voice.update({ where: { id: voice.id }, data: { status: "PROCESSING", rejectReason: null } });
+  return finishTranscript(voice.id, {
+    audio,
+    language: voice.language,
+    startWord: voice.startWord,
+    durationMs: voice.durationMs,
+    clientTranscript: null,
+    keywords: [voice.contributorName],
+    seed: voice.id,
+  });
+}
+
+async function finishTranscript(
+  voiceId: string,
+  input: {
+    audio: Buffer;
+    language: string;
+    startWord: string;
+    durationMs: number;
+    clientTranscript: string | null;
+    keywords: string[];
+    seed: string;
+  },
+) {
+  try {
+    const heard = await transcribeVoice({
+      audio: input.audio,
+      language: input.language,
+      keywords: input.keywords,
+      durationMs: input.durationMs,
+      clientTranscript: input.clientTranscript,
+      seed: input.seed,
+      startWord: input.startWord,
+    });
+    const voice = await prisma.voice.findUnique({ where: { id: voiceId } });
+    if (heard.audioMs > 0 || heard.usage.inputTokens > 0) {
+      await recordUsage({
+        kind: "transcribe",
+        provider: heard.provider,
+        model: heard.model,
+        bookId: voice?.bookId,
+        voiceId,
+        audioMs: heard.audioMs,
+        usage: heard.usage,
+      });
+    }
+    if (!spokenStartWord(heard.originalText, input.startWord)) {
+      await discardVoice(voiceId);
+      throw new AppError(
+        missingStartWordMessage(input.startWord, languageByCode(input.language).name),
+        422,
+        "start-word",
+      );
+    }
+    return prisma.voice.update({
+      where: { id: voiceId },
+      data: {
+        originalText: heard.originalText,
+        englishText: heard.englishText,
+        translated: heard.translated,
+        turnsJson: JSON.stringify(heard.turns satisfies Turn[]),
+        durationMs: heard.durationMs || input.durationMs,
+        startWordPassed: true,
+        status: "READY",
+        rejectReason: null,
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Transcription failed.";
+    return prisma.voice.update({
+      where: { id: voiceId },
+      data: { status: "FAILED", rejectReason: message },
+    });
+  }
+}
+
+export async function addSourcedQuote(input: {
+  bookId: string;
+  userId: string;
+  speaker: string;
+  text: string;
+  sourceUrl: string;
+  sourceTitle: string;
+  sourceDate?: string;
+  language: string;
+}) {
+  const book = await prisma.book.findUnique({ where: { id: input.bookId } });
+  if (!book || book.creatorId !== input.userId) throw new AppError("That book is not in your studio.", 404);
+  if (book.type !== "FAMOUS") throw new AppError("Sourced quotes belong on a famous-voices book.");
+  const check = validateSourcedQuote(input);
+  if (!check.ok) throw new AppError(check.error);
+  const language = languageByCode(input.language).code;
+  const text = input.text.trim();
+  const needs = shouldTranslate(language, text);
+  const created = await prisma.voice.create({
+    data: {
+      bookId: book.id,
+      contributorName: input.speaker.trim().slice(0, 80),
+      language,
+      consentAt: new Date(),
+      originalText: text,
+      englishText: needs ? text : text,
+      translated: false,
+      startWordPassed: true,
+      status: "READY",
+      kind: "sourced_quote",
+      sourceUrl: input.sourceUrl.trim(),
+      sourceTitle: input.sourceTitle.trim().slice(0, 160),
+      sourceDate: (input.sourceDate ?? "").trim().slice(0, 40),
+      turnsJson: "[]",
+      decision: "approved",
+      pipelineStep: "group",
+    },
+  });
+  try {
+    return (await settleVoice(created.id)) ?? created;
+  } catch {
+    return created;
+  }
+}
+
+export async function setVoiceHidden(voiceId: string, userId: string, hidden: boolean) {
+  const voice = await prisma.voice.findUnique({ include: { book: true }, where: { id: voiceId } });
+  if (!voice || voice.book.creatorId !== userId) throw new AppError("That voice is not in your studio.", 404);
+  return prisma.voice.update({ where: { id: voiceId }, data: { hidden } });
+}
+
+export async function deleteVoice(voiceId: string, userId: string) {
+  const voice = await prisma.voice.findUnique({ include: { book: true }, where: { id: voiceId } });
+  if (!voice || voice.book.creatorId !== userId) throw new AppError("That voice is not in your studio.", 404);
+  if (voice.storageKey) await deleteAudio(voice.storageKey).catch(() => undefined);
+  await prisma.voice.delete({ where: { id: voiceId } });
+}
+
+async function storeVoice(input: {
+  bookId: string;
+  name: string;
+  language: string;
+  countryCode: string | null;
+  handle?: string;
+  ageBand?: string;
+  region?: string;
+  audio: Buffer;
+  mimeType: string;
+  durationMs: number;
+  startWord: string;
+  status: string;
+  rejectReason?: string | null;
+  originalText?: string;
+  englishText?: string;
+  translated?: boolean;
+  turns?: Turn[];
+  startWordPassed?: boolean;
+  userId?: string | null;
+}) {
+  const voiceId = `v_${randomBytes(8).toString("hex")}`;
+  const storageKey = `${voiceId}${extensionFor(input.mimeType)}`;
+  await putAudio(storageKey, input.audio, input.mimeType || "application/octet-stream");
+  return prisma.voice.create({
+    data: {
+      id: voiceId,
+      bookId: input.bookId,
+      contributorName: input.name,
+      language: input.language,
+      countryCode: input.countryCode,
+      handle: input.handle ?? "",
+      ageBand: input.ageBand ?? "",
+      region: input.region ?? "",
+      consentAt: new Date(),
+      storageKey,
+      mimeType: input.mimeType || "application/octet-stream",
+      durationMs: input.durationMs,
+      startWord: input.startWord,
+      status: input.status,
+      rejectReason: input.rejectReason ?? null,
+      originalText: input.originalText ?? "",
+      englishText: input.englishText ?? "",
+      translated: input.translated ?? false,
+      turnsJson: JSON.stringify(input.turns ?? []),
+      startWordPassed: input.startWordPassed ?? false,
+      kind: "voice",
+      userId: input.userId ?? "",
+    },
+  });
+}
+
+async function consumeChallenge(id: string) {
+  await prisma.voiceChallenge.update({ where: { id }, data: { consumedAt: new Date() } });
+}
+
+async function discardVoice(voiceId: string) {
+  const voice = await prisma.voice.findUnique({ where: { id: voiceId } });
+  if (voice?.storageKey) await deleteAudio(voice.storageKey).catch(() => undefined);
+  if (voice) await prisma.voice.delete({ where: { id: voiceId } });
+}
+
+function cleanProfile(input: { countryCode: string | null; handle: string; ageBand: string; region: string }) {
+  const handle = input.handle.trim().replace(/^@/, "");
+  if (handle && !/^[A-Za-z0-9_]{1,15}$/.test(handle)) {
+    throw new AppError("Use an X username with letters, numbers, or underscores.");
+  }
+  const ageBand = input.ageBand.trim();
+  if (ageBand && !(AGE_BANDS as readonly string[]).includes(ageBand)) {
+    throw new AppError("Pick an age of 18 or older.");
+  }
+  return {
+    countryCode: countryByCode(input.countryCode)?.code ?? null,
+    handle,
+    ageBand,
+    region: input.region.trim().slice(0, 40),
+  };
+}
+
+function cleanName(name: string): string {
+  const cleaned = name.replace(/[<>]/g, "").trim();
+  if (cleaned.length < 1 || cleaned.length > 40) throw new AppError("Use the name you want printed, up to 40 characters.");
+  if (/https?:\/\//i.test(cleaned)) throw new AppError("The name cannot be a link.");
+  return cleaned;
+}
+
+function extensionFor(mime: string): string {
+  if (mime.includes("wav")) return ".wav";
+  if (mime.includes("mpeg") || mime.includes("mp3")) return ".mp3";
+  if (mime.includes("mp4") || mime.includes("m4a")) return ".m4a";
+  if (mime.includes("ogg")) return ".ogg";
+  return ".webm";
+}

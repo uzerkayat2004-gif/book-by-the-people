@@ -1,0 +1,56 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { createMagicLink, safeNextPath } from "@/lib/auth";
+import { getConfig } from "@/lib/config";
+import { assertSameOrigin, clientIp, fromError, jsonError } from "@/lib/http";
+import { rateLimit } from "@/lib/rate-limit";
+
+const bodySchema = z.object({
+  email: z.string().trim().email(),
+  next: z.string().optional(),
+});
+
+export async function POST(request: Request) {
+  const origin = assertSameOrigin(request);
+  if (origin) return origin;
+  try {
+    if (!rateLimit(`magic:${clientIp(request)}`, 40, 60 * 60 * 1000)) {
+      return jsonError("Too many sign-in links. Wait a little and try again.", 429);
+    }
+    const parsed = bodySchema.safeParse(await request.json());
+    if (!parsed.success) return jsonError("Enter a real email address.");
+    const token = await createMagicLink(parsed.data.email);
+    const next = safeNextPath(parsed.data.next);
+    const link = `${new URL(request.url).origin}/api/auth/verify?token=${token}&next=${encodeURIComponent(next)}`;
+    const cfg = getConfig();
+    let delivered = false;
+    if (cfg.resendApiKey && cfg.emailFrom) {
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${cfg.resendApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: cfg.emailFrom,
+          to: parsed.data.email,
+          subject: "Your link into Book by the People",
+          html: `<p>This link opens your studio. It expires in 30 minutes.</p><p><a href="${link}">${link}</a></p>`,
+        }),
+      });
+      delivered = response.ok;
+      if (!response.ok && !cfg.exposeMagicLinks) {
+        return jsonError("The sign-in email could not be sent.", 502);
+      }
+    } else if (!cfg.exposeMagicLinks) {
+      return jsonError("Email delivery is not configured.", 500);
+    }
+    return NextResponse.json({
+      ok: true,
+      delivered,
+      devLink: cfg.exposeMagicLinks ? link : undefined,
+    });
+  } catch (error) {
+    return fromError(error);
+  }
+}
