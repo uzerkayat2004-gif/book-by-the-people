@@ -48,7 +48,9 @@ export function GlobeView({ pins }: { pins: Pin[] }) {
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const [tip, setTip] = useState<{ name: string; x: number; y: number; left: boolean } | null>(null);
   const pinsRef = useRef(pins);
-  pinsRef.current = pins;
+  useEffect(() => {
+    pinsRef.current = pins;
+  }, [pins]);
 
   useEffect(() => {
     const flat = flatRef.current;

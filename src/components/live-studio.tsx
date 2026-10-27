@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 
 import { Fragment, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -215,9 +216,9 @@ export function StudioDesk({
             <i />
             AI running
           </span>
-          <a className="ownerout" href="/">
+          <Link className="ownerout" href="/">
             <IconShield /> Sign out of studio
-          </a>
+          </Link>
           <form action="/api/auth/sign-out" method="post">
             <button className="ownerout" type="submit">
               <IconShield /> Sign out
@@ -791,7 +792,8 @@ function SettingsCards({
     onDone();
   }
 
-  const passed = book.closesAt ? new Date(book.closesAt).getTime() < Date.now() : true;
+  const [now] = useState(() => Date.now());
+  const passed = book.closesAt ? new Date(book.closesAt).getTime() < now : true;
   return (
     <>
       <section className="setcard">
