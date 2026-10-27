@@ -39,13 +39,15 @@ test("Studio: voices in, make the book, release audiobook + video, read it", asy
 
   await page.goto(`/studio/${book.slug}?tab=make`);
   await page.getByRole("button", { name: "Make the book", exact: true }).click();
-  await expect(page.getByRole("link", { name: "Edit the draft" })).toBeVisible({ timeout: 60_000 });
-  await page.getByRole("button", { name: 'Publish a version from "Make the book"' }).click();
-  await expect(page.getByRole("link", { name: "Read", exact: true })).toBeVisible({ timeout: 90_000 });
+  await expect(page.getByRole("link", { name: "Edit draft" })).toBeVisible({ timeout: 60_000 });
+  await page.getByRole("button", { name: /^Publish v\d+$/ }).click();
+  await expect(page.getByRole("link", { name: "Read the book" })).toBeVisible({ timeout: 90_000 });
 
+  // The audiobook and video are spoken in the background after Publish; Release shows them when done.
   await page.goto(`/studio/${book.slug}?tab=release`);
-  await expect(page.getByText(/\.mp3/)).toBeVisible();
+  await expect(page.getByText(/\.mp3/)).toBeVisible({ timeout: 90_000 });
   await expect(page.getByText(/\.mp4/)).toBeVisible();
+  await expect(page.getByText("Emails to speakers are off.", { exact: false })).toBeVisible();
 
   const audio = await api.get(`/api/media/${book.slug}/audiobook?download=1`);
   expect(audio.ok()).toBeTruthy();
