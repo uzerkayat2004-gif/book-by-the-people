@@ -10,7 +10,7 @@
  */
 import "dotenv/config";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { PrismaClient } from "../src/generated/prisma/client";
@@ -40,7 +40,29 @@ const FONT =
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
     "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
     "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+    "C:\\Windows\\Fonts\\segoeuib.ttf",
+    "C:\\Windows\\Fonts\\arialbd.ttf",
   ].find((file) => file && existsSync(file)) ?? "";
+
+/** ffmpeg from FFMPEG_PATH, then the copy from Book settings → Audio tools, then PATH. */
+const FFMPEG =
+  [
+    process.env.FFMPEG_PATH ?? "",
+    path.join(
+      path.resolve(process.env.LOCAL_MODELS_DIR || path.join("data", "models")),
+      "runtime",
+      "tools",
+      process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg",
+    ),
+  ].find((file) => file && existsSync(file)) ?? "ffmpeg";
+const HAS_FFMPEG = (() => {
+  try {
+    execFileSync(FFMPEG, ["-version"], { stdio: "ignore", windowsHide: true });
+    return true;
+  } catch {
+    return false;
+  }
+})();
 
 type Person = {
   id: string;
@@ -206,20 +228,72 @@ const SOLO: Person[] = [
 ];
 
 function run(cmd: string, args: string[]) {
-  execFileSync(cmd, args, { stdio: "ignore" });
+  execFileSync(cmd === "ffmpeg" ? FFMPEG : cmd, args, { stdio: "ignore", windowsHide: true });
 }
 
+/** A short soft tone, written directly so the seed works with no speech engine and no ffmpeg. */
+function toneWav(file: string, seconds = 4) {
+  const rate = 24000;
+  const samples = rate * seconds;
+  const data = Buffer.alloc(samples * 2);
+  for (let i = 0; i < samples; i += 1) {
+    const fade = Math.min(1, i / 2400, (samples - i) / 2400);
+    data.writeInt16LE(Math.round(Math.sin((2 * Math.PI * 196 * i) / rate) * 6000 * fade), i * 2);
+  }
+  const header = Buffer.alloc(44);
+  header.write("RIFF", 0);
+  header.writeUInt32LE(36 + data.length, 4);
+  header.write("WAVEfmt ", 8);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(rate, 24);
+  header.writeUInt32LE(rate * 2, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write("data", 36);
+  header.writeUInt32LE(data.length, 40);
+  writeFileSync(file, Buffer.concat([header, data]));
+}
+
+/** Speaks with espeak-ng, then the Windows voice, then macOS say, then falls back to a tone. */
 function speak(file: string, voice: string, text: string, speed = 148) {
   try {
     run("espeak-ng", ["-v", voice, "-s", String(speed), "-w", file, text]);
-  } catch {
-    run("ffmpeg", ["-y", "-f", "lavfi", "-i", "sine=frequency=196:duration=4", "-ac", "1", "-ar", "24000", file]);
+    return;
+  } catch {}
+  if (process.platform === "win32") {
+    const input = `${file}.txt`;
+    try {
+      writeFileSync(input, text, "utf8");
+      const script =
+        "Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; " +
+        "$s.SetOutputToWaveFile($env:BBTP_TTS_OUT); $s.Speak([IO.File]::ReadAllText($env:BBTP_TTS_IN)); $s.Dispose()";
+      execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script], {
+        stdio: "ignore",
+        windowsHide: true,
+        env: { ...process.env, BBTP_TTS_IN: input, BBTP_TTS_OUT: file },
+      });
+      return;
+    } catch {
+      // fall through to the tone
+    } finally {
+      rmSync(input, { force: true });
+    }
   }
+  if (process.platform === "darwin") {
+    try {
+      run("/usr/bin/say", ["--file-format=WAVE", "--data-format=LEI16@22050", "-o", file, text]);
+      return;
+    } catch {}
+  }
+  toneWav(file);
 }
 
 function drawtext(text: string, size: number, y: number) {
   const safe = text.replace(/[\\':%]/g, "").slice(0, 70);
-  return `drawtext=${FONT ? `fontfile=${FONT}:` : ""}text='${safe}':fontsize=${size}:fontcolor=white:x=(w-text_w)/2:y=${y}`;
+  const font = FONT ? `'${FONT.replace(/\\/g, "/").replace(/:/g, "\\:")}'` : "";
+  return `drawtext=${font ? `fontfile=${font}:` : ""}text='${safe}':fontsize=${size}:fontcolor=white:x=(w-text_w)/2:y=${y}`;
 }
 
 /** Narrate a script to mp3 and render a matching mp4 with ffmpeg. Returns stored keys and sizes. */
@@ -228,6 +302,20 @@ function renderMedia(bookId: string, title: string, script: string, opts: { audi
   mkdirSync(work, { recursive: true });
   const wav = path.join(work, "speech.wav");
   speak(wav, "en-us", script, 155);
+  if (!HAS_FFMPEG) {
+    // No ffmpeg yet: keep the spoken WAV as the audiobook and skip the video. Release → Make again fills it in later.
+    const wavKey = `book-${bookId}-audiobook.wav`;
+    writeFileSync(path.join(audioDir, wavKey), readFileSync(wav));
+    rmSync(work, { recursive: true, force: true });
+    return {
+      audiobookKey: wavKey,
+      audiobookBytes: readFileSync(path.join(audioDir, wavKey)).length,
+      audiobookName: "",
+      videoKey: null,
+      videoBytes: 0,
+      videoName: "",
+    };
+  }
   const audioKey = `book-${bookId}-audiobook.mp3`;
   const videoKey = `book-${bookId}-video.mp4`;
   run("ffmpeg", ["-y", "-i", wav, "-ac", "1", "-codec:a", "libmp3lame", "-b:a", "16k", path.join(audioDir, audioKey)]);
