@@ -19,7 +19,7 @@ export default async function SignInPage({
           ? "That link did not work."
           : null;
   return (
-    <main className="page speak gate gate-live">
+    <main className={`page speak gate gate-live${speak ? "" : " gate-signin"}`}>
       <div className="narrow">
         {speak ? (
           <div className="stepdots">

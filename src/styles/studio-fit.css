@@ -360,3 +360,25 @@ p.ownbook.wrap a { color: #f3f2ee; text-decoration: underline; text-underline-of
 .droppage { padding-top: 44px !important; }
 .droppage .label { font-family: var(--font-display, inherit); color: #fff; font-size: 11px; letter-spacing: 0; font-weight: 700; }
 .droppage .dropcount { margin-top: 6px; font-size: 15px; color:#fff; }
+
+/* Sign-in gate (non-speak): Google directly under title, like live 09 */
+.page.speak.gate-signin .grow { flex: 0 0 8px; }
+.page.speak.gate-signin .narrow { min-height: 0; }
+.page.speak.gate-signin h1 { margin-bottom: 4px; }
+
+/* Speak recorder step — left-aligned, compact, Start pinned low (live 32-speak-1) */
+@media (min-width: 700px) {
+  .page.speak.speak-rec .narrow { width: min(100% - 24px, 412px); display: flex; flex-direction: column; min-height: calc(100vh - 70px); padding-bottom: 18px; }
+  .page.speak.speak-rec .question { font-style: normal; text-align: left; font-size: 25px; line-height: 1.15; margin: 2px 0 14px; }
+  .page.speak.speak-rec .lead { text-align: left; font-size: 12.5px; margin: 0 0 10px; }
+  .page.speak.speak-rec .word { text-align: left; padding: 10px 12px; }
+  .page.speak.speak-rec .word .label { font-size: 7.5px; }
+  .page.speak.speak-rec .word b { font-size: 26px; line-height: 1.1; }
+  .page.speak.speak-rec .word .muted, .page.speak.speak-rec .word .hint { font-size: 11px; margin: 2px 0; }
+  .page.speak.speak-rec .field { font-size: 10px; margin-top: 10px; }
+  .page.speak.speak-rec .field .input { min-height: 32px; height: 32px; font-size: 11px; }
+  .page.speak.speak-rec .hint { font-size: 9.5px; }
+  .page.speak.speak-rec .grow { flex: 1; }
+  .page.speak.speak-rec .btn { min-height: 36px !important; height: 36px; font-size: 12px !important; }
+  .page.speak.speak-rec .under { font-size: 9px; text-align: center; }
+}

@@ -412,7 +412,7 @@ export function VoiceForm({
 
   const ring = 565.5 * (1 - Math.min(60, seconds) / 60);
   return (
-    <main className="page speak">
+    <main className="page speak speak-rec">
       <div className="narrow">
         <Dots on={recording ? 2 : file ? 3 : 2} />
         <p className="question">{question}</p>
