@@ -1020,9 +1020,9 @@ function SettingsTab({
     ["s-poll", "Next book poll"],
     ...(book.type === "INVITED" ? ([["s-invite", "Invite link"]] as [string, string][]) : []),
     ...(book.type === "FAMOUS" ? ([["s-quotes", "Famous quotes"]] as [string, string][]) : []),
-    ["s-data", "Data"],
     ["s-limit", "AI for this book"],
     ["s-ai", "AI model"],
+    ["s-data", "Data"],
   ];
 
   const saveButton = (dirty: boolean, onClick: () => void) => (
@@ -1205,50 +1205,6 @@ function SettingsTab({
 
           {book.type === "FAMOUS" ? <FamousQuotes bookId={book.id} mockMode={settings.mockServer} quotes={quotes} onDone={onDone} /> : null}
 
-          <section className="s2-card s2-danger" id="s-data">
-            <div className="s2-card__head">
-              <h3>Data</h3>
-              <span className="s2-muted">a backup is saved before each</span>
-            </div>
-            <div className="s2-setrow">
-              <div>
-                <b>Reset poll votes</b>
-                <span>Removes every vote on the poll.</span>
-              </div>
-              <button className="s2-btn s2-btn--sm s2-btn--danger" type="button" disabled={working !== null} onClick={() => void maintenance("reset-votes", "Remove every vote on this poll?")}>
-                Reset votes
-              </button>
-            </div>
-            <div className="s2-setrow">
-              <div>
-                <b>Remove sample data</b>
-                <span>Marked sample voices and quotes. Real voices stay.</span>
-              </div>
-              <button
-                className="s2-btn s2-btn--sm s2-btn--danger"
-                type="button"
-                disabled={working !== null}
-                onClick={() => void maintenance("remove-samples", "Remove the sample voices and sample quotes? Real voices stay.")}
-              >
-                Remove samples
-              </button>
-            </div>
-            <div className="s2-setrow">
-              <div>
-                <b>Reset test data</b>
-                <span>Every voice, vote, draft, job and spend row. Settings and backups stay.</span>
-              </div>
-              <button
-                className="s2-btn s2-btn--sm s2-btn--danger"
-                type="button"
-                disabled={working !== null}
-                onClick={() => void maintenance("reset-test-data", "Save a backup, then remove every voice, vote, draft, job and spend row for this book?")}
-              >
-                Reset
-              </button>
-            </div>
-          </section>
-
           <section className="s2-card" id="s-limit">
             <div className="s2-card__head">
               <h3>AI for this book</h3>
@@ -1385,6 +1341,50 @@ function SettingsTab({
             <div className="s2-sub">
               <h4>Meta models on this computer</h4>
               <LocalModels onChange={onDone} />
+            </div>
+          </section>
+
+          <section className="s2-card s2-danger" id="s-data">
+            <div className="s2-card__head">
+              <h3>Data</h3>
+              <span className="s2-muted">A backup is saved before each reset</span>
+            </div>
+            <div className="s2-setrow">
+              <div>
+                <b>Reset poll votes</b>
+                <span>Removes every vote on the poll.</span>
+              </div>
+              <button className="s2-btn s2-btn--sm s2-btn--danger" type="button" disabled={working !== null} onClick={() => void maintenance("reset-votes", "Remove every vote on this poll?")}>
+                Reset votes
+              </button>
+            </div>
+            <div className="s2-setrow">
+              <div>
+                <b>Remove sample data</b>
+                <span>Marked sample voices and quotes. Real voices stay.</span>
+              </div>
+              <button
+                className="s2-btn s2-btn--sm s2-btn--danger"
+                type="button"
+                disabled={working !== null}
+                onClick={() => void maintenance("remove-samples", "Remove the sample voices and sample quotes? Real voices stay.")}
+              >
+                Remove samples
+              </button>
+            </div>
+            <div className="s2-setrow">
+              <div>
+                <b>Reset test data</b>
+                <span>Every voice, vote, draft, job and spend row. Settings and backups stay.</span>
+              </div>
+              <button
+                className="s2-btn s2-btn--sm s2-btn--danger"
+                type="button"
+                disabled={working !== null}
+                onClick={() => void maintenance("reset-test-data", "Save a backup, then remove every voice, vote, draft, job and spend row for this book?")}
+              >
+                Reset
+              </button>
             </div>
           </section>
         </div>
