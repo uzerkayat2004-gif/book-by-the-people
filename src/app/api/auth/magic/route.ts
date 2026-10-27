@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   const origin = assertSameOrigin(request);
   if (origin) return origin;
   try {
-    if (!rateLimit(`magic:${clientIp(request)}`, 40, 60 * 60 * 1000)) {
+    if (!rateLimit(`magic:${clientIp(request)}`, process.env.NODE_ENV === "production" ? 40 : 1000, 60 * 60 * 1000)) {
       return jsonError("Too many sign-in links. Wait a little and try again.", 429);
     }
     const parsed = bodySchema.safeParse(await request.json());
