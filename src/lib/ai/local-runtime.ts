@@ -1,7 +1,7 @@
 import "server-only";
-import { spawn, execFile, type ChildProcess } from "node:child_process";
-import { createWriteStream, existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, chmodSync, openSync, readSync, closeSync } from "node:fs";
-import { statfs } from "node:fs/promises";
+import { spawn, execFile, type ChildProcess } from "@/lib/runtime-fs";
+import { createWriteStream, existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, chmodSync, openSync, readSync, closeSync } from "@/lib/runtime-fs";
+import { statfs } from "@/lib/runtime-fs";
 import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -47,10 +47,19 @@ function assetName(build = LLAMA_CPP_BUILD): string | null {
  * picks the fixed drive with the most free space when the project's drive is
  * nearly full (many laptops have a small C:).
  */
+/**
+ * data/models under the app folder. Built from a runtime value on purpose: if the bundler can see the
+ * path it opens every model file in there while building (several GB) and runs out of memory.
+ */
+function defaultModelsDir(): string {
+  const parts = [process.env.BBTP_APP_DIR || process.cwd(), "data", "models"];
+  return parts.join(path.sep);
+}
+
 export async function modelsDir(): Promise<{ path: string; source: "env" | "auto" | "default" }> {
-  if (process.env.LOCAL_MODELS_DIR) return { path: path.resolve(process.env.LOCAL_MODELS_DIR), source: "env" };
+  if (process.env.LOCAL_MODELS_DIR) return { path: path.resolve(/*turbopackIgnore: true*/ process.env.LOCAL_MODELS_DIR), source: "env" };
   if (state.dir) return state.dir;
-  const fallback = path.join(process.cwd(), "data", "models");
+  const fallback = defaultModelsDir();
   let chosen: { path: string; source: "env" | "auto" | "default" } = { path: fallback, source: "default" };
   if (process.platform === "win32") {
     const here = (await freeBytes(process.cwd())) ?? 0;
@@ -63,7 +72,7 @@ export async function modelsDir(): Promise<{ path: string; source: "env" | "auto
         if (free > best.free) best = { drive: root, free };
       }
       if (best.drive && path.parse(process.cwd()).root.toUpperCase() !== best.drive.toUpperCase()) {
-        chosen = { path: path.join(best.drive, "BookByThePeople", "models"), source: "auto" };
+        chosen = { path: path.join(/*turbopackIgnore: true*/ best.drive, "BookByThePeople", "models"), source: "auto" };
       }
     }
   }
@@ -83,7 +92,7 @@ export async function freeBytes(target: string): Promise<number | null> {
 }
 
 function runtimeDir(dir: string) {
-  return path.join(dir, "runtime", LLAMA_CPP_BUILD);
+  return path.join(/*turbopackIgnore: true*/ dir, "runtime", LLAMA_CPP_BUILD);
 }
 
 function findServerBinary(root: string): string | null {
@@ -93,7 +102,7 @@ function findServerBinary(root: string): string | null {
   while (stack.length) {
     const current = stack.pop()!;
     for (const entry of readdirSync(current, { withFileTypes: true })) {
-      const full = path.join(current, entry.name);
+      const full = path.join(/*turbopackIgnore: true*/ current, entry.name);
       if (entry.isDirectory()) stack.push(full);
       else if (entry.name === want) return full;
     }
@@ -102,7 +111,7 @@ function findServerBinary(root: string): string | null {
 }
 
 export function ggufPath(dir: string, model: LocalModel) {
-  return path.join(dir, "gguf", model.file);
+  return [dir, "gguf", model.file].join(path.sep);
 }
 
 function isGguf(file: string): boolean {
@@ -177,7 +186,7 @@ export async function ensureRuntime(dir: string, signal: AbortSignal) {
   const asset = assetName();
   if (!asset) throw new Error(`No llama.cpp build for ${process.platform}/${process.arch}. Install Ollama instead.`);
   const url = `https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_CPP_BUILD}/${asset}`;
-  const archive = path.join(dir, "runtime", asset);
+  const archive = path.join(/*turbopackIgnore: true*/ dir, "runtime", asset);
   setJob({ phase: "runtime", received: 0, total: 0, message: "Getting the llama.cpp runtime" });
   await download(url, archive, signal, (received, total) => setJob({ received, total }));
   await extract(archive, runtimeDir(dir));
@@ -203,7 +212,7 @@ async function waitHealthy(port: number, child: ChildProcess, timeoutMs = 180_00
 }
 
 function pidFile(dir: string) {
-  return path.join(runtimeDir(dir), "llama-server.pid");
+  return path.join(/*turbopackIgnore: true*/ runtimeDir(dir), "llama-server.pid");
 }
 
 async function probeServer(): Promise<string[] | null> {

@@ -4,7 +4,7 @@ import { PrismaClient } from "@/generated/prisma/client";
 
 const configured = process.env.DATABASE_URL ?? "file:./data/bbtp.db";
 if (configured.startsWith("file:") && !configured.startsWith("file:/") && !configured.startsWith("file:\\\\")) {
-  process.env.DATABASE_URL = `file:${path.resolve(process.cwd(), configured.slice("file:".length))}`;
+  process.env.DATABASE_URL = `file:${path.resolve(/*turbopackIgnore: true*/ process.cwd(), configured.slice("file:".length))}`;
 }
 
 // The sealed per-book AI key never leaves the server by accident: it is omitted

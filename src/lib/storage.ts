@@ -1,6 +1,6 @@
 import "server-only";
 import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "@/lib/runtime-fs";
 import path from "node:path";
 import { getConfig } from "./config";
 
@@ -11,7 +11,7 @@ function safeKey(key: string): string {
 }
 
 async function localPath(key: string): Promise<string> {
-  const dir = path.resolve(getConfig().localStorageDir);
+  const dir = path.resolve(/*turbopackIgnore: true*/ getConfig().localStorageDir);
   await mkdir(dir, { recursive: true });
   return path.join(dir, safeKey(key));
 }

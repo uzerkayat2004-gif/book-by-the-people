@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "@/lib/runtime-fs";
 import path from "node:path";
 
 /**
@@ -14,7 +14,7 @@ import path from "node:path";
 let cachedLocal: string | null = null;
 
 export function localSecretPath(): string {
-  return path.join(process.env.DATA_DIR || path.join(process.cwd(), "data"), "ai-key-secret");
+  return [process.env.DATA_DIR || [process.cwd(), "data"].join(path.sep), "ai-key-secret"].join(path.sep);
 }
 
 /** Reads (or creates once) the local secret file. Returns "" if it cannot be written. */

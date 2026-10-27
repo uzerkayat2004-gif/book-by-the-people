@@ -1,15 +1,13 @@
-import { execFile } from "node:child_process";
-import { createWriteStream, existsSync, mkdirSync, renameSync, rmSync, chmodSync } from "node:fs";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createWriteStream, existsSync, mkdirSync, renameSync, rmSync, chmodSync, execFileAsync } from "@/lib/runtime-fs";
+import { mkdtemp, readFile, rm, writeFile } from "@/lib/runtime-fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGunzip } from "node:zlib";
-import { promisify } from "node:util";
 import { modelsDir } from "../ai/local-runtime";
 
-const exec = promisify(execFile);
+const exec = execFileAsync;
 
 /**
  * Audio and video tools: ffmpeg (convert recordings, mp3, video) and a speech
