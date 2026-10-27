@@ -313,3 +313,23 @@ img.logo__mark, .top img.logo__mark { width: 21px; height: 21px; border-radius: 
 /* Book page footer links: centered under the content column */
 p.ownbook.wrap { width: min(100% - 24px, 788px); margin: 26px auto 0; text-align: center; font-size: 13px; color: var(--muted); }
 p.ownbook.wrap a { color: #f3f2ee; text-decoration: underline; text-underline-offset: 3px; }
+
+/* Home hero — column widths, globe size and offsets measured from live 33-home-signedin-1 at 1280 */
+@media (min-width: 980px) {
+  .page.home4 .hero4 { grid-template-columns: 378px minmax(0, 1fr); gap: 0; padding-top: 120px; }
+  .page.home4 .hero4 .topic__q { font-size: 26px; line-height: 1.12; }
+  .page.home4 .hero4 .cta6 { max-width: 313px; }
+  .page.home4 .hero4__globe { padding-top: 59px; transform: translateX(11px); }
+  .page.home4 .hero4__globe .globebox { width: 305px; max-width: 305px; }
+  .page.home4 .hero4__globe .gpanel { width: 280px; margin-top: 12px; }
+}
+@media (min-width: 980px) {
+  .page.home4 .hero4__globe .gpanel { padding: 10px 12px 6px; border-radius: 12px; }
+  .page.home4 .hero4__globe .gpanel__stats b { font-size: 16px; }
+  .page.home4 .hero4__globe .gpanel__stats { font-size: 10px; }
+  .page.home4 .hero4__globe .gp__nm { font-size: 11px; overflow: visible; min-width: 60px; }
+  .page.home4 .hero4__globe .gp__cc { font-size: 9px; }
+  .page.home4 .hero4 .eyebrow { font-size: 10.5px; padding: 5px 10px; }
+  .page.home4 .hero4 .cta6__open, .page.home4 .hero4 .cta6__live { font-size: 11px; }
+  .page.home4 .hero4 .cta4 { min-height: 38px; font-size: 12.5px; }
+}
