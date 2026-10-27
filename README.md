@@ -40,7 +40,7 @@ Sample clips are spoken locally by eSpeak NG so the reader works with no key; th
 | Page | Route |
 | --- | --- |
 | Home (featured book) | `/` (`?stage=before|closed|after`) |
-| Any book | `/b/[slug]`, speak `/b/[slug]/speak`, reader `/b/[slug]/read`, share card `/b/[slug]/c/[voiceId]` |
+| Any book | `/b/[slug]`, speak `/b/[slug]/speak`, reader `/b/[slug]/read`, share/credit card `/b/[slug]/credit/[voiceId]` |
 | Explore | `/explore` |
 | Create a book | `/books/new` (linked from home, My page, Studio) |
 | Studio (owner only) | `/studio` (your books) and `/studio/[slug]` (Settings · AI at work · Make the book · Release, pill book switcher) |
