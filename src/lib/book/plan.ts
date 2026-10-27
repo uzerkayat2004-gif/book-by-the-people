@@ -87,6 +87,12 @@ function sentenceCase(text: string): string {
  * the longest phrase that most voices in the group share, or the opening
  * words of the first voice. Deterministic, so mock mode is repeatable.
  */
+const DANGLING = /(ed|al|en|ive|ous|ful|less|ing|ly)$/;
+function endsClean(phrase: string): boolean {
+  const last = phrase.split(" ").pop() ?? "";
+  return !(last.length > 3 && DANGLING.test(last));
+}
+
 export function themeLabel(voices: { text: string }[]): string {
   if (voices.length === 0) return "Voices";
   const counts = new Map<string, number>();
@@ -95,10 +101,10 @@ export function themeLabel(voices: { text: string }[]): string {
   }
   const need = voices.length >= 2 ? 2 : 1;
   const ranked = [...counts.entries()]
-    .filter(([, count]) => count >= need)
+    .filter(([phrase, count]) => count >= need && endsClean(phrase))
     .sort((a, b) => b[1] - a[1] || shape(b[0]) - shape(a[0]) || b[0].split(" ").length - a[0].split(" ").length || a[0].localeCompare(b[0]));
   if (ranked.length > 0 && voices.length >= 2) return sentenceCase(ranked[0][0]);
-  const own = [...phrases(voices[0].text)].sort((a, b) => shape(b) - shape(a) || a.localeCompare(b));
+  const own = [...phrases(voices[0].text)].filter(endsClean).sort((a, b) => shape(b) - shape(a) || a.localeCompare(b));
   if (own.length > 0 && shape(own[0]) >= 2) return sentenceCase(own[0]);
   const first = words(voices[0].text);
   const start = first.findIndex((word) => !EDGE.has(word) && word.length > 3);
