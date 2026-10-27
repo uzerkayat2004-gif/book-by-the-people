@@ -77,3 +77,13 @@ describe("famous quotes", () => {
     expect(SAMPLE_PREFIX).toMatch(/sample/i);
   });
 });
+
+import { dropStartWord } from "./book/speech";
+describe("dropStartWord", () => {
+  it("removes the spoken start word and capitalises the rest", () => {
+    expect(dropStartWord("Tiger. every morning I hear vendors.", "tiger")).toBe("Every morning I hear vendors.");
+  });
+  it("keeps text that does not start with the word", () => {
+    expect(dropStartWord("I said tiger later.", "tiger")).toBe("I said tiger later.");
+  });
+});

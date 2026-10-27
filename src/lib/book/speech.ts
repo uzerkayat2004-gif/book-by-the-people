@@ -177,3 +177,17 @@ export function wavDurationMs(buffer: Buffer): number | null {
   const bytesPerSample = Math.max(1, (bits / 8) * channels);
   return Math.round((dataBytes / bytesPerSample / sampleRate) * 1000);
 }
+
+/** The start word proves a live take; it is not part of what the person meant to say. */
+export function dropStartWord(text: string, startWord: string | null | undefined): string {
+  if (!startWord) return text;
+  const target = normalizeSpeech(startWord);
+  if (!target) return text;
+  const parts = target.split(" ").filter(Boolean).length;
+  const tokens = text.trimStart().split(/\s+/);
+  const head = normalizeSpeech(tokens.slice(0, parts).join(" "));
+  if (head !== target) return text;
+  const rest = tokens.slice(parts).join(" ").replace(/^[\s.,;:!?…—–-]+/u, "");
+  if (!rest) return text;
+  return rest.charAt(0).toUpperCase() + rest.slice(1);
+}

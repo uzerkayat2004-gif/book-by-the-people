@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { transcribeVoice } from "../ai";
 import { convertToWavPcm } from "../audio/convert";
 import { canAcceptVoice, validateSourcedQuote } from "../book/lifecycle";
-import { shouldTranslate, spokenStartWord, wavDurationMs } from "../book/speech";
+import { shouldTranslate, dropStartWord, spokenStartWord, wavDurationMs } from "../book/speech";
 import type { Turn } from "../book/types";
 import { prisma } from "../db";
 import { FAMOUS_SAMPLES, SAMPLE_PREFIX, xPostDate } from "../famous-quotes";
@@ -186,8 +186,8 @@ export async function ingestRecording(input: {
     durationMs: heard.durationMs || Math.max(durationMs, 0),
     startWord: challenge.startWord,
     status: "READY",
-    originalText: heard.originalText,
-    englishText: heard.englishText,
+    originalText: dropStartWord(heard.originalText, challenge.startWord),
+    englishText: dropStartWord(heard.englishText, challenge.startWord),
     translated: heard.translated,
     turns: heard.turns,
     startWordPassed: true,
@@ -266,8 +266,8 @@ async function finishTranscript(
     return prisma.voice.update({
       where: { id: voiceId },
       data: {
-        originalText: heard.originalText,
-        englishText: heard.englishText,
+        originalText: dropStartWord(heard.originalText, input.startWord),
+        englishText: dropStartWord(heard.englishText, input.startWord),
         translated: heard.translated,
         turnsJson: JSON.stringify(heard.turns satisfies Turn[]),
         durationMs: heard.durationMs || input.durationMs,
