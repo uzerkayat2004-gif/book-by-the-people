@@ -24,5 +24,15 @@ export async function GET(request: Request) {
     path: "/",
     maxAge: 600,
   });
+  const next = url.searchParams.get("next") ?? "";
+  if (next.startsWith("/") && !next.startsWith("//")) {
+    response.cookies.set("bbtp_oauth_next", next, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 600,
+    });
+  }
   return response;
 }

@@ -10,6 +10,10 @@ export async function GET(request: Request) {
   const jar = await cookies();
   const expected = jar.get("bbtp_oauth_state")?.value;
   jar.delete("bbtp_oauth_state");
+  const wanted = jar.get("bbtp_oauth_next")?.value ?? "";
+  jar.delete("bbtp_oauth_next");
+  // Only paths on this site, so the link cannot send people elsewhere.
+  const next = wanted.startsWith("/") && !wanted.startsWith("//") && !wanted.startsWith("/\\") ? wanted : "/studio";
   if (!code || !state || !expected || state !== expected) {
     return NextResponse.redirect(new URL("/sign-in?error=google", url.origin));
   }
@@ -41,5 +45,5 @@ export async function GET(request: Request) {
     await prisma.user.update({ where: { id: user.id }, data: { image: profile.picture } });
   }
   await createSession(user.id);
-  return NextResponse.redirect(new URL("/studio", url.origin));
+  return NextResponse.redirect(new URL(next, url.origin));
 }

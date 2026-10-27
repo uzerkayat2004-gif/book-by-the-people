@@ -191,6 +191,7 @@ export default async function StudioBookPage({
           videoName: book.videoName || (book.videoKey ? `${book.slug}.mp4` : ""),
           status: mediaStatus,
           note: mediaJob?.lastError ?? null,
+          emails: Boolean(getConfig().resendApiKey && getConfig().emailFrom),
         }}
         settings={{
           language: book.language,

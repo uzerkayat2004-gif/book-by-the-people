@@ -45,11 +45,11 @@ export function SignInForm({
           <IconGoogle /> Continue with Google
         </a>
       ) : (
-        <span className="gbtn" aria-disabled="true">
+        <span className="gbtn" aria-disabled="true" title="Google sign-in is not set up on this site yet. Use email.">
           <IconGoogle /> Continue with Google
         </span>
       )}
-      <div className="under">18+ · we never post for you</div>
+      <div className="under">{google ? "18+ · we never post for you" : "Google sign-in is off here for now · use email"}</div>
       <div className="or">or email</div>
       <label className="field" htmlFor="email">
         <span>Email</span>

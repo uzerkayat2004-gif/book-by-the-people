@@ -19,7 +19,9 @@ export async function notifyReleased(bookId: string): Promise<{ sent: number; sk
   const link = `${cfg.appUrl}/b/${book.slug}/read`;
   let sent = 0;
   for (const user of users) {
+    // One bad address or a dropped connection does not stop the other emails.
     const response = await fetch("https://api.resend.com/emails", {
+      signal: AbortSignal.timeout(15_000),
       method: "POST",
       headers: {
         Authorization: `Bearer ${cfg.resendApiKey}`,
@@ -31,8 +33,8 @@ export async function notifyReleased(bookId: string): Promise<{ sent: number; sk
         subject: `${book.title} is out`,
         text: `A book you spoke in is out.\n\n${book.question}\n\nRead it: ${link}\n`,
       }),
-    });
-    if (response.ok) sent += 1;
+    }).catch(() => null);
+    if (response?.ok) sent += 1;
   }
   return { sent, skipped: null };
 }

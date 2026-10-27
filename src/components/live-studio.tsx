@@ -153,7 +153,7 @@ export function StudioDesk({
   books?: { id: string; slug: string; title: string }[];
   backups?: { id: string; label: string; voices: number; note: string; restorable: boolean }[];
   settings: StudioSettings;
-  media: { audioHref: string | null; videoHref: string | null; audioBytes: number; videoBytes: number; audioName: string; videoName: string; status: string; note: string | null };
+  media: { audioHref: string | null; videoHref: string | null; audioBytes: number; videoBytes: number; audioName: string; videoName: string; status: string; note: string | null; emails?: boolean };
   aiPaused?: boolean;
   showPoll?: boolean;
   bookNumber?: number;
@@ -403,6 +403,11 @@ export function StudioDesk({
                   <MediaRow step={3} bookId={book.id} kind="video" label="Video" href={media.videoHref} name={media.videoName} bytes={media.videoBytes} />
                 </ol>
                 <MakeMedia key={`${media.status}:${media.note ?? ""}`} bookId={book.id} status={media.status} note={media.note} hasDraft={drafts.length > 0} hasAudio={Boolean(media.audioHref)} />
+                <p className="s4-note">
+                  {media.emails
+                    ? "Speakers get an email with the link when the book is out."
+                    : "Emails to speakers are off. Add RESEND_API_KEY and EMAIL_FROM to .env to turn them on."}
+                </p>
                 {book.status === "PUBLISHED" ? (
                   <a className="s2-btn s2-btn--red s2-btn--big" href={`/b/${book.slug}/read`}>
                     Read the book
