@@ -393,3 +393,6 @@ p.ownbook.wrap a { color: #f3f2ee; text-decoration: underline; text-underline-of
   .sheet--profile .seg button { min-height: 32px; height: 32px; font-size: 12px; }
   .sheet--profile > .btn.btn--red { min-height: 36px !important; height: 36px; font-size: 12px !important; margin-top: 14px; }
 }
+/* Names marquee — smaller like live 01-home-2 */
+@media (min-width: 980px) { .names4 .nm { font-size: 22px; } }
+@media (min-width: 980px) { .names4 .nrow { width: min(100% - 48px, 788px); margin-left: auto; margin-right: auto; } }
