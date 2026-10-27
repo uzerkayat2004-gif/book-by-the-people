@@ -14,6 +14,7 @@ import { AGE_BANDS } from "../regions";
 import { ENGLISH_START_WORDS, missingStartWordMessage, pickStartWord } from "../start-words";
 import { deleteAudio, getAudio, putAudio } from "../storage";
 import { getConfig } from "../config";
+import { transcriberLive } from "../ai/providers";
 import { settleVoice, voicesLeftToday } from "./pipeline";
 import { recordUsage, spendPaused } from "./spend";
 import { syncClosed } from "./books";
@@ -26,7 +27,7 @@ export async function issueChallenge(bookId: string, language: string, preferred
   if (!book) throw new AppError("This book does not exist.", 404);
   const chosen = languageByCode(language);
   const fixed =
-    preferred && getConfig().aiMode !== "live"
+    preferred && !(await transcriberLive(bookId))
       ? ENGLISH_START_WORDS.findIndex((word) => word.toLowerCase() === preferred.toLowerCase())
       : -1;
   const picked = pickStartWord(chosen.code, fixed >= 0 ? fixed : randomBytes(2).readUInt16BE(0));
@@ -126,7 +127,7 @@ export async function ingestRecording(input: {
     language: challenge.language,
     startWord: challenge.startWord,
     durationMs: Math.max(durationMs, 0),
-    clientTranscript: getConfig().aiMode === "mock" ? input.clientTranscript : null,
+    clientTranscript: (await transcriberLive(book.id)) ? null : input.clientTranscript,
     keywords: [name],
     seed: `${book.id}:${name}:${challenge.id}`,
     bookId: book.id,

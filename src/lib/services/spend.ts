@@ -46,7 +46,8 @@ export async function recordUsage(input: {
       inputTokens: usage.inputTokens,
       cachedTokens: usage.cachedTokens,
       outputTokens: usage.outputTokens,
-      estimatedUsd: audioUsd + tokenUsd,
+      // Models on this computer (built-in or Ollama) and demo mode cost nothing.
+      estimatedUsd: input.provider === "local" || input.provider === "mock" ? 0 : audioUsd + tokenUsd,
     },
   });
 }

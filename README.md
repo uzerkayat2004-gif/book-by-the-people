@@ -54,9 +54,34 @@ npm run test:e2e  # Playwright: create-book, speak, studio release, reader (need
 npm run db:seed   # e2e runs create extra books; reseed afterwards
 ```
 
-### Per-book AI keys
+### AI models (Book settings → AI models)
 
-The app is free; a creator can paste their own Meta key in Book settings. It is encrypted with AES-256-GCM using `AI_KEY_SECRET` and is never sent back to the browser (the field only shows "saved"). Without a per-book key the server key (`META_API_KEY`) is used; in `AI_MODE=live` with no key at all the Studio shows a clear "add a key" error instead of running.
+Each creator keeps one list of AI models, shared by all their books. Add as many as you like:
+
+- Fields: label, type, API key, base URL, model, role (writer, speech-to-text, or both).
+- Types with presets: Meta, OpenAI, Gemini, Anthropic, OpenRouter, Groq, Fireworks, Together, Ollama, this computer (local), and any OpenAI-compatible host. Picking a type fills in the base URL and a model.
+- **Test** sends a real one-line request (a silent 0.5 s clip for speech-to-text) and shows the reply time or the provider's error.
+- The list is a priority order. The writer uses the first enabled model; if it fails, the next one is tried. Move with ↑/↓, switch off, edit, or delete.
+- Keys are encrypted at rest with AES-256-GCM. They are never sent back to the browser; the UI shows only the last 4 characters. `AI_KEY_SECRET` is the encryption secret. If it is unset, a random secret is generated once into `data/ai-key-secret` (git-ignored, mode 600). Back that file up with the database, or keys become unreadable (unreadable keys are skipped, not crashed on).
+- With no models and no `META_API_KEY`, the app runs in mock mode as before.
+- The older "Book-only Meta key" is still under the same section for one book.
+
+### Local Meta model (one click)
+
+Book settings → AI models → **Run a Meta model on this computer**:
+
+1. Pick Llama 3.2 1B (0.8 GB, 2 GB RAM), Llama 3.2 3B (2.0 GB, 4 GB RAM, recommended), or Llama 3.1 8B (4.9 GB, 8 GB RAM). Size and RAM are shown before you click.
+2. **Download** fetches the llama.cpp server for your OS (from GitHub releases, about 30 MB) and the GGUF model from Hugging Face (no token). Progress is live and **Cancel** keeps the partial file, so the next click resumes.
+3. When it finishes, the model is added to the top of your AI models as "… · this computer", started on `127.0.0.1:43180`, and tested. The writer, translation, and on-topic checks then run on it at $0.
+4. If Ollama is running, a **via Ollama** button pulls the same model through Ollama instead. If Ollama is not installed, nothing breaks: the built-in download works on its own and the UI links to ollama.com/download.
+
+Where files go: `LOCAL_MODELS_DIR`, else `data/models` in the project. On Windows, if the project drive has under 6 GB free, the app picks the fixed drive with the most free space (`X:\BookByThePeople\models`). The folder and free space are shown in the UI. For a laptop with a small C:, set it explicitly:
+
+```
+LOCAL_MODELS_DIR=D:\BookByThePeople\models
+```
+
+Speech-to-text stays on a hosted model (Meta Muse Voice, OpenAI, Groq Whisper) or the browser's own speech recognition. Meta's Omnilingual ASR has no small one-click runtime yet (it needs Python + fairseq2, and the GGUF ports handle only short clips), so it is not bundled.
 
 ### Backups
 
@@ -141,7 +166,12 @@ Copy `.env.example` to `.env`.
 | `RESEND_API_KEY`, `EMAIL_FROM` | Optional email delivery |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional Google sign-in. Redirect URL: `{origin}/api/auth/google/callback` |
 | `TTS_PROVIDER`, `TTS_URL`, `TTS_API_KEY` | Audiobook voice. `mock` (espeak-ng, real file) or `http` |
-| `AI_KEY_SECRET` | 32-byte base64 secret that encrypts per-book AI keys |
+| `AI_KEY_SECRET` | Secret (16+ chars) that encrypts stored AI keys. Unset = generated once into `data/ai-key-secret` |
+| `LOCAL_MODELS_DIR` | Where local models and the llama.cpp server are saved. Default `data/models` (Windows auto-picks a roomier drive when C: is nearly full) |
+| `LOCAL_MODEL_PORT` | Port for the local model server. Default `43180` |
+| `LOCAL_MODEL_CTX` | Context window for the local model. Default `8192` |
+| `LLAMA_CPP_BUILD` / `LLAMA_CPP_ASSET` | llama.cpp release tag (default `b11927`) and an optional asset file name override |
+| `OLLAMA_HOST` | Ollama address. Default `http://127.0.0.1:11434` |
 | `MEDIA_FONT` | Optional TTF path for the release video titles |
 | `SEED_FORCE` | Set to `1` to allow seeding when `NODE_ENV=production` |
 

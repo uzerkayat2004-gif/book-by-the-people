@@ -20,6 +20,32 @@ model User {
   createdAt DateTime  @default(now())
   books     Book[]
   sessions  Session[]
+  aiProviders AiProvider[]
+}
+
+/// A creator's AI model (writer and/or transcription). Shared by all of their books.
+/// The API key is AES-256-GCM sealed (see src/lib/secret-box.ts); only the last 4 characters are kept readable.
+model AiProvider {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label       String
+  type        String
+  baseUrl     String
+  model       String
+  role        String    @default("writer")
+  priority    Int       @default(0)
+  enabled     Boolean   @default(true)
+  keyCipher   String    @default("")
+  keyLast4    String    @default("")
+  localModel  String    @default("")
+  lastTestOk  Boolean?
+  lastTestMsg String    @default("")
+  lastTestAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId, priority])
 }
 
 model MagicLink {

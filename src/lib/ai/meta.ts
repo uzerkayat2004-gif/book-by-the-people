@@ -4,6 +4,7 @@ import { convertToWavPcm } from "../audio/convert";
 import type { Turn } from "../book/types";
 import { getConfig } from "../config";
 import { bookAiKey, MISSING_KEY } from "./keys";
+import { chatWithProviders, transcribeWithProviders, transcriberChain, writerChain } from "./providers";
 import { roughTokens, type TokenUsage } from "./spend";
 
 export type ChatResult = {
@@ -131,6 +132,18 @@ export async function completeJson(input: {
   bookId: string;
 }): Promise<ChatResult> {
   const cfg = getConfig();
+  // The creator's own AI models (Book settings → AI models) come first, in their order.
+  const chain = await writerChain(input.bookId).catch(() => []);
+  let chainError: unknown = null;
+  if (chain.length) {
+    try {
+      const out = await chatWithProviders(chain, input);
+      return { content: out.content, provider: out.provider, model: out.model, usage: out.usage };
+    } catch (error) {
+      chainError = error;
+      if (cfg.aiMode !== "live" || !cfg.writerApiKey) throw error;
+    }
+  }
   const ownKey = await bookAiKey(input.bookId).catch(() => "");
   const apiKey = (ownKey && ownKey !== cfg.metaApiKey ? ownKey : "") || cfg.writerApiKey;
   if (!apiKey) throw new Error(MISSING_KEY);
@@ -145,6 +158,10 @@ export async function completeJson(input: {
   try {
     return await completeOn(primary, { ...input, safetyId });
   } catch (error) {
+    if (chainError) {
+      const first = chainError instanceof Error ? chainError.message : "Your AI models failed.";
+      throw new Error(`${first} The server key also failed: ${error instanceof Error ? error.message : "unknown error"}`);
+    }
     if (!cfg.fallbackBaseUrl || !cfg.fallbackApiKey) throw error;
     const fallback: ChatTarget = {
       baseUrl: cfg.fallbackBaseUrl,
@@ -168,15 +185,27 @@ export type TranscriptResult = {
   turns: Turn[];
   audioDurationMs: number;
   model: string;
+  provider: string;
 };
 
 export async function transcribeFile(input: {
   audio: Buffer;
   languageName: string;
+  languageCode?: string;
   keywords: string[];
   bookId?: string;
 }): Promise<TranscriptResult> {
   const cfg = getConfig();
+  const chain = await transcriberChain(input.bookId).catch(() => []);
+  if (chain.length) {
+    const wav = await convertToWavPcm(input.audio);
+    return transcribeWithProviders(chain, {
+      wav,
+      languageName: input.languageName,
+      languageCode: input.languageCode ?? "",
+      keywords: input.keywords,
+    });
+  }
   const apiKey = await bookAiKey(input.bookId);
   if (!apiKey) throw new Error(MISSING_KEY);
   const wav = await convertToWavPcm(input.audio);
@@ -218,5 +247,6 @@ export async function transcribeFile(input: {
       transcript: turn.transcript ?? "",
     })),
     model: cfg.transcribeModel,
+    provider: "meta",
   };
 }

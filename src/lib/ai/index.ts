@@ -2,10 +2,10 @@ import "server-only";
 import { z } from "zod";
 import { shouldTranslate } from "../book/speech";
 import type { SourceVoice, Turn } from "../book/types";
-import { getConfig } from "../config";
 import { languageByCode } from "../languages";
 import { SAMPLE_LINES, sampleLine } from "./lines";
 import { completeJson, transcribeFile } from "./meta";
+import { transcriberLive, writerLive } from "./providers";
 import { BOOK_JSON_SCHEMA, TRANSLATION_JSON_SCHEMA, bookMessages, translationMessages } from "./prompt";
 import type { TokenUsage } from "./spend";
 
@@ -82,11 +82,11 @@ export async function transcribeVoice(input: {
   startWord: string;
   bookId?: string;
 }): Promise<SpeechResult> {
-  const cfg = getConfig();
-  if (cfg.aiMode === "live") {
+  if (await transcriberLive(input.bookId)) {
     const heard = await transcribeFile({
       audio: input.audio,
       languageName: languageByCode(input.language).muse,
+      languageCode: input.language.split("-")[0],
       keywords: [input.startWord, ...input.keywords].filter(Boolean),
       bookId: input.bookId,
     });
@@ -102,7 +102,7 @@ export async function transcribeVoice(input: {
       translated,
       turns: heard.turns.length > 0 ? heard.turns : turnsFor(input.startWord, originalText, durationMs),
       durationMs,
-      provider: "meta",
+      provider: heard.provider,
       model: heard.model,
       audioMs: durationMs,
       usage,
@@ -144,8 +144,7 @@ export async function translateBatch(
   items: { id: string; language: string; text: string }[],
   bookId: string,
 ): Promise<{ translations: { id: string; english: string }[]; usage: TokenUsage; provider: string; model: string }> {
-  const cfg = getConfig();
-  if (cfg.aiMode === "mock") {
+  if (!(await writerLive(bookId))) {
     return {
       translations: items.map((item) => ({
         id: item.id,

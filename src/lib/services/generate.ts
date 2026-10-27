@@ -5,6 +5,7 @@ import { canGenerate, statusAfterGenerationFailure } from "../book/lifecycle";
 import { shouldTranslate } from "../book/speech";
 import type { SourceVoice, Turn } from "../book/types";
 import { getConfig } from "../config";
+import { writerLive } from "../ai/providers";
 import { prisma } from "../db";
 import { AppError } from "../errors";
 import { recordMakeSteps } from "./pipeline";
@@ -27,7 +28,7 @@ export async function generateBook(bookId: string, userId: string, engine: "auto
     orderBy: { createdAt: "asc" },
   });
   const paused = await spendPaused(book.id);
-  const live = getConfig().aiMode === "live";
+  const live = await writerLive(book.id);
   const gate = canGenerate({
     bookType: book.type,
     status: book.status,

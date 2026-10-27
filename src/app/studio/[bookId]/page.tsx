@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { StudioDesk } from "@/components/live-studio";
 import { getCurrentUser } from "@/lib/auth";
 import { getConfig } from "@/lib/config";
+import { aiSummary, providerStore } from "@/lib/ai/providers";
 import { backupAge } from "@/lib/services/backups";
 import { canStoreKeys } from "@/lib/secret-box";
 import { prisma } from "@/lib/db";
@@ -41,6 +42,7 @@ export default async function StudioBookPage({
   const cap = getConfig().spendCapUsd;
   const hasAiKey = Boolean((await prisma.book.findUnique({ where: { id: book.id }, select: { aiKeyCipher: true } }))?.aiKeyCipher);
   const paused = await spendPaused(book.id);
+  const [providers, ai] = await Promise.all([providerStore.list(user.id), aiSummary(user.id)]);
   let log: string[] = [];
   try {
     const parsed = book.generationLog ? (JSON.parse(book.generationLog) as string[]) : [];
@@ -124,11 +126,27 @@ export default async function StudioBookPage({
           themeLabel: voice.themeLabel,
           pipelineStep: voice.pipelineStep,
           sourceTitle: voice.sourceTitle,
-          impersonation: (() => {
+          ...(() => {
             try {
-              return Boolean((JSON.parse(voice.checkJson || "{}") as { impersonation?: boolean }).impersonation);
+              const checks = JSON.parse(voice.checkJson || "{}") as {
+                onTopic?: boolean;
+                realPerson?: boolean;
+                copyPaste?: boolean;
+                duplicate?: boolean;
+                impersonation?: boolean;
+              };
+              return {
+                impersonation: Boolean(checks.impersonation),
+                checks: {
+                  onTopic: checks.onTopic,
+                  realPerson: checks.realPerson,
+                  copyPaste: checks.copyPaste,
+                  duplicate: checks.duplicate,
+                  impersonation: checks.impersonation,
+                },
+              };
             } catch {
-              return false;
+              return { impersonation: false, checks: null };
             }
           })(),
         }))}
@@ -173,8 +191,11 @@ export default async function StudioBookPage({
           maxVoiceSeconds: book.maxVoiceSeconds,
           hasAiKey,
           canStoreKeys: canStoreKeys(),
-          mockMode: getConfig().aiMode === "mock",
+          mockMode: !ai.writer,
+          mockServer: getConfig().aiMode === "mock",
         }}
+        providers={providers}
+        ai={ai}
         aiPaused={book.aiPaused}
         showPoll={book.showPoll}
         bookNumber={book.bookNumber}

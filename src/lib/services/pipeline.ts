@@ -1,9 +1,9 @@
 import "server-only";
 import { mergeModelReview, reviewVoice, type Decision } from "../book/checks";
-import { getConfig } from "../config";
 import { shouldTranslate } from "../book/speech";
 import { prisma } from "../db";
 import { reviewWithModel, translateBatch } from "../ai";
+import { writerLive } from "../ai/providers";
 import { bookSpendPaused, recordUsage } from "./spend";
 
 const VOICE_STEPS = ["transcribe", "translate", "checks", "decide", "group"] as const;
@@ -136,7 +136,7 @@ async function runStep(step: (typeof VOICE_STEPS)[number], voiceId: string) {
 
   if (step === "checks") {
     let checked = review;
-    if (getConfig().aiMode === "live" && review.realPerson && !review.copyPaste && !review.duplicate) {
+    if ((await writerLive(fresh.bookId)) && review.realPerson && !review.copyPaste && !review.duplicate) {
       const kind = fresh.kind === "sourced_quote" ? "sourced_quote" : "voice";
       const judged = await reviewWithModel({
         bookId: fresh.bookId,
