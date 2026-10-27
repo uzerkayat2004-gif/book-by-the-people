@@ -50,7 +50,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const paused = await pausedNow(featured.id);
   const model = presentHome({
     status: featured.status,
-    stageOverride: query.stage ?? "closed",
+    stageOverride: query.stage ?? null,
     question: featured.question,
     closesAt: featured.closesAt,
     publishedAt: featured.publishedAt,
