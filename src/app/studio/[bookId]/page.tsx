@@ -44,9 +44,7 @@ export default async function StudioBookPage({
   const paused = await spendPaused(book.id);
   const [providers, ai] = await Promise.all([providerStore.list(user.id), aiSummary(user.id)]);
   const mediaJob = await prisma.pipelineJob.findUnique({ where: { key: `${book.id}:make:media` } });
-  // A run older than 30 minutes was cut off (for example by a restart); let the creator start it again.
-  const mediaStatus =
-    mediaJob?.status === "running" && Date.now() - mediaJob.updatedAt.getTime() > 30 * 60_000 ? "failed" : mediaJob?.status ?? "none";
+  const mediaStatus = mediaState(mediaJob);
   let log: string[] = [];
   try {
     const parsed = book.generationLog ? (JSON.parse(book.generationLog) as string[]) : [];
@@ -210,4 +208,10 @@ export default async function StudioBookPage({
         bookNumber={book.bookNumber}
       />
   );
+}
+
+/** A run older than 30 minutes was cut off (for example by a restart); let the creator start it again. */
+function mediaState(job: { status: string; updatedAt: Date } | null): string {
+  if (!job) return "none";
+  return job.status === "running" && Date.now() - job.updatedAt.getTime() > 30 * 60_000 ? "failed" : job.status;
 }

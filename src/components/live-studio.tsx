@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BookCover } from "@/components/book-cover";
-import { AiModels, LocalModels } from "@/components/studio/ai-models";
+import { AiModels, AudioTools, LocalModels } from "@/components/studio/ai-models";
 import type { ProviderView } from "@/lib/ai/provider-types";
 import { releaseLabel } from "@/lib/stage";
 import { SPEAK_LANGUAGES } from "@/lib/speak-languages";
@@ -402,7 +402,7 @@ export function StudioDesk({
                   <MediaRow step={2} bookId={book.id} kind="audiobook" label="Audiobook" href={media.audioHref} name={media.audioName} bytes={media.audioBytes} />
                   <MediaRow step={3} bookId={book.id} kind="video" label="Video" href={media.videoHref} name={media.videoName} bytes={media.videoBytes} />
                 </ol>
-                <MakeMedia bookId={book.id} status={media.status} note={media.note} hasDraft={drafts.length > 0} hasAudio={Boolean(media.audioHref)} />
+                <MakeMedia key={`${media.status}:${media.note ?? ""}`} bookId={book.id} status={media.status} note={media.note} hasDraft={drafts.length > 0} hasAudio={Boolean(media.audioHref)} />
                 {book.status === "PUBLISHED" ? (
                   <a className="s2-btn s2-btn--red s2-btn--big" href={`/b/${book.slug}/read`}>
                     Read the book
@@ -902,10 +902,6 @@ function MakeMedia({ bookId, status, note, hasDraft, hasAudio }: { bookId: strin
   const router = useRouter();
   const [state, setState] = useState(status);
   const [message, setMessage] = useState(note);
-  useEffect(() => {
-    setState(status);
-    setMessage(note);
-  }, [status, note]);
   useEffect(() => {
     if (state !== "running") return;
     const timer = window.setInterval(async () => {
@@ -1454,6 +1450,10 @@ function SettingsTab({
             <div className="s2-sub">
               <h4>Meta models on this computer</h4>
               <LocalModels onChange={onDone} />
+            </div>
+            <div className="s2-sub">
+              <h4>Audio tools</h4>
+              <AudioTools />
             </div>
           </section>
 

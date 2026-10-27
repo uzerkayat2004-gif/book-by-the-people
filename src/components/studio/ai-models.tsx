@@ -551,3 +551,58 @@ export function LocalModels({ onChange }: { onChange?: () => void }) {
     </div>
   );
 }
+
+type ToolsStatus = { ffmpeg: string | null; ffmpegDownloadBytes: number | null; speech: string | null };
+
+/** ffmpeg and the audiobook voice on this computer, with a one-click ffmpeg download. */
+export function AudioTools() {
+  const [status, setStatus] = useState<ToolsStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let live = true;
+    fetch("/api/ai/tools")
+      .then((response) => response.json())
+      .then((data: ToolsStatus) => live && setStatus(data))
+      .catch(() => live && setError("Could not check the audio tools."));
+    return () => {
+      live = false;
+    };
+  }, []);
+  async function getFfmpeg() {
+    setBusy(true);
+    setError("");
+    const response = await fetch("/api/ai/tools", { method: "POST" });
+    const data = (await response.json().catch(() => ({}))) as ToolsStatus & { error?: string };
+    setBusy(false);
+    if (!response.ok) return setError(data.error ?? "Could not get ffmpeg.");
+    setStatus(data);
+  }
+  if (!status) return <div className="s4-tools s4-skel" aria-busy="true">{error || "Checking audio tools…"}</div>;
+  return (
+    <div className="s4-tools">
+      <p>
+        <span>Audiobook voice</span>
+        {status.speech ? <b className="s3-dot s3-dot--ok">{status.speech}</b> : <b className="s3-dot s3-dot--bad">None</b>}
+      </p>
+      <p>
+        <span>ffmpeg · mp3, video, recordings</span>
+        {status.ffmpeg ? (
+          <b className="s3-dot s3-dot--ok">Ready</b>
+        ) : status.ffmpegDownloadBytes ? (
+          <button className="s2-btn s2-btn--sm" type="button" disabled={busy} onClick={() => void getFfmpeg()}>
+            {busy ? "Getting ffmpeg…" : `Get ffmpeg · ${Math.round(status.ffmpegDownloadBytes / 1e6)} MB`}
+          </button>
+        ) : (
+          <b className="s3-dot s3-dot--bad">Install ffmpeg</b>
+        )}
+      </p>
+      {!status.speech ? <span className="s2-fine">Install eSpeak NG, or set TTS_PROVIDER=http. Windows and macOS have a voice built in.</span> : null}
+      {error ? (
+        <span className="s2-err" role="alert">
+          {error}
+        </span>
+      ) : null}
+    </div>
+  );
+}

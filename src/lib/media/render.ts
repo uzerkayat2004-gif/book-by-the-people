@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { BookDocument } from "../book/types";
 import { stripPeopleCounts } from "../book/checks";
+import { wavDurationMs } from "../book/speech";
 import { prisma } from "../db";
 import { putAudio } from "../storage";
 import { SPEECH_NAMES, ffmpeg, ffmpegBin, speakToWav } from "./tools";
@@ -42,14 +43,14 @@ export function narrationScript(document: BookDocument): string {
       if (text) parts.push(text);
     }
   }
-  const script = parts
-    .map((part) => part.trim().replace(/[.!?…]+$/u, ""))
+  // Each piece ends with a full stop unless it already has one, so the voice pauses between them.
+  const sentence = (text: string) => (/[.!?…]["”’)]?$/u.test(text) ? text : `${text}.`);
+  const script = [document.title, document.question, ...parts]
+    .map((part) => (part ?? "").replace(/\s+/g, " ").trim())
     .filter(Boolean)
-    .join(". ")
-    .replace(/\s+/g, " ")
-    .trim();
-  const intro = [document.title, document.question].filter(Boolean).join(". ");
-  return `${intro}${intro && script ? ". " : ""}${script}`.slice(0, MAX_SCRIPT) || document.title;
+    .map(sentence)
+    .join(" ");
+  return script.slice(0, MAX_SCRIPT) || document.title;
 }
 
 function escapeDrawtext(value: string): string {
@@ -73,7 +74,7 @@ async function transcode(input: Buffer, args: string[], name: string): Promise<B
   }
 }
 
-function videoArgs(title: string, chapters: string, withText: boolean): string[] {
+function videoArgs(title: string, chapters: string, withText: boolean, seconds: number | null): string[] {
   const font = fontOption();
   const text = withText
     ? `,drawtext=${font}text='BOOK BY THE PEOPLE':fontsize=28:fontcolor=white:x=(w-text_w)/2:y=150,drawtext=${font}text='${title}':fontsize=22:fontcolor=white:x=(w-text_w)/2:y=210,drawtext=${font}text='${chapters}':fontsize=16:fontcolor=white:x=(w-text_w)/2:y=270`
@@ -89,7 +90,7 @@ function videoArgs(title: string, chapters: string, withText: boolean): string[]
     "[v]",
     "-map",
     "0:a",
-    "-shortest",
+    ...(seconds ? ["-t", seconds.toFixed(2)] : ["-shortest"]),
     "-c:v",
     "libx264",
     "-tune",
@@ -134,13 +135,15 @@ export async function renderReleaseMedia(bookId: string, document: BookDocument,
   const title = escapeDrawtext(document.title || "Book by the People");
   const chapters = escapeDrawtext(document.chapters.map((chapter) => chapter.title).join("  ·  ") || document.question);
   let video: Buffer | null = null;
+  const ms = wavDurationMs(wav);
+  const seconds = ms ? ms / 1000 : null;
   if (hasFfmpeg) {
     try {
-      video = await transcode(wav, videoArgs(title, chapters, true), "book.mp4");
+      video = await transcode(wav, videoArgs(title, chapters, true, seconds), "book.mp4");
     } catch {
       // Some ffmpeg builds have no drawtext; a plain cover still carries the narration.
       try {
-        video = await transcode(wav, videoArgs(title, chapters, false), "book.mp4");
+        video = await transcode(wav, videoArgs(title, chapters, false, seconds), "book.mp4");
       } catch (error) {
         notes.push(`Video failed: ${error instanceof Error ? error.message.split("\n")[0].slice(0, 160) : "ffmpeg error"}`);
       }
