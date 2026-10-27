@@ -544,7 +544,7 @@ function AiTab({
             <span className="s2-count">{total}</span>
           </div>
           {list.length === 0 ? (
-            <p className="s2-muted">No voices yet.</p>
+            <p className="s4-empty">No voices yet. Share the link and they show up here.</p>
           ) : (
             <ul className="s2-voices">
               {shown.map((voice) => {
