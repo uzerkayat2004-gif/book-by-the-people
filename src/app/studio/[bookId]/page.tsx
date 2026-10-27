@@ -9,7 +9,8 @@ import { prisma } from "@/lib/db";
 import { planChapters } from "@/lib/book/plan";
 import type { SourceVoice } from "@/lib/book/types";
 import { currentDocument } from "@/lib/load-book";
-import { bookSpendUsd, spendPaused } from "@/lib/services/spend";
+import { bookLimit, bookUsage, spendPaused } from "@/lib/services/spend";
+import { limitShare, usageLine } from "@/lib/ai/spend";
 
 export default async function StudioBookPage({
   params,
@@ -38,8 +39,7 @@ export default async function StudioBookPage({
     orderBy: { createdAt: "asc" },
     select: { id: true, slug: true, title: true },
   });
-  const spent = await bookSpendUsd(book.id);
-  const cap = getConfig().spendCapUsd;
+  const [usage, limit] = await Promise.all([bookUsage(book.id), bookLimit(book.id)]);
   const hasAiKey = Boolean((await prisma.book.findUnique({ where: { id: book.id }, select: { aiKeyCipher: true } }))?.aiKeyCipher);
   const paused = await spendPaused(book.id);
   const [providers, ai] = await Promise.all([providerStore.list(user.id), aiSummary(user.id)]);
@@ -161,9 +161,12 @@ export default async function StudioBookPage({
         initialTab={initialTab}
         pollOptions={book.pollOptions.map((option) => ({ label: option.label, votes: option._count.votes }))}
         canChangeType={book.voices.length === 0}
-        spend={{
-          usd: spent < 0.01 ? "<$0.01" : `$${spent.toFixed(2)}`,
-          cap: cap === null ? "no cap" : `$${cap.toFixed(2)}`,
+        usage={{
+          kind: limit.kind,
+          value: limit.value,
+          line: usageLine(usage, limit),
+          share: limitShare(usage, limit),
+          reached: paused,
         }}
         chapters={document?.chapters.map((chapter) => chapter.title) ?? []}
         themes={themes}

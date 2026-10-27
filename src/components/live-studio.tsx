@@ -46,7 +46,8 @@ type VoiceRow = {
 };
 
 type DraftRow = { id: string; version: number; provider: string; model: string; note: string; current: boolean };
-type AiSummary = { writer: string | null; hearer: string | null; fallbacks: number };
+type AiSummary = { writer: string | null; hearer: string | null; fallbacks: number; fallback?: boolean };
+type Usage = { kind: "none" | "usd" | "tokens"; value: number; line: string; share: number | null; reached: boolean };
 
 const TABS = [
   ["settings", "Book settings", "Settings"],
@@ -113,7 +114,7 @@ export function StudioDesk({
   initialTab = "settings",
   pollOptions,
   canChangeType,
-  spend,
+  usage,
   chapters,
   themes,
   books = [],
@@ -124,7 +125,7 @@ export function StudioDesk({
   showPoll = true,
   bookNumber = 1,
   providers = [],
-  ai = { writer: null, hearer: null, fallbacks: 0 },
+  ai = { writer: null, hearer: null, fallbacks: 0, fallback: false },
 }: {
   book: {
     id: string;
@@ -146,7 +147,7 @@ export function StudioDesk({
   initialTab?: Tab;
   pollOptions: { label: string; votes: number }[];
   canChangeType: boolean;
-  spend: { usd: string; cap: string | null };
+  usage: Usage;
   chapters: string[];
   themes: { label: string; count: number }[];
   books?: { id: string; slug: string; title: string }[];
@@ -238,17 +239,11 @@ export function StudioDesk({
     show: (id: string) => run(`show-${id}`, () => patchVoice(id, { hidden: false })),
   };
 
-  const writerLine = ai.writer ? (
-    <>
-      <b>{ai.writer}</b>
-      {ai.fallbacks ? <span> · {ai.fallbacks} fallback{ai.fallbacks === 1 ? "" : "s"}</span> : null}
-    </>
-  ) : (
-    <>
-      <b>Demo mode</b>
-      <span> · no model yet</span>
-    </>
-  );
+  const writerLine = <b>{ai.writer ?? "Demo mode"}</b>;
+  const toLimit = () => {
+    go("settings");
+    window.setTimeout(() => document.getElementById("s-limit")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  };
 
   return (
     <main className="page s2">
@@ -291,7 +286,18 @@ export function StudioDesk({
         <h2 className="sr">
           {book.title} · {book.type} · {book.status}
         </h2>
-        {book.paused ? <p className="s2-alert">Voices are paused: the spend cap is reached. New recordings wait until it is raised.</p> : null}
+        {usage.reached ? (
+          <div className="s3-stop" role="status">
+            <i aria-hidden />
+            <div>
+              <b>Usage limit reached · AI stopped</b>
+              <span>{usage.line}</span>
+            </div>
+            <button className="s2-btn s2-btn--sm" type="button" onClick={toLimit}>
+              Change limit
+            </button>
+          </div>
+        ) : null}
         {error ? (
           <p className="s2-alert" role="alert">
             {error}
@@ -316,6 +322,7 @@ export function StudioDesk({
             counts={{ people: ready.length, countries }}
             providers={providers}
             ai={ai}
+            usage={usage}
             quotes={voices.filter((voice) => voice.kind === "sourced_quote")}
             onClose={() => run("close", () => post(`/api/books/${book.id}/close`).then(() => undefined))}
             onDone={refresh}
@@ -331,7 +338,7 @@ export function StudioDesk({
             groups={groups}
             busy={busy}
             writerLine={writerLine}
-            spend={spend}
+            usage={usage}
             bookId={book.id}
             actions={voiceActions}
             onRun={() => run("tick", () => post(`/api/books/${book.id}/tick`).then(() => undefined))}
@@ -340,175 +347,36 @@ export function StudioDesk({
         ) : null}
 
         {tab === "make" ? (
-          <section className="s2-tab">
-            <div className="s2-head">
-              <div>
-                <h1>Make the book</h1>
-                <p>Chapters are shaped from the voices. Drafts stay private until you publish.</p>
-              </div>
-            </div>
-            <ol className="s2-stepper">
-              {[
-                { label: "Voices in", note: `${ready.length} approved`, done: ready.length > 0 },
-                { label: needsClose ? "Voices closed" : "Ready", note: needsClose ? (closedEnough ? "closed" : `closes ${when.split(" · ")[0]}`) : "no closing needed", done: closedEnough },
-                { label: "Draft written", note: drafts.length ? `v${drafts[0].version}` : "not yet", done: drafts.length > 0 },
-                { label: "Published", note: book.status === "PUBLISHED" ? "live" : "not yet", done: book.status === "PUBLISHED" },
-              ].map((step, index, all) => {
-                const current = !step.done && all.slice(0, index).every((item) => item.done);
-                return (
-                  <li key={step.label} className={step.done ? "done" : current ? "now" : ""}>
-                    <i>{step.done ? <Tick /> : index + 1}</i>
-                    <b>{step.label}</b>
-                    <span>{step.note}</span>
-                  </li>
-                );
-              })}
-            </ol>
-            <div className="s2-cols">
-              <div className="s2-stack">
-                <div className="s2-card">
-                  <div className="s2-card__head">
-                    <h3>Write a draft</h3>
-                  </div>
-                  <p className="s2-writer">Writer: {writerLine}</p>
-                  <button
-                    className="s2-btn s2-btn--red s2-btn--big"
-                    type="button"
-                    disabled={busy !== null}
-                    onClick={() => run("make", async () => void (await post(`/api/books/${book.id}/generate`)))}
-                  >
-                    {busy === "make" ? "Writing the book…" : drafts.length ? "Write a new version" : "Make the book"}
-                  </button>
-                  <div className="s2-row">
-                    {drafts.length > 0 ? (
-                      <button
-                        className="s2-btn"
-                        type="button"
-                        disabled={busy !== null}
-                        onClick={() => run("publish", () => post(`/api/books/${book.id}/publish`).then(() => undefined))}
-                      >
-                        {busy === "publish" ? "Publishing…" : `Publish v${drafts.find((draft) => draft.current)?.version ?? drafts[0].version}`}
-                      </button>
-                    ) : null}
-                    {drafts.length > 0 ? (
-                      <a className="s2-btn s2-btn--ghost" href={`/studio/${book.id}/editor`}>
-                        Edit the draft
-                      </a>
-                    ) : null}
-                    {book.status === "PUBLISHED" ? (
-                      <a className="s2-btn s2-btn--ghost" href={`/b/${book.slug}/read`}>
-                        Read
-                      </a>
-                    ) : null}
-                    <button
-                      className="s2-link"
-                      type="button"
-                      disabled={busy !== null || ready.length === 0}
-                      title="Groups the voices into chapters without calling any AI model"
-                      onClick={() => run("local", () => post(`/api/books/${book.id}/generate?engine=local`).then(() => undefined))}
-                    >
-                      {busy === "local" ? "Assembling…" : "Quick draft without AI"}
-                    </button>
-                  </div>
-                  {book.log.length ? <p className="s2-fine">Last run: {book.log[book.log.length - 1]}</p> : null}
-                </div>
-                <div className="s2-card">
-                  <div className="s2-card__head">
-                    <h3>Chapters</h3>
-                    <span className="s2-count">{chapters.length}</span>
-                  </div>
-                  {chapters.length === 0 ? (
-                    <p className="s2-muted">Chapters appear here once a draft is written.</p>
-                  ) : (
-                    <ol className="s2-chapters">
-                      {chapters.map((title, index) => (
-                        <li key={`${index}-${title}`}>
-                          <i>{String(index + 1).padStart(2, "0")}</i>
-                          {title}
-                        </li>
-                      ))}
-                    </ol>
-                  )}
-                </div>
-              </div>
-              <div className="s2-stack">
-                <div className="s2-card">
-                  <div className="s2-card__head">
-                    <h3>Versions</h3>
-                    <span className="s2-count">{drafts.length}</span>
-                  </div>
-                  {drafts.length === 0 ? (
-                    <p className="s2-muted">No versions yet.</p>
-                  ) : (
-                    <ul className="s2-list">
-                      {drafts.slice(0, 6).map((draft) => (
-                        <li key={draft.id}>
-                          <b>v{draft.version}</b>
-                          <span className="s2-muted">
-                            {draft.provider === "mock" ? "demo" : draft.provider} · {draft.model}
-                          </span>
-                          {draft.current ? <span className="s2-chip">current</span> : null}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-                <div className="s2-card">
-                  <div className="s2-card__head">
-                    <h3>Backups</h3>
-                    <button
-                      className="s2-btn s2-btn--sm"
-                      type="button"
-                      disabled={busy !== null}
-                      onClick={() => run("backup", () => post(`/api/books/${book.id}/backup`).then(() => undefined))}
-                    >
-                      {busy === "backup" ? "Saving…" : "Back up now"}
-                    </button>
-                  </div>
-                  <p className="s2-muted">
-                    {voices.length} voices · last backup {backups[0] ? backups[0].label.toLowerCase() : "never"}
-                  </p>
-                  <ul className="s2-list">
-                    {backups.slice(0, 4).map((row) => (
-                      <li key={row.id}>
-                        <span>
-                          {row.label} · {row.voices} voices
-                        </span>
-                        <button
-                          className="s2-link"
-                          type="button"
-                          disabled={busy !== null || !row.restorable}
-                          title={row.restorable ? "Put voices, drafts and votes back to this point" : "This backup only kept a count"}
-                          onClick={() => {
-                            if (!window.confirm(`Restore the backup from ${row.label.toLowerCase()}? The current state is backed up first.`)) return;
-                            void run("restore", () => post(`/api/books/${book.id}/backup/${row.id}/restore`).then(() => undefined));
-                          }}
-                        >
-                          Restore
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                  <button
-                    className="s2-link"
-                    type="button"
-                    disabled={busy !== null}
-                    onClick={() =>
-                      run("download", async () => {
-                        const response = await fetch(`/api/books/${book.id}/backup`, { method: "POST" });
-                        const data = (await response.json()) as { id?: string; error?: string };
-                        if (!response.ok || !data.id) throw new Error(data.error ?? "The backup was not saved.");
-                        window.location.href = `/api/books/${book.id}/backup/${data.id}`;
-                      })
-                    }
-                  >
-                    Download a backup file
-                  </button>
-                </div>
-                <Spend spend={spend} writer={ai.writer} />
-              </div>
-            </div>
-          </section>
+          <MakeTab
+            book={book}
+            ready={ready.length}
+            drafts={drafts}
+            chapters={chapters}
+            backups={backups}
+            voices={voices.length}
+            needsClose={needsClose}
+            closedEnough={closedEnough}
+            when={when}
+            busy={busy}
+            writerLine={writerLine}
+            usage={usage}
+            onMake={() => run("make", async () => void (await post(`/api/books/${book.id}/generate`)))}
+            onQuick={() => run("local", () => post(`/api/books/${book.id}/generate?engine=local`).then(() => undefined))}
+            onPublish={() => run("publish", () => post(`/api/books/${book.id}/publish`).then(() => undefined))}
+            onBackup={() => run("backup", () => post(`/api/books/${book.id}/backup`).then(() => undefined))}
+            onRestore={(id, label) => {
+              if (!window.confirm(`Restore the backup from ${label.toLowerCase()}? The current state is backed up first.`)) return;
+              void run("restore", () => post(`/api/books/${book.id}/backup/${id}/restore`).then(() => undefined));
+            }}
+            onDownload={() =>
+              run("download", async () => {
+                const response = await fetch(`/api/books/${book.id}/backup`, { method: "POST" });
+                const data = (await response.json()) as { id?: string; error?: string };
+                if (!response.ok || !data.id) throw new Error(data.error ?? "The backup was not saved.");
+                window.location.href = `/api/books/${book.id}/backup/${data.id}`;
+              })
+            }
+          />
         ) : null}
 
         {tab === "release" ? (
@@ -516,41 +384,46 @@ export function StudioDesk({
             <div className="s2-head">
               <div>
                 <h1>Release</h1>
-                <p>Publish the book, then add its audio and video.</p>
               </div>
             </div>
             <div className="s2-cols s2-cols--release">
               <div className="s2-stack">
                 <ol className="s2-steps">
                   <li>
-                    <i>1</i>
+                    <i className={book.status === "PUBLISHED" ? "done" : ""}>{book.status === "PUBLISHED" ? <Tick /> : 1}</i>
                     <div>
-                      <b>Release time</b>
-                      <span>{when}</span>
+                      <b>Book</b>
+                      <span>{book.status === "PUBLISHED" ? "Published" : drafts.length ? `v${(drafts.find((draft) => draft.current) ?? drafts[0]).version} ready` : "No draft yet"} · {when}</span>
                     </div>
-                    <button className="s2-btn s2-btn--sm s2-btn--ghost" type="button" onClick={() => go("settings")}>
-                      Change
+                    <button className="s2-link" type="button" onClick={() => go("settings")}>
+                      Time
                     </button>
                   </li>
-                  <li>
-                    <i>2</i>
-                    <div>
-                      <b>Copy for NotebookLM</b>
-                      <span>Title, question and chapters, for the audio and video</span>
-                    </div>
-                    <CopyButton text={`${book.title}\n${book.question}\n${chapters.join("\n")}`} />
-                  </li>
-                  <MediaRow step={3} bookId={book.id} kind="audiobook" label="Audiobook" href={media.audioHref} name={media.audioName} bytes={media.audioBytes} />
-                  <MediaRow step={4} bookId={book.id} kind="video" label="Video" href={media.videoHref} name={media.videoName} bytes={media.videoBytes} />
+                  <MediaRow step={2} bookId={book.id} kind="audiobook" label="Audiobook" href={media.audioHref} name={media.audioName} bytes={media.audioBytes} />
+                  <MediaRow step={3} bookId={book.id} kind="video" label="Video" href={media.videoHref} name={media.videoName} bytes={media.videoBytes} />
                 </ol>
-                <button
-                  className="s2-btn s2-btn--red s2-btn--big"
-                  type="button"
-                  disabled={busy !== null || drafts.length === 0}
-                  onClick={() => run("publish", () => post(`/api/books/${book.id}/publish`).then(() => undefined))}
-                >
-                  {busy === "publish" ? "Publishing…" : drafts.length ? (book.status === "PUBLISHED" ? "Publish the latest version" : "Publish") : "Make the book first"}
-                </button>
+                {book.status === "PUBLISHED" ? (
+                  <a className="s2-btn s2-btn--red s2-btn--big" href={`/b/${book.slug}/read`}>
+                    Read the book
+                  </a>
+                ) : (
+                  <button
+                    className="s2-btn s2-btn--red s2-btn--big"
+                    type="button"
+                    disabled={busy !== null || drafts.length === 0}
+                    onClick={() => run("publish", () => post(`/api/books/${book.id}/publish`).then(() => undefined))}
+                  >
+                    {busy === "publish" ? "Publishing…" : drafts.length ? "Publish" : "Make the book first"}
+                  </button>
+                )}
+                <p className="s3-quietline">
+                  <CopyButton text={`${book.title}\n${book.question}\n${chapters.join("\n")}`} label="Copy text for audio and video" />
+                  {book.status === "PUBLISHED" && drafts.length ? (
+                    <button className="s2-link" type="button" disabled={busy !== null} onClick={() => run("publish", () => post(`/api/books/${book.id}/publish`).then(() => undefined))}>
+                      {busy === "publish" ? "Publishing…" : "Publish latest version"}
+                    </button>
+                  ) : null}
+                </p>
               </div>
               <div className="s2-cover">
                 <BookCover title={book.title} question={book.question} people={ready.length} countries={countries} names={ready.map((voice) => voice.name)} />
@@ -571,7 +444,7 @@ function AiTab({
   groups,
   busy,
   writerLine,
-  spend,
+  usage,
   bookId,
   actions,
   onRun,
@@ -584,193 +457,354 @@ function AiTab({
   groups: { label: string; count: number }[];
   busy: string | null;
   writerLine: React.ReactNode;
-  spend: { usd: string; cap: string | null };
+  usage: Usage;
   bookId: string;
   actions: { approve: (id: string) => void; hide: (id: string) => void; show: (id: string) => void };
   onRun: () => void;
   onDone: () => void;
 }) {
-  const [filter, setFilter] = useState<"all" | VoiceState>("all");
+  const [all, setAll] = useState(false);
   const total = voices.length;
+  const working = voices.filter((voice) => states.get(voice.id) === "working").length;
   const flow = FLOW.map((step, index) => {
     const passed = voices.filter((voice) => flowIndex(voice) > index).length;
     const active = voices.filter((voice) => flowIndex(voice) === index && voice.status === "PROCESSING").length;
     const flagged = step.check ? voices.filter((voice) => voice.checks && voice.checks[step.check!] !== undefined && voice.checks[step.check!] !== !step.bad).length : 0;
     return { ...step, passed, active, flagged };
   });
-  const list = [...voices].reverse().filter((voice) => filter === "all" || states.get(voice.id) === filter);
+  const list = [...voices].reverse();
+  const shown = all ? list : list.slice(0, 8);
   const maxGroup = Math.max(1, ...groups.map((group) => group.count));
-  const stats: [string, number, string, VoiceState | "all"][] = [
-    ["Heard", counts.heard, "", "all"],
-    ["Approved", counts.approved, "ok", "approved"],
-    ["Need you", counts.needs, counts.needs ? "red" : "", "needs"],
-    ["Not used", counts.notUsed, "", "notused"],
-    ["Hidden", counts.hidden, "", "hidden"],
-  ];
 
   return (
     <section className="s2-tab">
       <div className="s2-head">
         <div>
           <h1>AI at work</h1>
-          <p>Every voice is checked automatically. You only decide the unsure ones.</p>
+          <p className="s3-status" aria-live="polite">
+            <b>{total}</b> {total === 1 ? "voice" : "voices"} · <b>{counts.approved}</b> used · <b className={counts.needs ? "red" : ""}>{counts.needs}</b> need you
+            {working ? <> · <span className="s2-live" aria-hidden /> {working} checking</> : null}
+          </p>
         </div>
         <div className="s2-head__act">
-          <span className="s2-writer s2-writer--head">{writerLine}</span>
-          <button className="s2-btn s2-btn--red" type="button" disabled={busy !== null} onClick={onRun}>
+          <button className="s2-btn s2-btn--red" type="button" disabled={busy !== null || usage.reached} onClick={onRun}>
             {busy === "tick" ? "Running…" : "Run AI now"}
           </button>
         </div>
       </div>
 
-      <div className="s2-stats" role="list">
-        {stats.map(([label, value, tone, key]) => (
-          <button
-            key={label}
-            role="listitem"
-            type="button"
-            className={`s2-stat ${tone}${filter === key ? " on" : ""}`}
-            onClick={() => setFilter(key)}
-            aria-label={`${value} ${label}`}
-          >
-            <b>{value}</b>
-            <span>{label}</span>
-          </button>
-        ))}
-      </div>
-
-      <ol className="s2-flow" aria-label="What happens to every voice">
-        {flow.map((step, index) => {
-          const share = total ? step.passed / total : 0;
-          return (
-            <li key={step.label} className={`${step.active ? "active" : ""}${step.flagged ? " flagged" : ""}${total && step.passed === total ? " done" : ""}`}>
-              <span className="s2-flow__dot">{step.active ? <i className="s2-pulse" /> : index + 1}</span>
-              <span className="s2-flow__label">{step.label}</span>
-              <span className="s2-flow__bar" aria-hidden>
-                <i style={{ width: `${Math.round(share * 100)}%` }} />
-              </span>
-              <span className="s2-flow__n">{step.active ? `${step.active} now` : step.flagged ? `${step.flagged} flagged` : total ? `${step.passed}/${total}` : "—"}</span>
-            </li>
-          );
-        })}
-      </ol>
-
-      <div className="s2-cols">
-        <div className="s2-stack">
-          <div className={`s2-card s2-needs${needsYou.length ? " on" : ""}`}>
+      <div className="s3-ai">
+        {needsYou.length ? (
+          <div className="s2-card s2-needs on">
             <div className="s2-card__head">
               <h3>Needs you</h3>
               <span className="s2-count">{needsYou.length}</span>
             </div>
-            {needsYou.length === 0 ? (
-              <p className="s2-clear">
-                <i>
-                  <Tick />
-                </i>{" "}
-                All clear. Nothing is waiting for you.
-              </p>
-            ) : (
-              <ul className="s2-needs__list">
-                {needsYou.map((voice) => (
-                  <li key={voice.id}>
-                    <div>
-                      <b>{voice.name}</b>
-                      <q>{snippet(voice.englishText || voice.originalText, 160) || "No words heard."}</q>
-                      <span className="s2-why">{voice.rejectReason || (voice.impersonation ? "Uses a public figure's name." : "The AI was not sure.")}</span>
-                    </div>
-                    <span className="s2-row">
-                      {voice.status !== "FAILED" ? (
-                        <button className="s2-btn s2-btn--sm s2-btn--red" type="button" disabled={busy !== null} onClick={() => actions.approve(voice.id)}>
-                          Use it
-                        </button>
-                      ) : null}
-                      <button className="s2-btn s2-btn--sm s2-btn--ghost" type="button" disabled={busy !== null} onClick={() => actions.hide(voice.id)}>
-                        Hide
+            <ul className="s2-needs__list">
+              {needsYou.map((voice) => (
+                <li key={voice.id}>
+                  <div>
+                    <b>{voice.name}</b>
+                    <q>{snippet(voice.englishText || voice.originalText, 160) || "No words heard."}</q>
+                    <span className="s2-why">{voice.rejectReason || (voice.impersonation ? "Uses a public figure's name." : "The AI was not sure.")}</span>
+                  </div>
+                  <span className="s2-row">
+                    {voice.status !== "FAILED" ? (
+                      <button className="s2-btn s2-btn--sm s2-btn--red" type="button" disabled={busy !== null} onClick={() => actions.approve(voice.id)}>
+                        Use
                       </button>
+                    ) : null}
+                    <button className="s2-btn s2-btn--sm s2-btn--ghost" type="button" disabled={busy !== null} onClick={() => actions.hide(voice.id)}>
+                      Hide
+                    </button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <p className="s2-clear s3-clear">
+            <i>
+              <Tick />
+            </i>{" "}
+            Nothing needs you.
+          </p>
+        )}
+
+        <div className="s2-card">
+          <div className="s2-card__head">
+            <h3>Voices</h3>
+            <span className="s2-count">{total}</span>
+          </div>
+          {list.length === 0 ? (
+            <p className="s2-muted">No voices yet.</p>
+          ) : (
+            <ul className="s2-voices">
+              {shown.map((voice) => {
+                const state = states.get(voice.id) ?? "working";
+                return (
+                  <li key={voice.id}>
+                    <span className="s2-ava" aria-hidden>
+                      {voice.name.slice(0, 1).toUpperCase()}
                     </span>
+                    <div className="s2-voices__main">
+                      <b>
+                        {voice.name}
+                        {voice.impersonation ? <span className="s2-flag" title="Name of a public figure">name check</span> : null}
+                      </b>
+                      <span>{snippet(voice.englishText || voice.originalText, 90) || "—"}</span>
+                    </div>
+                    <span className={`s2-state s2-state--${state}`}>{STATE_LABEL[state]}</span>
+                    {state === "hidden" ? (
+                      <button className="s2-link" type="button" disabled={busy !== null} onClick={() => actions.show(voice.id)}>
+                        Show
+                      </button>
+                    ) : null}
                   </li>
-                ))}
-              </ul>
-            )}
-          </div>
+                );
+              })}
+            </ul>
+          )}
+          {list.length > 8 ? (
+            <button className="s2-link s3-all" type="button" onClick={() => setAll((value) => !value)}>
+              {all ? "Show fewer" : `Show all ${list.length}`}
+            </button>
+          ) : null}
+        </div>
 
-          <div className="s2-card">
-            <div className="s2-card__head">
-              <h3>
-                <span className="s2-live" aria-hidden /> Live
-              </h3>
-              <div className="s2-chips" role="tablist" aria-label="Filter voices">
-                {(["all", "needs", "approved", "notused", "hidden"] as const).map((key) => (
-                  <button key={key} type="button" role="tab" aria-selected={filter === key} className={filter === key ? "on" : ""} onClick={() => setFilter(key)}>
-                    {key === "all" ? "All" : STATE_LABEL[key]}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {list.length === 0 ? (
-              <p className="s2-muted">{total === 0 ? "No voices yet. They show up here the moment someone speaks." : "Nothing here."}</p>
-            ) : (
-              <ul className="s2-voices">
-                {list.slice(0, 12).map((voice) => {
-                  const state = states.get(voice.id) ?? "working";
-                  return (
-                    <li key={voice.id}>
-                      <span className="s2-ava" aria-hidden>
-                        {voice.name.slice(0, 1).toUpperCase()}
-                      </span>
-                      <div className="s2-voices__main">
-                        <b>
-                          {voice.name}
-                          {voice.impersonation ? <span className="s2-flag" title="Name of a public figure">name check</span> : null}
-                        </b>
-                        <span>{snippet(voice.englishText || voice.originalText, 90) || "—"}</span>
-                      </div>
-                      <span className={`s2-state s2-state--${state}`}>{state === "working" ? `${STATE_LABEL[state]} · ${FLOW[Math.min(7, flowIndex(voice))].label}` : STATE_LABEL[state]}</span>
-                      {state === "hidden" ? (
-                        <button className="s2-link" type="button" disabled={busy !== null} onClick={() => actions.show(voice.id)}>
-                          Show
-                        </button>
-                      ) : null}
+        <details className="s3-details">
+          <summary>Details</summary>
+          <div className="s3-details__body">
+            <p className="s3-kv">
+              <span>Model</span>
+              {writerLine}
+            </p>
+            <p className="s3-kv">
+              <span>Usage</span>
+              <b>{usage.line}</b>
+            </p>
+            <p className="s3-kv">
+              <span>Not used · hidden</span>
+              <b>
+                {counts.notUsed} · {counts.hidden}
+              </b>
+            </p>
+            <h4>Every voice goes through</h4>
+            <ol className="s2-flow" aria-label="What happens to every voice">
+              {flow.map((step, index) => {
+                const share = total ? step.passed / total : 0;
+                return (
+                  <li key={step.label} className={`${step.active ? "active" : ""}${step.flagged ? " flagged" : ""}${total && step.passed === total ? " done" : ""}`}>
+                    <span className="s2-flow__dot">{step.active ? <i className="s2-pulse" /> : index + 1}</span>
+                    <span className="s2-flow__label">{step.label}</span>
+                    <span className="s2-flow__bar" aria-hidden>
+                      <i style={{ width: `${Math.round(share * 100)}%` }} />
+                    </span>
+                    <span className="s2-flow__n">{step.active ? `${step.active} now` : step.flagged ? `${step.flagged} flagged` : total ? `${step.passed}/${total}` : "—"}</span>
+                  </li>
+                );
+              })}
+            </ol>
+            {groups.length ? (
+              <>
+                <h4>Groups</h4>
+                <ul className="s2-groups">
+                  {groups.map((group) => (
+                    <li key={group.label}>
+                      <span>{group.label}</span>
+                      <b>{group.count}</b>
+                      <i aria-hidden>
+                        <em style={{ width: `${Math.round((group.count / maxGroup) * 100)}%` }} />
+                      </i>
                     </li>
-                  );
-                })}
-              </ul>
-            )}
-            {list.length > 12 ? <p className="s2-fine">Showing the newest 12 of {list.length}.</p> : null}
+                  ))}
+                </ul>
+              </>
+            ) : null}
+            <h4>Add replies from X</h4>
+            <XReplies bookId={bookId} onDone={onDone} />
           </div>
-        </div>
+        </details>
+      </div>
+    </section>
+  );
+}
 
-        <div className="s2-stack">
+function MakeTab({
+  book,
+  ready,
+  drafts,
+  chapters,
+  backups,
+  voices,
+  needsClose,
+  closedEnough,
+  when,
+  busy,
+  writerLine,
+  usage,
+  onMake,
+  onQuick,
+  onPublish,
+  onBackup,
+  onRestore,
+  onDownload,
+}: {
+  book: { id: string; slug: string; status: string; log: string[] };
+  ready: number;
+  drafts: DraftRow[];
+  chapters: string[];
+  backups: { id: string; label: string; voices: number; note: string; restorable: boolean }[];
+  voices: number;
+  needsClose: boolean;
+  closedEnough: boolean;
+  when: string;
+  busy: string | null;
+  writerLine: React.ReactNode;
+  usage: Usage;
+  onMake: () => void;
+  onQuick: () => void;
+  onPublish: () => void;
+  onBackup: () => void;
+  onRestore: (id: string, label: string) => void;
+  onDownload: () => void;
+}) {
+  const current = drafts.find((draft) => draft.current) ?? drafts[0] ?? null;
+  const published = book.status === "PUBLISHED";
+  const steps = [
+    { label: "Voices", note: `${ready} in`, done: ready > 0 },
+    { label: needsClose ? "Closed" : "Ready", note: needsClose ? (closedEnough ? "closed" : when.split(" · ")[0]) : "—", done: closedEnough },
+    { label: "Draft", note: current ? `v${current.version}` : "—", done: drafts.length > 0 },
+    { label: "Published", note: published ? "live" : "—", done: published },
+  ];
+  let primary: React.ReactNode;
+  if (ready === 0) {
+    primary = (
+      <button className="s2-btn s2-btn--red s2-btn--big" type="button" disabled>
+        Waiting for voices
+      </button>
+    );
+  } else if (!current) {
+    primary = (
+      <button className="s2-btn s2-btn--red s2-btn--big" type="button" disabled={busy !== null || usage.reached} onClick={onMake}>
+        {busy === "make" ? "Writing the book…" : "Make the book"}
+      </button>
+    );
+  } else if (!published) {
+    primary = (
+      <button className="s2-btn s2-btn--red s2-btn--big" type="button" disabled={busy !== null} onClick={onPublish}>
+        {busy === "publish" ? "Publishing…" : `Publish v${current.version}`}
+      </button>
+    );
+  } else {
+    primary = (
+      <a className="s2-btn s2-btn--red s2-btn--big" href={`/b/${book.slug}/read`}>
+        Read the book
+      </a>
+    );
+  }
+
+  return (
+    <section className="s2-tab">
+      <div className="s2-head">
+        <div>
+          <h1>Make the book</h1>
+        </div>
+      </div>
+      <ol className="s2-stepper">
+        {steps.map((step, index, all) => {
+          const now = !step.done && all.slice(0, index).every((item) => item.done);
+          return (
+            <li key={step.label} className={step.done ? "done" : now ? "now" : ""}>
+              <i>{step.done ? <Tick /> : index + 1}</i>
+              <b>{step.label}</b>
+              <span>{step.note}</span>
+            </li>
+          );
+        })}
+      </ol>
+      <div className="s3-make">
+        <div className="s2-card s3-make__main">
+          {primary}
+          <p className="s3-quietline">
+            {current ? (
+              <a className="s2-link" href={`/studio/${book.id}/editor`}>
+                Edit draft
+              </a>
+            ) : null}
+            {current ? (
+              <button className="s2-link" type="button" disabled={busy !== null || usage.reached} onClick={onMake}>
+                {busy === "make" ? "Writing…" : "Write a new version"}
+              </button>
+            ) : null}
+            {!current && ready > 0 ? (
+              <button className="s2-link" type="button" disabled={busy !== null} onClick={onQuick}>
+                {busy === "local" ? "Assembling…" : "Quick draft without AI"}
+              </button>
+            ) : null}
+            <span className="s3-model">{writerLine}</span>
+          </p>
+        </div>
+        {chapters.length ? (
           <div className="s2-card">
             <div className="s2-card__head">
-              <h3>Matching voices</h3>
-              <span className="s2-muted">grouped by AI</span>
+              <h3>Chapters</h3>
+              <span className="s2-count">{chapters.length}</span>
             </div>
-            {groups.length === 0 ? (
-              <p className="s2-muted">Groups appear once voices are in.</p>
+            <ol className="s2-chapters">
+              {chapters.map((title, index) => (
+                <li key={`${index}-${title}`}>
+                  <i>{String(index + 1).padStart(2, "0")}</i>
+                  {title}
+                </li>
+              ))}
+            </ol>
+          </div>
+        ) : null}
+        <details className="s3-details">
+          <summary>Versions and backups</summary>
+          <div className="s3-details__body">
+            <h4>Versions</h4>
+            {drafts.length === 0 ? (
+              <p className="s2-muted">None yet.</p>
             ) : (
-              <ul className="s2-groups">
-                {groups.map((group) => (
-                  <li key={group.label}>
-                    <span>{group.label}</span>
-                    <b>{group.count}</b>
-                    <i aria-hidden>
-                      <em style={{ width: `${Math.round((group.count / maxGroup) * 100)}%` }} />
-                    </i>
+              <ul className="s2-list">
+                {drafts.slice(0, 6).map((draft) => (
+                  <li key={draft.id}>
+                    <b>v{draft.version}</b>
+                    <span className="s2-muted">
+                      {draft.provider === "mock" ? "demo" : draft.provider} · {draft.model}
+                    </span>
+                    {draft.current ? <span className="s2-chip">current</span> : null}
                   </li>
                 ))}
               </ul>
             )}
+            <h4>Backups</h4>
+            <ul className="s2-list">
+              {backups.slice(0, 4).map((row) => (
+                <li key={row.id}>
+                  <span>
+                    {row.label} · {row.voices} voices
+                  </span>
+                  <button className="s2-link" type="button" disabled={busy !== null || !row.restorable} onClick={() => onRestore(row.id, row.label)}>
+                    Restore
+                  </button>
+                </li>
+              ))}
+              {backups.length === 0 ? <li className="s2-muted">No backups yet · {voices} voices</li> : null}
+            </ul>
+            <p className="s3-quietline">
+              <button className="s2-link" type="button" disabled={busy !== null} onClick={onBackup}>
+                {busy === "backup" ? "Saving…" : "Back up now"}
+              </button>
+              <button className="s2-link" type="button" disabled={busy !== null} onClick={onDownload}>
+                Download backup
+              </button>
+            </p>
+            {book.log.length ? <p className="s2-fine">Last run: {book.log[book.log.length - 1]}</p> : null}
           </div>
-          <Spend spend={spend} writer={null} compact />
-          <details className="s2-card s2-more">
-            <summary>
-              <h3>Add replies from X</h3>
-              <span className="s2-muted">same checks</span>
-            </summary>
-            <XReplies bookId={bookId} onDone={onDone} />
-          </details>
-        </div>
+        </details>
       </div>
     </section>
   );
@@ -789,7 +823,7 @@ function snippet(text: string, max: number) {
   return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
 }
 
-function CopyButton({ text }: { text: string | (() => string) }) {
+function CopyButton({ text, label = "Copy" }: { text: string | (() => string); label?: string }) {
   const [done, setDone] = useState(false);
   return (
     <button
@@ -802,7 +836,7 @@ function CopyButton({ text }: { text: string | (() => string) }) {
         })
       }
     >
-      {done ? "Copied" : "Copy"}
+      {done ? "Copied" : label}
     </button>
   );
 }
@@ -863,9 +897,9 @@ function MediaRow({
               </a>
             </>
           ) : kind === "video" ? (
-            "MP4, made from the book"
+            "MP4"
           ) : (
-            "MP3 or WAV, read from the book"
+            "MP3 or WAV"
           )}
         </span>
         {error ? (
@@ -879,31 +913,6 @@ function MediaRow({
         <input type="file" accept={kind === "video" ? "video/mp4" : "audio/mpeg,audio/wav"} hidden onChange={(event) => void upload(event.target.files?.[0])} />
       </label>
     </li>
-  );
-}
-
-function Spend({ spend, writer, compact = false }: { spend: { usd: string; cap: string | null }; writer: string | null; compact?: boolean }) {
-  const cap = spend.cap ?? "no cap";
-  const capUsd = Number(cap.replace(/[^0-9.]/g, "")) || 0;
-  const usedUsd = Number(spend.usd.replace(/[^0-9.]/g, "")) || 0;
-  const share = capUsd ? Math.min(1, usedUsd / capUsd) : 0;
-  return (
-    <div className={`s2-card s2-spend${compact ? " compact" : ""}`}>
-      <div className="s2-card__head">
-        <h3>AI spend</h3>
-        <span className="s2-muted">{cap === "no cap" ? "no cap set" : `stops at ${cap}`}</span>
-      </div>
-      <p className="s2-spend__n">
-        <b>{spend.usd === "$0.00" ? "<$0.01" : spend.usd}</b>
-        {capUsd ? <span> of {cap}</span> : null}
-      </p>
-      <div className="s2-spend__bar" aria-hidden>
-        <i style={{ width: `${Math.max(1, share * 100)}%` }} />
-      </div>
-      {!compact ? (
-        <p className="s2-fine">{writer ? `Writing with ${writer}. ` : ""}Models on this computer are free. The AI can&apos;t go over the cap.</p>
-      ) : null}
-    </div>
   );
 }
 
@@ -923,6 +932,7 @@ function SettingsTab({
   settings,
   providers,
   ai,
+  usage,
   quotes,
 }: {
   book: { id: string; title: string; question: string; closesAt: string | null; pollQuestion: string; type: string; invitePath: string };
@@ -940,6 +950,7 @@ function SettingsTab({
   onDone: () => void;
   providers: ProviderView[];
   ai: AiSummary;
+  usage: Usage;
   quotes: VoiceRow[];
 }) {
   const [question, setQuestion] = useState(book.question);
@@ -956,6 +967,9 @@ function SettingsTab({
   const [limit, setLimit] = useState(String(settings.voiceLimitPerDay));
   const [seconds, setSeconds] = useState(String(settings.maxVoiceSeconds));
   const [aiKey, setAiKey] = useState("");
+  const [limitKind, setLimitKind] = useState<Usage["kind"]>(usage.kind);
+  const [limitValue, setLimitValue] = useState(usage.kind === "none" ? "" : String(usage.value));
+  const dirtyLimit = limitKind !== usage.kind || (limitKind !== "none" && limitValue !== String(usage.value));
   const [working, setWorking] = useState<string | null>(null);
   const dirtyVoices = language !== settings.language || limit !== String(settings.voiceLimitPerDay) || seconds !== String(settings.maxVoiceSeconds);
   const dirtyQ = question !== book.question || title !== book.title || number !== String(bookNumber);
@@ -1003,11 +1017,12 @@ function SettingsTab({
     ["s-question", "Question"],
     ["s-release", "Release time"],
     ["s-voices", "Voices"],
-    ["s-ai", "AI models"],
     ["s-poll", "Next book poll"],
     ...(book.type === "INVITED" ? ([["s-invite", "Invite link"]] as [string, string][]) : []),
     ...(book.type === "FAMOUS" ? ([["s-quotes", "Famous quotes"]] as [string, string][]) : []),
     ["s-data", "Data"],
+    ["s-limit", "AI for this book"],
+    ["s-ai", "AI model"],
   ];
 
   const saveButton = (dirty: boolean, onClick: () => void) => (
@@ -1021,7 +1036,6 @@ function SettingsTab({
       <div className="s2-head">
         <div>
           <h1>Book settings</h1>
-          <p>Everything about this book in one place.</p>
         </div>
       </div>
       {message ? <p className="s2-alert">{message}</p> : null}
@@ -1135,91 +1149,11 @@ function SettingsTab({
             </div>
           </section>
 
-          <section className="s2-card" id="s-ai">
-            <div className="s2-card__head">
-              <h3>AI models</h3>
-              <span className="s2-chip">shared by all your books</span>
-            </div>
-            <div className="s2-aisum">
-              <div>
-                <span>Writer</span>
-                <b>{ai.writer ?? "Demo mode"}</b>
-              </div>
-              <div>
-                <span>Transcription</span>
-                <b>{ai.hearer ?? "Browser speech-to-text"}</b>
-              </div>
-            </div>
-            <AiModels initial={providers} mockServer={settings.mockServer} onChange={onDone} />
-            <div className="s2-sub">
-              <h4>Run a Meta model on this computer</h4>
-              <p className="s2-fine">Free and private. One click downloads Llama and plugs it into the pipeline.</p>
-              <LocalModels onChange={onDone} />
-            </div>
-            <div className="s2-setrow">
-              <div>
-                <b>Pause the AI for this book</b>
-                <span>{pausedAi ? "Paused. New voices save and wait." : "On. Voices are checked as they come in."}</span>
-              </div>
-              <button
-                className={`s2-switch${pausedAi ? "" : " on"}`}
-                type="button"
-                role="switch"
-                aria-checked={!pausedAi}
-                aria-label={pausedAi ? "Turn the AI on" : "Pause the AI"}
-                onClick={() => {
-                  const next = !pausedAi;
-                  setPausedAi(next);
-                  void save({ aiPaused: next });
-                }}
-              >
-                <i />
-              </button>
-            </div>
-            <details className="s2-legacy">
-              <summary>Book-only Meta key {settings.hasAiKey ? "· saved" : ""}</summary>
-              <p className="s2-fine">Used by this book only, when no model above works. Encrypted on the server and never shown again.</p>
-              {settings.hasAiKey ? (
-                <div className="s2-setrow">
-                  <b>Key saved · encrypted</b>
-                  <button className="s2-btn s2-btn--sm s2-btn--ghost" type="button" onClick={() => void save({ clearAiKey: true })}>
-                    Remove key
-                  </button>
-                </div>
-              ) : null}
-              {settings.canStoreKeys ? (
-                <form
-                  className="s2-row"
-                  autoComplete="off"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    if (!aiKey.trim()) return;
-                    void save({ aiKey: aiKey.trim() }).then(() => setAiKey(""));
-                  }}
-                >
-                  <input
-                    className="s2-input"
-                    type="password"
-                    autoComplete="new-password"
-                    aria-label="Book-only Meta key"
-                    placeholder={settings.hasAiKey ? "Paste a new key to replace it" : "Paste a Meta key"}
-                    value={aiKey}
-                    onChange={(event) => setAiKey(event.target.value)}
-                  />
-                  <button className="s2-btn s2-btn--sm" type="submit" disabled={!aiKey.trim()}>
-                    Save key
-                  </button>
-                </form>
-              ) : null}
-            </details>
-          </section>
-
           <section className="s2-card" id="s-poll">
             <div className="s2-card__head">
               <h3>Next book poll</h3>
               {saveButton(dirtyPoll, () => void save({ pollQuestion: book.pollQuestion, pollOptions: poll.map((line) => line.trim()).filter(Boolean) }))}
             </div>
-            <p className="s2-fine">Readers vote on what the next book asks. Shown after release.</p>
             <ul className="s2-poll">
               {poll.map((label, index) => {
                 const votes = pollOptions[index]?.votes ?? 0;
@@ -1312,6 +1246,144 @@ function SettingsTab({
               >
                 Reset
               </button>
+            </div>
+          </section>
+
+          <section className="s2-card" id="s-limit">
+            <div className="s2-card__head">
+              <h3>AI for this book</h3>
+            </div>
+            <div className="s2-setrow">
+              <div>
+                <b>AI</b>
+                <span>{usage.reached ? "Stopped · usage limit reached" : pausedAi ? "Paused" : "On"}</span>
+              </div>
+              <button
+                className={`s2-switch${pausedAi ? "" : " on"}`}
+                type="button"
+                role="switch"
+                aria-checked={!pausedAi}
+                aria-label={pausedAi ? "Turn the AI on" : "Pause the AI"}
+                onClick={() => {
+                  const next = !pausedAi;
+                  setPausedAi(next);
+                  void save({ aiPaused: next });
+                }}
+              >
+                <i />
+              </button>
+            </div>
+            <div className="s3-limit">
+              <div className="s3-limit__row">
+                <b>Usage limit</b>
+                <div className="s3-seg" role="radiogroup" aria-label="Usage limit">
+                  {(
+                    [
+                      ["none", "No limit"],
+                      ["usd", "Dollars"],
+                      ["tokens", "Tokens"],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      role="radio"
+                      aria-checked={limitKind === key}
+                      className={limitKind === key ? "on" : ""}
+                      onClick={() => {
+                        setLimitKind(key);
+                        if (key === "none") setLimitValue("");
+                        else if (key !== usage.kind) setLimitValue(key === "usd" ? "20" : "1000000000");
+                        else setLimitValue(String(usage.value));
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {limitKind !== "none" ? (
+                <div className="s3-limit__row">
+                  <label className="s3-limit__input">
+                    {limitKind === "usd" ? <span>$</span> : null}
+                    <input
+                      className="s2-input"
+                      inputMode="decimal"
+                      aria-label={limitKind === "usd" ? "Dollar limit" : "Token limit"}
+                      value={limitValue}
+                      onChange={(event) => setLimitValue(event.target.value)}
+                    />
+                    {limitKind === "tokens" ? <span>tokens</span> : null}
+                  </label>
+                  {limitKind === "tokens" ? (
+                    <span className="s3-sugg">
+                      {[
+                        ["1M", "1000000"],
+                        ["100M", "100000000"],
+                        ["1B", "1000000000"],
+                      ].map(([label, value]) => (
+                        <button key={value} type="button" className={limitValue === value ? "on" : ""} onClick={() => setLimitValue(value)}>
+                          {label}
+                        </button>
+                      ))}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+              <div className="s3-limit__row">
+                <span className={`s3-meter${usage.reached ? " full" : ""}`} aria-hidden>
+                  <i style={{ width: `${Math.max(usage.share === null ? 0 : 1, Math.round((usage.share ?? 0) * 100))}%` }} />
+                </span>
+                <span className="s2-muted">{usage.line}</span>
+                {saveButton(dirtyLimit, () => void save({ usageLimit: { kind: limitKind, value: limitKind === "none" ? 0 : limitValue } }))}
+              </div>
+            </div>
+            <details className="s2-legacy">
+              <summary>Book-only Meta key {settings.hasAiKey ? "· saved" : ""}</summary>
+              {settings.hasAiKey ? (
+                <div className="s2-setrow">
+                  <b>Key saved ••••</b>
+                  <button className="s2-btn s2-btn--sm s2-btn--ghost" type="button" onClick={() => void save({ clearAiKey: true })}>
+                    Remove
+                  </button>
+                </div>
+              ) : null}
+              {settings.canStoreKeys ? (
+                <form
+                  className="s2-row"
+                  autoComplete="off"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    if (!aiKey.trim()) return;
+                    void save({ aiKey: aiKey.trim() }).then(() => setAiKey(""));
+                  }}
+                >
+                  <input
+                    className="s2-input"
+                    type="password"
+                    autoComplete="new-password"
+                    aria-label="Book-only Meta key"
+                    placeholder={settings.hasAiKey ? "Paste a new key" : "Paste a Meta key"}
+                    value={aiKey}
+                    onChange={(event) => setAiKey(event.target.value)}
+                  />
+                  <button className="s2-btn s2-btn--sm" type="submit" disabled={!aiKey.trim()}>
+                    Save
+                  </button>
+                </form>
+              ) : null}
+            </details>
+          </section>
+
+          <section className="s2-card" id="s-ai">
+            <div className="s2-card__head">
+              <h3>AI model</h3>
+              <span className="s2-chip">all your books</span>
+            </div>
+            <AiModels initial={providers} initialFallback={Boolean(ai.fallback)} mockServer={settings.mockServer} onChange={onDone} />
+            <div className="s2-sub">
+              <h4>Meta models on this computer</h4>
+              <LocalModels onChange={onDone} />
             </div>
           </section>
         </div>

@@ -56,7 +56,7 @@ export async function settleVoice(voiceId: string) {
   if (await bookSpendPaused(voice.bookId)) {
     await prisma.voice.update({
       where: { id: voice.id },
-      data: { pipelineStep: "paused", rejectReason: "This book's spend cap is reached." },
+      data: { pipelineStep: "paused", rejectReason: "Usage limit reached." },
     });
     return prisma.voice.findUnique({ where: { id: voiceId } });
   }

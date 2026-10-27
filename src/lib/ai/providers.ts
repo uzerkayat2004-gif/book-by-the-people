@@ -4,7 +4,7 @@ import { getConfig } from "../config";
 import { keyLast4, openKey, sealKey } from "../secret-box";
 import { chatJson, firstThatWorks, testTarget, transcribeWav, type CallTarget, type ChatOut, type HeardOut } from "./provider-client";
 import { createProviderStore, type ProviderDb, type ResolvedProvider } from "./provider-store";
-import { isLocalType, presetFor } from "./provider-types";
+import { isLocalType, pickChain, presetFor } from "./provider-types";
 import { ensureServer, LOCAL_PORT } from "./local-runtime";
 
 export const providerStore = createProviderStore(prisma.aiProvider as unknown as ProviderDb, {
@@ -13,20 +13,30 @@ export const providerStore = createProviderStore(prisma.aiProvider as unknown as
   last4: keyLast4,
 });
 
-async function creatorOf(bookId: string | null | undefined): Promise<string | null> {
+async function creatorOf(bookId: string | null | undefined): Promise<{ id: string; fallback: boolean } | null> {
   if (!bookId) return null;
-  const book = await prisma.book.findUnique({ where: { id: bookId }, select: { creatorId: true } });
-  return book?.creatorId ?? null;
+  const book = await prisma.book.findUnique({ where: { id: bookId }, select: { creator: { select: { id: true, aiFallback: true } } } });
+  return book?.creator ? { id: book.creator.id, fallback: book.creator.aiFallback } : null;
 }
 
 export async function writerChain(bookId: string | null | undefined): Promise<ResolvedProvider[]> {
-  const userId = await creatorOf(bookId);
-  return userId ? providerStore.chain(userId, "writer") : [];
+  const user = await creatorOf(bookId);
+  return user ? pickChain(await providerStore.chain(user.id, "writer"), user.fallback) : [];
 }
 
 export async function transcriberChain(bookId: string | null | undefined): Promise<ResolvedProvider[]> {
-  const userId = await creatorOf(bookId);
-  return userId ? providerStore.chain(userId, "transcription") : [];
+  const user = await creatorOf(bookId);
+  return user ? pickChain(await providerStore.chain(user.id, "transcription"), user.fallback) : [];
+}
+
+export async function getFallback(userId: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { aiFallback: true } });
+  return user?.aiFallback ?? false;
+}
+
+export async function setFallback(userId: string, fallback: boolean): Promise<boolean> {
+  const user = await prisma.user.update({ where: { id: userId }, data: { aiFallback: fallback }, select: { aiFallback: true } });
+  return user.aiFallback;
 }
 
 /** True when this book's AI calls go to a real model: the creator added one, or the server runs live. */
@@ -89,12 +99,17 @@ export async function testProvider(userId: string, id: string) {
 
 /** A short summary for the Studio: which model writes and which one hears. */
 export async function aiSummary(userId: string) {
-  const [writers, hearers] = await Promise.all([providerStore.chain(userId, "writer"), providerStore.chain(userId, "transcription")]);
+  const [writers, hearers, fallback] = await Promise.all([
+    providerStore.chain(userId, "writer"),
+    providerStore.chain(userId, "transcription"),
+    getFallback(userId),
+  ]);
   const cfg = getConfig();
   const envLive = cfg.aiMode === "live";
   return {
     writer: writers[0] ? `${writers[0].label}` : envLive ? `${cfg.writerModel} (server key)` : null,
     hearer: hearers[0] ? `${hearers[0].label}` : envLive ? `${cfg.transcribeModel} (server key)` : null,
-    fallbacks: Math.max(0, writers.length - 1),
+    fallbacks: fallback ? Math.max(0, writers.length - 1) : 0,
+    fallback,
   };
 }

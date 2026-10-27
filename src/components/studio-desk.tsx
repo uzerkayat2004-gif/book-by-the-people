@@ -137,7 +137,7 @@ export function StudioDesk({
           </form>
         </div>
 
-        {book.paused ? <p className="err">Voices are paused right now. New recordings wait until the spend cap is raised.</p> : null}
+        {book.paused ? <p className="err">AI usage limit reached. Raise it in Book settings.</p> : null}
         {error ? <p className="err">{error}</p> : null}
 
         {tab === "ai" ? (

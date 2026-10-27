@@ -403,7 +403,7 @@ export function VoiceForm({
         <div className="narrow">
           <div className="done">
             <h1>Voices are paused right now</h1>
-            <p className="lead">New recordings wait until the spend cap is raised. Nothing already stored is deleted.</p>
+            <p className="lead">This book reached its AI usage limit. Voices open again when the creator raises it. Nothing stored is deleted.</p>
           </div>
         </div>
       </main>

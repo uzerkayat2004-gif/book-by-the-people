@@ -20,6 +20,7 @@ const schema = z.object({
   maxVoiceSeconds: z.number().int().optional(),
   aiKey: z.string().max(400).optional(),
   clearAiKey: z.boolean().optional(),
+  usageLimit: z.object({ kind: z.enum(["none", "usd", "tokens"]), value: z.union([z.number(), z.string().max(40)]).nullable().optional() }).optional(),
 });
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {

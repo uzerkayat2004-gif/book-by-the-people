@@ -221,7 +221,7 @@ export function CreateBookForm({ suggestion = "" }: { suggestion?: string }) {
               onChange={(event) => setAiKey(event.target.value)}
             />
           </label>
-          <p className="hint">The app is free. AI runs on your key, with one spend cap per book.</p>
+          <p className="hint">The app is free. AI runs on your own model, with an optional usage limit per book.</p>
         </section>
 
         {error ? <p className="err">{error}</p> : null}

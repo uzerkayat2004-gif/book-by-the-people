@@ -45,7 +45,7 @@ export function canGenerate(input: {
 }): { ok: true } | { ok: false; reason: string } {
   if (input.readyCount < 1) return { ok: false, reason: "Add at least one voice or sourced quote first." };
   if (input.paused && input.live) {
-    return { ok: false, reason: "Voice processing is paused because the spend cap was reached." };
+    return { ok: false, reason: "This book reached its AI usage limit. Raise it in Book settings." };
   }
   if (input.status === "GENERATING") return { ok: false, reason: "A draft is already being written." };
   const openEnded = input.bookType === "SOLO" || input.bookType === "FAMOUS" || input.status === "PUBLISHED";

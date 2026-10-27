@@ -81,8 +81,13 @@ export async function transcribeVoice(input: {
   seed: string;
   startWord: string;
   bookId?: string;
+  /** The book's usage limit is reached: never call an AI model, only use the browser's transcript. */
+  noAi?: boolean;
 }): Promise<SpeechResult> {
-  if (await transcriberLive(input.bookId)) {
+  if (input.noAi && !input.clientTranscript?.trim()) {
+    throw new Error("This book's AI usage limit is reached, and this browser gave no transcript.");
+  }
+  if (!input.noAi && (await transcriberLive(input.bookId))) {
     const heard = await transcribeFile({
       audio: input.audio,
       languageName: languageByCode(input.language).muse,

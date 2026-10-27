@@ -40,10 +40,10 @@ export async function localStatus(userId: string): Promise<LocalStatus> {
     models: LOCAL_MODELS.map((model) => ({
       ...model,
       installed: modelInstalled(dir.path, model),
-      inOllama: ollama.models.some((name) => name === model.ollama || name === `${model.ollama}:latest`),
+      inOllama: Boolean(model.ollama) && ollama.models.some((name) => name === model.ollama || name === `${model.ollama}:latest`),
       providerId:
         providers.find((row) => row.type === "local" && row.localModel === model.id)?.id ??
-        providers.find((row) => row.type === "ollama" && (row.localModel === model.id || row.model === model.ollama))?.id ??
+        providers.find((row) => row.type === "ollama" && (row.localModel === model.id || (model.ollama !== "" && row.model === model.ollama)))?.id ??
         null,
     })),
     job: currentJob(),

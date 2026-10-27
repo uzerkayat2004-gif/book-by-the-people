@@ -54,34 +54,45 @@ npm run test:e2e  # Playwright: create-book, speak, studio release, reader (need
 npm run db:seed   # e2e runs create extra books; reseed afterwards
 ```
 
-### AI models (Book settings → AI models)
+### AI model (Book settings → AI model, at the bottom)
 
-Each creator keeps one list of AI models, shared by all their books. Add as many as you like:
+One **Model** picker, shared by all your books. Whatever is picked runs every AI step: checks, translation, grouping and writing the book.
 
-- Fields: label, type, API key, base URL, model, role (writer, speech-to-text, or both).
-- Types with presets: Meta, OpenAI, Gemini, Anthropic, OpenRouter, Groq, Fireworks, Together, Ollama, this computer (local), and any OpenAI-compatible host. Picking a type fills in the base URL and a model.
-- **Test** sends a real one-line request (a silent 0.5 s clip for speech-to-text) and shows the reply time or the provider's error.
-- The list is a priority order. The writer uses the first enabled model; if it fails, the next one is tried. Move with ↑/↓, switch off, edit, or delete.
-- Keys are encrypted at rest with AES-256-GCM. They are never sent back to the browser; the UI shows only the last 4 characters. `AI_KEY_SECRET` is the encryption secret. If it is unset, a random secret is generated once into `data/ai-key-secret` (git-ignored, mode 600). Back that file up with the database, or keys become unreadable (unreadable keys are skipped, not crashed on).
-- With no models and no `META_API_KEY`, the app runs in mock mode as before.
-- The older "Book-only Meta key" is still under the same section for one book.
+- **+ Add model** opens a short sheet: provider → API key → model. The base URL, name and "Used for" are prefilled and sit under **Advanced**.
+- Providers: Meta (Muse Spark), OpenRouter, Together, Fireworks, Groq, OpenAI-compatible, Gemini, Anthropic, Ollama or any local server, and Custom.
+- Downloaded local models appear in the same picker.
+- **Test** sends a real one-line request and shows whether it works.
+- **If it fails, try the next one** is off by default. When on, the other models are tried in list order.
+- Speech-to-text uses the first model marked for speech (Meta Muse Voice, OpenAI, Groq or Together Whisper), otherwise the browser.
+- Keys are encrypted at rest with AES-256-GCM. They are never sent back to the browser; the UI shows only the last 4 characters. `AI_KEY_SECRET` is the encryption secret. If it is unset, a random secret is generated once into `data/ai-key-secret` (git-ignored, mode 600). Back that file up with the database.
+- With no model and no `META_API_KEY`, the app runs in demo (mock) mode.
 
-### Local Meta model (one click)
+### Usage limit (Book settings → AI for this book)
 
-Book settings → AI models → **Run a Meta model on this computer**:
+Each book has an optional usage limit: **No limit** (default), **Dollars**, or **Tokens** (for example 1,000,000,000). Usage is summed from that book's AI usage log (input + output tokens, estimated dollars). When the limit is reached, AI stops for that book and the Studio shows "Usage limit reached · AI stopped". Already stored voices and drafts are kept. Local models cost $0 but still count tokens.
 
-1. Pick Llama 3.2 1B (0.8 GB, 2 GB RAM), Llama 3.2 3B (2.0 GB, 4 GB RAM, recommended), or Llama 3.1 8B (4.9 GB, 8 GB RAM). Size and RAM are shown before you click.
-2. **Download** fetches the llama.cpp server for your OS (from GitHub releases, about 30 MB) and the GGUF model from Hugging Face (no token). Progress is live and **Cancel** keeps the partial file, so the next click resumes.
-3. When it finishes, the model is added to the top of your AI models as "… · this computer", started on `127.0.0.1:43180`, and tested. The writer, translation, and on-topic checks then run on it at $0.
-4. If Ollama is running, a **via Ollama** button pulls the same model through Ollama instead. If Ollama is not installed, nothing breaks: the built-in download works on its own and the UI links to ollama.com/download.
+`AI_SERVER_CAP_USD` is an optional operator cap in dollars for every book on the server. The old `AI_SPEND_CAP_USD` (default $20) is ignored.
 
-Where files go: `LOCAL_MODELS_DIR`, else `data/models` in the project. On Windows, if the project drive has under 6 GB free, the app picks the fixed drive with the most free space (`X:\BookByThePeople\models`). The folder and free space are shown in the UI. For a laptop with a small C:, set it explicitly:
+### Meta models on this computer (one click)
+
+| Model | Download | RAM | Notes |
+| --- | --- | --- | --- |
+| Muse Glimmer 30B (Q4_K_M, Meta's official GGUF) | 16.8 GB | 24 GB | Newest open Meta model (Aug 2026), best quality, wants a GPU |
+| Muse Glimmer 30B Compact (unsloth UD-IQ2_M) | 12.3 GB | 16 GB | Same model, smaller; slow on CPU |
+| Llama 3.2 3B | 2.0 GB | 4 GB | Any 8 GB laptop |
+| Llama 3.2 1B | 0.8 GB | 2 GB | Fastest |
+
+Shown as **Needs a server** (not downloadable here): Muse Spark Open (816B, 42B active, 300 GB+ even at 2-bit) and Llama 4 Scout (109B, about 65 GB at 4-bit). Use them through OpenRouter, Together, Fireworks or Groq.
+
+**Download** fetches the llama.cpp server for your OS (GitHub release `b11927`) and the GGUF from Hugging Face (no token). Cancel keeps the partial file, so the next click resumes. When it finishes, the model becomes the picked model, starts on `127.0.0.1:43180` and is tested. Muse Glimmer runs with `--jinja` and low reasoning. If Ollama is running and has the model, **Use from Ollama** is offered instead.
+
+Where files go: `LOCAL_MODELS_DIR`, else `data/models` in the project. On Windows, if the project drive has under 6 GB free, the app picks the fixed drive with the most free space. For example:
 
 ```
-LOCAL_MODELS_DIR=D:\BookByThePeople\models
+LOCAL_MODELS_DIR="E:\BookByThePeople\models"
 ```
 
-Speech-to-text stays on a hosted model (Meta Muse Voice, OpenAI, Groq Whisper) or the browser's own speech recognition. Meta's Omnilingual ASR has no small one-click runtime yet (it needs Python + fairseq2, and the GGUF ports handle only short clips), so it is not bundled.
+Meta's Omnilingual ASR has no one-click runtime yet, so it is not bundled.
 
 ### Backups
 
@@ -111,7 +122,7 @@ The poll is Vote for Book 2. The creator edits the choices. The winning choice i
 
 When `RESEND_API_KEY` and `EMAIL_FROM` are set, publishing emails people who spoke in that book. With no key, nothing is sent.
 
-`AI_SPEND_CAP_USD` is one total cap for each book. There is no daily cap. The spend card shows that book’s spend against the cap. Unset means no cap. `0` pauses that book immediately. Mock mode records $0. Live mode with no `META_API_KEY` stops and says the key is missing.
+Usage limits are per book (see Usage limit above). Mock mode records $0. Live mode with no `META_API_KEY` stops and says the key is missing.
 
 ## Meta models
 
@@ -157,7 +168,7 @@ Copy `.env.example` to `.env`.
 | `WRITER_FALLBACK_BASE_URL` | OpenAI-compatible base, no trailing path beyond `/v1` |
 | `WRITER_FALLBACK_API_KEY` | Key for that host |
 | `WRITER_FALLBACK_MODEL` | Model id on that host |
-| `AI_SPEND_CAP_USD` | Total cap. Unset = unlimited |
+| `AI_SERVER_CAP_USD` | Optional dollar cap for every book. Empty = none. Per-book limits live in Book settings |
 | `AI_PRICE_*` | Overrides for the rate card |
 | `STORAGE_DRIVER` | `local` or `s3` |
 | `LOCAL_STORAGE_DIR` | Default `./data/audio` |
@@ -184,5 +195,5 @@ The app is a Next.js App Router project and can run on Vercel. Use Postgres ther
 - Muse Voice Transcribe's file endpoint accepts only WAV (mono 16-bit PCM, 16 or 24 kHz), up to 10 minutes and 32 MB. This app converts with ffmpeg. Confirm that is still the contract when you receive a key.
 - Turn timestamps are explicitly not precise acoustic boundaries, and word timestamps are not provided. The in-turn interpolation is the best the current response allows.
 - Whether `api.meta.ai` is reachable from India was not verified here. That is why the writer has a fallback base URL, model, and key. The exact Fireworks or Baseten model slug for Muse Spark Open was not guessed; set `WRITER_FALLBACK_MODEL` to the id that host publishes.
-- Contributor-tier model ids (`muse-spark-1.3-contributor`) are cheaper and allow training on your prompts. They are not the default. If you switch model ids, also set the `AI_PRICE_*` variables or the spend cap will assume standard rates.
+- Contributor-tier model ids (`muse-spark-1.3-contributor`) are cheaper and allow training on your prompts. They are not the default. If you switch model ids, also set the `AI_PRICE_*` variables or dollar usage limits will assume standard rates.
 - `reasoning_effort: "none"` returns HTTP 400 on Muse Spark. Some OpenAI-compatible hosts reject `reasoning_effort` or `max_completion_tokens`; the client retries once without the rejected field.

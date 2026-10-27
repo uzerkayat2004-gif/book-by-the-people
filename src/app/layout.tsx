@@ -14,6 +14,7 @@ import "@/styles/live-base44.css";
 import "@/styles/bridge.css";
 import "@/styles/studio-fit.css";
 import "@/styles/studio2.css";
+import "@/styles/studio3.css";
 
 export const dynamic = "force-dynamic";
 

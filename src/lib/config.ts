@@ -56,7 +56,9 @@ export function getConfig(): AppConfig {
   const aiMode: "mock" | "live" =
     requested === "live" ? "live" : requested === "mock" ? "mock" : metaApiKey ? "live" : "mock";
 
-  const capRaw = process.env.AI_SPEND_CAP_USD;
+  // Optional operator cap for every book on this server. The old AI_SPEND_CAP_USD ($20 default) is
+  // ignored on purpose: limits are now set per book in Book settings → AI for this book.
+  const capRaw = process.env.AI_SERVER_CAP_USD;
   const spendCapUsd =
     capRaw === undefined || capRaw.trim() === "" ? null : Number(capRaw);
 

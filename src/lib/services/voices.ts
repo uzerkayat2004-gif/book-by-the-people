@@ -89,7 +89,11 @@ export async function ingestRecording(input: {
     paused: false,
   });
   if (!gate.ok) throw new AppError(gate.reason, 403);
-  if (await spendPaused(book.id)) throw new AppError("Voices are paused right now", 429);
+  // Past the usage limit, voices are still kept (with the browser's own transcript) but no AI runs.
+  const capped = await spendPaused(book.id);
+  if (capped && !input.clientTranscript?.trim()) {
+    throw new AppError("This book reached its AI usage limit. Try a browser with speech-to-text, or ask the creator to raise the limit.", 429);
+  }
   const left = await voicesLeftToday(book.id, input.viewerId);
   if (left <= 0) {
     const limit = book.voiceLimitPerDay;
@@ -127,7 +131,8 @@ export async function ingestRecording(input: {
     language: challenge.language,
     startWord: challenge.startWord,
     durationMs: Math.max(durationMs, 0),
-    clientTranscript: (await transcriberLive(book.id)) ? null : input.clientTranscript,
+    clientTranscript: capped || !(await transcriberLive(book.id)) ? input.clientTranscript : null,
+    noAi: capped,
     keywords: [name],
     seed: `${book.id}:${name}:${challenge.id}`,
     bookId: book.id,
@@ -206,7 +211,7 @@ export async function retryTranscription(voiceId: string, userId: string) {
   const voice = await prisma.voice.findUnique({ include: { book: true }, where: { id: voiceId } });
   if (!voice || voice.book.creatorId !== userId) throw new AppError("That voice is not in your studio.", 404);
   if (voice.status !== "FAILED" || !voice.storageKey) throw new AppError("Only a failed recording can be tried again.");
-  if (await spendPaused(voice.bookId)) throw new AppError("Voices are paused right now", 429);
+  if (await spendPaused(voice.bookId)) throw new AppError("This book reached its AI usage limit. Raise it in Book settings.", 429);
   const audio = await getAudio(voice.storageKey);
   await prisma.voice.update({ where: { id: voice.id }, data: { status: "PROCESSING", rejectReason: null } });
   return finishTranscript(voice.id, {

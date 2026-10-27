@@ -10,6 +10,7 @@ import { AppError } from "../errors";
 import { LANGUAGES } from "../languages";
 import { SPEAK_LANGUAGES } from "../speak-languages";
 import { canStoreKeys, sealKey } from "../secret-box";
+import { parseUsageLimit } from "../ai/spend";
 
 const LANGUAGE_CODES = new Set([...LANGUAGES, ...SPEAK_LANGUAGES].map((language) => language.code));
 
@@ -112,6 +113,7 @@ export async function updateBookSettings(input: {
   maxVoiceSeconds?: number;
   aiKey?: string;
   clearAiKey?: boolean;
+  usageLimit?: { kind: string; value?: number | string | null };
 }) {
   const book = await ownedBook(input.bookId, input.userId);
   const data: {
@@ -129,7 +131,19 @@ export async function updateBookSettings(input: {
     voiceLimitPerDay?: number;
     maxVoiceSeconds?: number;
     aiKeyCipher?: string;
+    usageLimitKind?: string;
+    usageLimitValue?: number;
   } = {};
+
+  if (input.usageLimit) {
+    try {
+      const limit = parseUsageLimit(input.usageLimit.kind, input.usageLimit.value ?? 0);
+      data.usageLimitKind = limit.kind;
+      data.usageLimitValue = limit.value;
+    } catch (error) {
+      throw new AppError(error instanceof Error ? error.message : "That limit is not valid.");
+    }
+  }
 
   if (input.language !== undefined) {
     if (!LANGUAGE_CODES.has(input.language)) throw new AppError("Pick a language from the list.");

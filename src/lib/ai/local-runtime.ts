@@ -1,6 +1,6 @@
 import "server-only";
 import { spawn, execFile, type ChildProcess } from "node:child_process";
-import { createWriteStream, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, chmodSync, openSync, readSync, closeSync } from "node:fs";
+import { createWriteStream, existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, chmodSync, openSync, readSync, closeSync } from "node:fs";
 import { statfs } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -202,6 +202,42 @@ async function waitHealthy(port: number, child: ChildProcess, timeoutMs = 180_00
   throw new Error("The local model took too long to start.");
 }
 
+function pidFile(dir: string) {
+  return path.join(runtimeDir(dir), "llama-server.pid");
+}
+
+async function probeServer(): Promise<string[] | null> {
+  try {
+    const probe = await fetch(`http://127.0.0.1:${LOCAL_PORT}/v1/models`, { signal: AbortSignal.timeout(1500) });
+    if (!probe.ok) return null;
+    const data = (await probe.json()) as { data?: { id: string }[] };
+    return (data.data ?? []).map((item) => item.id);
+  } catch {
+    return null;
+  }
+}
+
+/** Stops a llama-server this app started in an earlier run. Returns false when the port belongs to something else. */
+async function stopOrphan(dir: string): Promise<boolean> {
+  let pid = 0;
+  try {
+    pid = Number(readFileSync(pidFile(dir), "utf8").trim());
+  } catch {
+    return false;
+  }
+  if (!pid) return false;
+  try {
+    process.kill(pid);
+  } catch {
+    return false;
+  }
+  for (let i = 0; i < 40; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    if (!(await probeServer())) return true;
+  }
+  return false;
+}
+
 export function stopServer() {
   if (state.server && state.server.child.exitCode === null) state.server.child.kill();
   state.server = null;
@@ -216,18 +252,16 @@ export async function ensureServer(modelId: string): Promise<{ port: number }> {
     return { port: state.server.port };
   }
   stopServer();
-  // A llama-server left over from an earlier `next dev` run is reused when it serves this model.
-  try {
-    const probe = await fetch(`http://127.0.0.1:${LOCAL_PORT}/v1/models`, { signal: AbortSignal.timeout(1500) });
-    if (probe.ok) {
-      const data = (await probe.json()) as { data?: { id: string }[] };
-      if (data.data?.some((item) => item.id === model.id)) return { port: LOCAL_PORT };
-      throw new Error(`Port ${LOCAL_PORT} is busy with another model. Stop it, or set LOCAL_MODEL_PORT.`);
-    }
-  } catch (error) {
-    if (error instanceof Error && error.message.startsWith("Port ")) throw error;
-  }
   const { path: dir } = await modelsDir();
+  // A llama-server left over from an earlier `next dev` run is reused when it serves this model,
+  // and stopped (only if this app started it) when it serves another one.
+  const served = await probeServer();
+  if (served) {
+    if (served.includes(model.id)) return { port: LOCAL_PORT };
+    if (!(await stopOrphan(dir))) {
+      throw new Error(`Port ${LOCAL_PORT} is busy with another program. Stop it, or set LOCAL_MODEL_PORT.`);
+    }
+  }
   const binary = findServerBinary(runtimeDir(dir));
   if (!binary) throw new Error("The local runtime is not downloaded yet. Open Book settings → Local models.");
   const gguf = ggufPath(dir, model);
@@ -236,7 +270,7 @@ export async function ensureServer(modelId: string): Promise<{ port: number }> {
   const libDir = path.dirname(binary);
   const child = spawn(
     binary,
-    ["-m", gguf, "--host", "127.0.0.1", "--port", String(LOCAL_PORT), "-c", process.env.LOCAL_MODEL_CTX || "8192", "-t", threads, "--alias", model.id, "--no-webui"],
+    ["-m", gguf, "--host", "127.0.0.1", "--port", String(LOCAL_PORT), "-c", process.env.LOCAL_MODEL_CTX || String(model.ctx), "-t", threads, "--alias", model.id, "--no-webui", "--jinja", ...model.serverArgs],
     {
       cwd: libDir,
       env: {
@@ -248,6 +282,13 @@ export async function ensureServer(modelId: string): Promise<{ port: number }> {
       windowsHide: true,
     },
   );
+  if (child.pid) {
+    try {
+      writeFileSync(pidFile(dir), String(child.pid));
+    } catch {
+      // Not fatal: the pid file only helps clean up after a dev restart.
+    }
+  }
   let tail = "";
   child.stderr?.on("data", (chunk: Buffer) => {
     tail = (tail + chunk.toString("utf8")).slice(-2000);
@@ -327,6 +368,7 @@ export function startDownload(
 ): LocalJob {
   const model = localModelById(modelId);
   if (!model) throw new Error("Pick a model from the list.");
+  if (engine === "ollama" && !model.ollama) throw new Error(`Ollama has no ${model.name} build. Use the built-in download.`);
   if (state.job && ["runtime", "model", "starting", "testing"].includes(state.job.phase)) {
     throw new Error("A download is already running. Cancel it first.");
   }

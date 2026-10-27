@@ -21,6 +21,8 @@ model User {
   books     Book[]
   sessions  Session[]
   aiProviders AiProvider[]
+  /// When the picked AI model fails, try the next one in the list.
+  aiFallback  Boolean   @default(false)
 }
 
 /// A creator's AI model (writer and/or transcription). Shared by all of their books.
@@ -83,6 +85,9 @@ model Book {
   pollQuestion         String           @default("What should the next book ask?")
   bookNumber           Int              @default(1)
   aiPaused             Boolean          @default(false)
+  /// Optional usage limit for this book: "none", "usd" or "tokens". AI stops when it is reached.
+  usageLimitKind       String           @default("none")
+  usageLimitValue      Float            @default(0)
   showPoll             Boolean          @default(true)
   voiceLimitPerDay     Int              @default(3)
   maxVoiceSeconds      Int              @default(600)

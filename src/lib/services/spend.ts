@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "../db";
 import { getConfig } from "../config";
-import { estimateTokensUsd, estimateTranscribeUsd, voicesPaused, type TokenUsage } from "../ai/spend";
+import { estimateTokensUsd, estimateTranscribeUsd, limitReached, type TokenUsage, type UsageLimit, type UsageLimitKind, type UsageTotals } from "../ai/spend";
 
 export async function totalSpendUsd(): Promise<number> {
   const sum = await prisma.aiUsage.aggregate({ _sum: { estimatedUsd: true } });
@@ -13,9 +13,27 @@ export async function bookSpendUsd(bookId: string): Promise<number> {
   return sum._sum.estimatedUsd ?? 0;
 }
 
-/** One total cap per book. Unset means that book is not capped. There is no daily cap. */
+export async function bookUsage(bookId: string): Promise<UsageTotals> {
+  const sum = await prisma.aiUsage.aggregate({ where: { bookId }, _sum: { estimatedUsd: true, inputTokens: true, outputTokens: true } });
+  return {
+    usd: sum._sum.estimatedUsd ?? 0,
+    tokens: Math.max(0, sum._sum.inputTokens ?? 0) + Math.max(0, sum._sum.outputTokens ?? 0),
+  };
+}
+
+export async function bookLimit(bookId: string): Promise<UsageLimit> {
+  const book = await prisma.book.findUnique({ where: { id: bookId }, select: { usageLimitKind: true, usageLimitValue: true } });
+  const kind = (book?.usageLimitKind ?? "none") as UsageLimitKind;
+  return kind === "usd" || kind === "tokens" ? { kind, value: book?.usageLimitValue ?? 0 } : { kind: "none", value: 0 };
+}
+
+/**
+ * The book's optional usage limit (dollars or tokens), plus AI_SPEND_CAP_USD when the
+ * server operator set one. With neither, AI never stops for spend.
+ */
 export async function bookSpendPaused(bookId: string): Promise<boolean> {
-  return voicesPaused(await bookSpendUsd(bookId), getConfig().spendCapUsd);
+  const [totals, limit] = await Promise.all([bookUsage(bookId), bookLimit(bookId)]);
+  return limitReached(totals, limit, getConfig().spendCapUsd);
 }
 
 export async function spendPaused(bookId: string): Promise<boolean> {

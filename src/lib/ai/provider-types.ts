@@ -28,6 +28,8 @@ export type ProviderPreset = {
   /** How chat requests are sent. */
   api: "openai" | "anthropic";
   hint: string;
+  /** Model ids offered in the picker (first = default). Free text is still allowed. */
+  models: string[];
   /** Hidden from the type picker (registered by the app itself). */
   internal?: boolean;
 };
@@ -35,13 +37,14 @@ export type ProviderPreset = {
 export const PROVIDER_PRESETS: ProviderPreset[] = [
   {
     type: "meta",
-    name: "Meta Model API",
+    name: "Meta · Muse Spark",
     baseUrl: "https://api.meta.ai/v1",
     model: "muse-spark-1.3",
     transcribeModel: "muse-voice-transcribe-1.0",
     keyRequired: true,
     api: "openai",
     hint: "Muse Spark writes; Muse Voice Transcribe hears.",
+    models: ["muse-spark-1.3", "muse-spark-1.3-contributor", "muse-wonder-1.0", "muse-spark-1.2"],
   },
   {
     type: "openai",
@@ -52,6 +55,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     keyRequired: true,
     api: "openai",
     hint: "OpenAI or any host with /chat/completions.",
+    models: ["gpt-6-luna"],
   },
   {
     type: "gemini",
@@ -62,6 +66,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     keyRequired: true,
     api: "openai",
     hint: "Uses Gemini's OpenAI-compatible endpoint.",
+    models: ["gemini-3.8-flash"],
   },
   {
     type: "anthropic",
@@ -72,16 +77,18 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     keyRequired: true,
     api: "anthropic",
     hint: "Native Messages API.",
+    models: ["claude-sonnet-5-5"],
   },
   {
     type: "openrouter",
     name: "OpenRouter",
     baseUrl: "https://openrouter.ai/api/v1",
-    model: "meta-llama/llama-4-maverick",
+    model: "meta/muse-spark-open",
     transcribeModel: "",
     keyRequired: true,
     api: "openai",
-    hint: "One key, many models.",
+    hint: "One key: Muse Spark Open, Llama 4 and more.",
+    models: ["meta/muse-spark-open", "meta/muse-spark-1.3", "meta/muse-glimmer-30b", "meta-llama/llama-4-maverick", "meta-llama/llama-4-scout"],
   },
   {
     type: "groq",
@@ -91,47 +98,52 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     transcribeModel: "whisper-large-v3-turbo",
     keyRequired: true,
     api: "openai",
-    hint: "Fast Llama; also transcribes.",
+    hint: "Fast; also transcribes.",
+    models: ["llama-3.3-70b-versatile", "meta-models/muse-spark-open"],
   },
   {
     type: "fireworks",
     name: "Fireworks",
     baseUrl: "https://api.fireworks.ai/inference/v1",
-    model: "accounts/fireworks/models/llama-v3p3-70b-instruct",
+    model: "accounts/fireworks/models/muse-spark-open",
     transcribeModel: "",
     keyRequired: true,
     api: "openai",
-    hint: "Hosted open models.",
+    hint: "Muse Spark Open, hosted.",
+    models: ["accounts/fireworks/models/muse-spark-open", "accounts/fireworks/models/llama-v3p3-70b-instruct"],
   },
   {
     type: "together",
     name: "Together",
     baseUrl: "https://api.together.xyz/v1",
-    model: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+    model: "meta-models/Muse-Spark-Open-816B-A42B",
     transcribeModel: "openai/whisper-large-v3",
     keyRequired: true,
     api: "openai",
-    hint: "Hosted Llama; also transcribes.",
+    hint: "Muse Spark Open; also transcribes.",
+    models: ["meta-models/Muse-Spark-Open-816B-A42B", "meta-llama/Llama-3.3-70B-Instruct-Turbo"],
   },
   {
     type: "ollama",
     name: "Ollama or local server",
     baseUrl: "http://127.0.0.1:11434/v1",
-    model: "llama3.2:3b",
+    model: "muse-glimmer:30b",
     transcribeModel: "",
     keyRequired: false,
     api: "openai",
     hint: "Ollama, LM Studio, llama.cpp. No key needed.",
+    models: ["muse-glimmer:30b", "llama3.2:3b"],
   },
   {
     type: "local",
     name: "Local Meta model",
     baseUrl: "http://127.0.0.1:43180/v1",
-    model: "llama-3.2-1b",
+    model: "llama-3.2-3b",
     transcribeModel: "",
     keyRequired: false,
     api: "openai",
     hint: "Runs on this computer. Managed under Local models.",
+    models: ["llama-3.2-3b"],
     internal: true,
   },
   {
@@ -143,6 +155,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     keyRequired: false,
     api: "openai",
     hint: "Any OpenAI-compatible URL.",
+    models: [],
   },
 ];
 
@@ -184,3 +197,8 @@ export type ProviderView = {
   lastTestMsg: string;
   lastTestAt: string | null;
 };
+
+/** The picked model runs everything. Later models are only tried when the creator turned fallback on. */
+export function pickChain<T>(chain: T[], fallback: boolean): T[] {
+  return fallback ? chain : chain.slice(0, 1);
+}

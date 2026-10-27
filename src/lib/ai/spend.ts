@@ -31,3 +31,58 @@ export function voicesPaused(spentUsd: number, capUsd: number | null): boolean {
 export function roughTokens(text: string): number {
   return Math.max(1, Math.ceil(text.length / 4));
 }
+
+export type UsageLimitKind = "none" | "usd" | "tokens";
+export type UsageLimit = { kind: UsageLimitKind; value: number };
+export type UsageTotals = { usd: number; tokens: number };
+
+export const MAX_TOKEN_LIMIT = 1e15;
+
+/** Validates a limit from the settings form. Anything empty or zero-ish with kind none means no limit. */
+export function parseUsageLimit(kind: string, value: unknown): UsageLimit {
+  if (kind === "none") return { kind: "none", value: 0 };
+  if (kind !== "usd" && kind !== "tokens") throw new Error("Pick no limit, dollars, or tokens.");
+  const number = typeof value === "string" ? Number(value.replace(/[,_\s$]/g, "")) : Number(value);
+  if (!Number.isFinite(number) || number <= 0) throw new Error("Enter a limit above zero.");
+  if (kind === "usd") {
+    if (number > 1e7) throw new Error("That dollar limit is too large.");
+    return { kind, value: Math.round(number * 100) / 100 };
+  }
+  if (number > MAX_TOKEN_LIMIT) throw new Error("That token limit is too large.");
+  return { kind, value: Math.round(number) };
+}
+
+/** Tokens count input (including cached) plus output, as logged per call. */
+export function usedTokens(row: { inputTokens: number; outputTokens: number }): number {
+  return Math.max(0, row.inputTokens) + Math.max(0, row.outputTokens);
+}
+
+/** True when the book's own limit, or the optional server cap, is used up. */
+export function limitReached(totals: UsageTotals, limit: UsageLimit, serverCapUsd: number | null = null): boolean {
+  if (voicesPaused(totals.usd, serverCapUsd)) return true;
+  if (limit.kind === "usd") return totals.usd >= limit.value;
+  if (limit.kind === "tokens") return totals.tokens >= limit.value;
+  return false;
+}
+
+/** 0..1 share of the limit used, or null with no limit. */
+export function limitShare(totals: UsageTotals, limit: UsageLimit): number | null {
+  if (limit.kind === "none" || limit.value <= 0) return null;
+  const used = limit.kind === "usd" ? totals.usd : totals.tokens;
+  return Math.min(1, used / limit.value);
+}
+
+export function compactTokens(value: number): string {
+  if (value >= 1e9) return `${+(value / 1e9).toFixed(value >= 1e10 ? 0 : 1)}B`;
+  if (value >= 1e6) return `${+(value / 1e6).toFixed(value >= 1e7 ? 0 : 1)}M`;
+  if (value >= 1e3) return `${+(value / 1e3).toFixed(value >= 1e4 ? 0 : 1)}K`;
+  return String(Math.round(value));
+}
+
+export function usageLine(totals: UsageTotals, limit: UsageLimit): string {
+  const usd = totals.usd > 0 && totals.usd < 0.01 ? "<$0.01" : `$${totals.usd.toFixed(2)}`;
+  const tokens = `${compactTokens(totals.tokens)} tokens`;
+  if (limit.kind === "usd") return `${usd} of $${limit.value.toFixed(2)}`;
+  if (limit.kind === "tokens") return `${tokens} of ${compactTokens(limit.value)}`;
+  return `${usd} · ${tokens}`;
+}

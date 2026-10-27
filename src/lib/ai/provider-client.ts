@@ -25,7 +25,8 @@ export class ProviderError extends Error {
 type Fetch = typeof fetch;
 
 function timeoutFor(type: ProviderType, ms?: number) {
-  return ms ?? (type === "local" || type === "ollama" ? 600_000 : 180_000);
+  // A local model on a CPU can need many minutes for a whole book.
+  return ms ?? (type === "local" || type === "ollama" ? 1_800_000 : 180_000);
 }
 
 async function readError(response: Response): Promise<string> {
@@ -48,6 +49,36 @@ function openAiHeaders(target: CallTarget): Record<string, string> {
     headers["X-Title"] = "Book by the People";
   }
   return headers;
+}
+
+/** Reads an OpenAI-style server-sent event stream into one reply. */
+async function readStream(response: Response): Promise<{ content: string; usage: TokenUsage | null }> {
+  const text = await response.text();
+  let content = "";
+  let usage: TokenUsage | null = null;
+  for (const line of text.split("\n")) {
+    const raw = line.trim();
+    if (!raw.startsWith("data:")) continue;
+    const payload = raw.slice(5).trim();
+    if (!payload || payload === "[DONE]") continue;
+    try {
+      const chunk = JSON.parse(payload) as {
+        choices?: { delta?: { content?: string | null } }[];
+        usage?: { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } } | null;
+      };
+      content += chunk.choices?.[0]?.delta?.content ?? "";
+      if (chunk.usage) {
+        usage = {
+          inputTokens: chunk.usage.prompt_tokens ?? 0,
+          outputTokens: chunk.usage.completion_tokens ?? 0,
+          cachedTokens: chunk.usage.prompt_tokens_details?.cached_tokens ?? 0,
+        };
+      }
+    } catch {
+      // skip a broken line
+    }
+  }
+  return { content: content.trim(), usage };
 }
 
 /** Chat completion that should return JSON. Falls back through looser request shapes when a host rejects one. */
@@ -105,6 +136,10 @@ export async function chatJson(
     { ...base, response_format: { type: "json_object" } },
     { ...base },
   ];
+  // Local models on a CPU can take longer than Node's 5-minute wait for response headers.
+  // Streaming sends headers at once, so long local runs don't fail with "fetch failed".
+  const stream = target.type === "local" || target.type === "ollama";
+  if (stream) for (const shape of shapes) Object.assign(shape, { stream: true, stream_options: { include_usage: true } });
   let lastError: ProviderError | null = null;
   for (const [index, body] of shapes.entries()) {
     const response = await fetcher(`${target.baseUrl}/chat/completions`, {
@@ -113,6 +148,15 @@ export async function chatJson(
       headers: openAiHeaders(target),
       body: JSON.stringify(body),
     });
+    if (response.ok && (response.headers.get("content-type") ?? "").includes("text/event-stream")) {
+      const { content, usage } = await readStream(response);
+      if (!content) throw new ProviderError(target.label, 0, "returned an empty reply.");
+      return {
+        content,
+        model: target.model,
+        usage: usage ?? { inputTokens: roughTokens(input.system + input.user), outputTokens: roughTokens(content), cachedTokens: 0 },
+      };
+    }
     if (response.ok) {
       const data = (await response.json()) as {
         choices?: { message?: { content?: string | null } }[];
@@ -267,7 +311,7 @@ export async function testTarget(
         user: "ping",
         schemaName: "ping",
         schema: { type: "object", additionalProperties: false, required: ["ok"], properties: { ok: { type: "boolean" } } },
-        maxTokens: 400,
+        maxTokens: target.type === "local" || target.type === "ollama" ? 1500 : 400,
         timeoutMs: target.type === "local" || target.type === "ollama" ? 180_000 : 45_000,
       },
       fetcher,
