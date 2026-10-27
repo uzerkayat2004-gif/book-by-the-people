@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -9,7 +10,17 @@ import { prisma } from "../db";
 import { putAudio } from "../storage";
 
 const exec = promisify(execFile);
-const FONT = "/usr/share/fonts/truetype/macos/Inter-Bold.ttf";
+const FONT_CANDIDATES = [
+  process.env.MEDIA_FONT ?? "",
+  "/usr/share/fonts/truetype/macos/Inter-Bold.ttf",
+  "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+  "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+  "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+  "/Library/Fonts/Arial Bold.ttf",
+];
+const FONT_FILE = FONT_CANDIDATES.find((file) => file && existsSync(file)) ?? "";
+/** drawtext font option; falls back to fontconfig's default when no file is found. */
+const FONT = FONT_FILE ? FONT_FILE.replace(/:/g, "\\:").replace(/ /g, "\\ ") : "";
 
 export function narrationScript(document: BookDocument): string {
   const parts: string[] = [];
@@ -99,7 +110,7 @@ export async function renderReleaseMedia(bookId: string, document: BookDocument)
         "-i",
         "color=c=0x9b1c24:s=854x480:d=8",
         "-filter_complex",
-        `[1:v]drawtext=fontfile=${FONT}:text='BOOK BY THE PEOPLE':fontsize=28:fontcolor=white:x=(w-text_w)/2:y=150,drawtext=fontfile=${FONT}:text='${title}':fontsize=22:fontcolor=white:x=(w-text_w)/2:y=210,drawtext=fontfile=${FONT}:text='${chapters}':fontsize=16:fontcolor=white:x=(w-text_w)/2:y=270[v]`,
+        `[1:v]drawtext=${FONT ? `fontfile=${FONT}:` : ""}text='BOOK BY THE PEOPLE':fontsize=28:fontcolor=white:x=(w-text_w)/2:y=150,drawtext=${FONT ? `fontfile=${FONT}:` : ""}text='${title}':fontsize=22:fontcolor=white:x=(w-text_w)/2:y=210,drawtext=${FONT ? `fontfile=${FONT}:` : ""}text='${chapters}':fontsize=16:fontcolor=white:x=(w-text_w)/2:y=270[v]`,
         "-map",
         "[v]",
         "-map",
@@ -122,13 +133,15 @@ export async function renderReleaseMedia(bookId: string, document: BookDocument)
     video = null;
   }
 
-  const audioKey = `book-${bookId}-audiobook.${audioExt}`;
-  await putAudio(audioKey, audio, audioMime);
-  const data: { audiobookKey: string; audiobookBytes: number; videoKey?: string; videoBytes?: number } = {
-    audiobookKey: audioKey,
-    audiobookBytes: audio.length,
-  };
-  if (video) {
+  const current = await prisma.book.findUnique({ where: { id: bookId }, select: { audiobookName: true, videoName: true } });
+  const data: { audiobookKey?: string; audiobookBytes?: number; videoKey?: string; videoBytes?: number } = {};
+  if (!current?.audiobookName) {
+    const audioKey = `book-${bookId}-audiobook.${audioExt}`;
+    await putAudio(audioKey, audio, audioMime);
+    data.audiobookKey = audioKey;
+    data.audiobookBytes = audio.length;
+  }
+  if (video && !current?.videoName) {
     const videoKey = `book-${bookId}-video.mp4`;
     await putAudio(videoKey, video, "video/mp4");
     data.videoKey = videoKey;

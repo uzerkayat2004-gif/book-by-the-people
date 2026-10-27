@@ -6,6 +6,7 @@ import { canAcceptVoice, validateSourcedQuote } from "../book/lifecycle";
 import { shouldTranslate, spokenStartWord, wavDurationMs } from "../book/speech";
 import type { Turn } from "../book/types";
 import { prisma } from "../db";
+import { FAMOUS_SAMPLES, SAMPLE_PREFIX, xPostDate } from "../famous-quotes";
 import { AppError } from "../errors";
 import { countryByCode } from "../countries";
 import { languageByCode } from "../languages";
@@ -89,7 +90,10 @@ export async function ingestRecording(input: {
   if (!gate.ok) throw new AppError(gate.reason, 403);
   if (await spendPaused(book.id)) throw new AppError("Voices are paused right now", 429);
   const left = await voicesLeftToday(book.id, input.viewerId);
-  if (left <= 0) throw new AppError("You've used today's 3 voices. 0 left today.", 429);
+  if (left <= 0) {
+    const limit = book.voiceLimitPerDay;
+    throw new AppError(`You've used today's ${limit} ${limit === 1 ? "voice" : "voices"}. 0 left today.`, 429);
+  }
 
   if (input.audio.length < 80 || input.audio.length > MAX_BYTES) {
     throw new AppError("That recording is empty or larger than 32 MB.");
@@ -97,7 +101,15 @@ export async function ingestRecording(input: {
   const durationMs = Math.round(
     input.durationMs || wavDurationMs(input.audio) || 0,
   );
-  if (durationMs > MAX_MS) throw new AppError("Keep the recording under 10 minutes.");
+  const maxMs = Math.min(MAX_MS, Math.max(10, book.maxVoiceSeconds || 600) * 1000);
+  if (durationMs > maxMs) {
+    const seconds = Math.round(maxMs / 1000);
+    throw new AppError(
+      seconds % 60 === 0
+        ? `Keep the recording under ${seconds / 60} ${seconds === 60 ? "minute" : "minutes"}.`
+        : `Keep the recording under ${seconds} seconds.`,
+    );
+  }
 
   const profile = cleanProfile(input);
   const languageName = languageByCode(challenge.language).name;
@@ -117,6 +129,7 @@ export async function ingestRecording(input: {
     clientTranscript: getConfig().aiMode === "mock" ? input.clientTranscript : null,
     keywords: [name],
     seed: `${book.id}:${name}:${challenge.id}`,
+    bookId: book.id,
   };
 
   let heard;
@@ -219,6 +232,7 @@ async function finishTranscript(
   },
 ) {
   try {
+    const owner = await prisma.voice.findUnique({ where: { id: voiceId }, select: { bookId: true } });
     const heard = await transcribeVoice({
       audio: input.audio,
       language: input.language,
@@ -227,6 +241,7 @@ async function finishTranscript(
       clientTranscript: input.clientTranscript,
       seed: input.seed,
       startWord: input.startWord,
+      bookId: owner?.bookId,
     });
     const voice = await prisma.voice.findUnique({ where: { id: voiceId } });
     if (heard.audioMs > 0 || heard.usage.inputTokens > 0) {
@@ -282,8 +297,12 @@ export async function addSourcedQuote(input: {
 }) {
   const book = await prisma.book.findUnique({ where: { id: input.bookId } });
   if (!book || book.creatorId !== input.userId) throw new AppError("That book is not in your studio.", 404);
-  if (book.type !== "FAMOUS") throw new AppError("Sourced quotes belong on a famous-voices book.");
-  const check = validateSourcedQuote(input);
+  const xDate = xPostDate(input.sourceUrl);
+  if (book.type !== "FAMOUS" && !xDate) {
+    throw new AppError("Only real X reply links can be added to this book. Famous books take any public source.");
+  }
+  if (xDate && !(input.sourceDate ?? "").trim()) input = { ...input, sourceDate: xDate };
+  const check = validateSourcedQuote({ ...input, requireDate: true });
   if (!check.ok) throw new AppError(check.error);
   const language = languageByCode(input.language).code;
   const text = input.text.trim();
@@ -318,7 +337,23 @@ export async function addSourcedQuote(input: {
 export async function setVoiceHidden(voiceId: string, userId: string, hidden: boolean) {
   const voice = await prisma.voice.findUnique({ include: { book: true }, where: { id: voiceId } });
   if (!voice || voice.book.creatorId !== userId) throw new AppError("That voice is not in your studio.", 404);
-  return prisma.voice.update({ where: { id: voiceId }, data: { hidden } });
+  return prisma.voice.update({
+    where: { id: voiceId },
+    data: hidden
+      ? { hidden: true, decision: "hidden", status: voice.status === "FAILED" ? "FAILED" : "HIDDEN" }
+      : { hidden: false },
+  });
+}
+
+/** The creator's call on a "needs you" voice: use it in the book. */
+export async function approveVoice(voiceId: string, userId: string) {
+  const voice = await prisma.voice.findUnique({ include: { book: true }, where: { id: voiceId } });
+  if (!voice || voice.book.creatorId !== userId) throw new AppError("That voice is not in your studio.", 404);
+  if (!voice.startWordPassed) throw new AppError("This voice never said its start word, so it can't be used.");
+  return prisma.voice.update({
+    where: { id: voiceId },
+    data: { hidden: false, decision: "approved", status: "READY", rejectReason: null },
+  });
 }
 
 export async function deleteVoice(voiceId: string, userId: string) {
@@ -420,4 +455,30 @@ function extensionFor(mime: string): string {
   if (mime.includes("mp4") || mime.includes("m4a")) return ".m4a";
   if (mime.includes("ogg")) return ".ogg";
   return ".webm";
+}
+
+/** Mock mode only: adds the curated public-domain quotes, clearly labeled as samples. */
+export async function addSampleQuotes(bookId: string, userId: string) {
+  const book = await prisma.book.findUnique({ where: { id: bookId } });
+  if (!book || book.creatorId !== userId) throw new AppError("That book is not in your studio.", 404);
+  if (book.type !== "FAMOUS") throw new AppError("Sample quotes are for famous books.");
+  if (getConfig().aiMode !== "mock") throw new AppError("Samples are only offered in mock mode. Paste real quotes with their source.");
+  const existing = await prisma.voice.findMany({ where: { bookId }, select: { sourceUrl: true } });
+  const have = new Set(existing.map((voice) => voice.sourceUrl));
+  let added = 0;
+  for (const quote of FAMOUS_SAMPLES) {
+    if (have.has(quote.url)) continue;
+    await addSourcedQuote({
+      bookId,
+      userId,
+      speaker: quote.speaker,
+      text: quote.text,
+      sourceUrl: quote.url,
+      sourceTitle: `${SAMPLE_PREFIX}${quote.title}`,
+      sourceDate: quote.date,
+      language: "en",
+    });
+    added += 1;
+  }
+  return added;
 }

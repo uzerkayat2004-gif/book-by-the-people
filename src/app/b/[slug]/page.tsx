@@ -49,5 +49,5 @@ export default async function BookPage({
     bookId: loaded.id,
     yourVote: vote,
   });
-  return <BookHome {...model} />;
+  return <BookHome {...model} title={loaded.title} />;
 }

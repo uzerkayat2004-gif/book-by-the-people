@@ -2,6 +2,8 @@ import { notFound, redirect } from "next/navigation";
 import { StudioDesk } from "@/components/live-studio";
 import { getCurrentUser } from "@/lib/auth";
 import { getConfig } from "@/lib/config";
+import { backupAge } from "@/lib/services/backups";
+import { canStoreKeys } from "@/lib/secret-box";
 import { prisma } from "@/lib/db";
 import { planChapters } from "@/lib/book/plan";
 import type { SourceVoice } from "@/lib/book/types";
@@ -37,6 +39,7 @@ export default async function StudioBookPage({
   });
   const spent = await bookSpendUsd(book.id);
   const cap = getConfig().spendCapUsd;
+  const hasAiKey = Boolean((await prisma.book.findUnique({ where: { id: book.id }, select: { aiKeyCipher: true } }))?.aiKeyCipher);
   const paused = await spendPaused(book.id);
   let log: string[] = [];
   try {
@@ -120,6 +123,14 @@ export default async function StudioBookPage({
           decision: voice.decision,
           themeLabel: voice.themeLabel,
           pipelineStep: voice.pipelineStep,
+          sourceTitle: voice.sourceTitle,
+          impersonation: (() => {
+            try {
+              return Boolean((JSON.parse(voice.checkJson || "{}") as { impersonation?: boolean }).impersonation);
+            } catch {
+              return false;
+            }
+          })(),
         }))}
         drafts={book.drafts.map((draft) => ({
           id: draft.id,
@@ -134,13 +145,15 @@ export default async function StudioBookPage({
         canChangeType={book.voices.length === 0}
         spend={{
           usd: spent < 0.01 ? "<$0.01" : `$${spent.toFixed(2)}`,
-          cap: cap === null ? "$20.00" : `$${cap.toFixed(2)}`,
+          cap: cap === null ? "no cap" : `$${cap.toFixed(2)}`,
         }}
         chapters={document?.chapters.map((chapter) => chapter.title) ?? []}
         themes={themes}
         books={mine}
         backups={book.backups.map((backup) => ({
-          label: backup.label,
+          id: backup.id,
+          label: backupAge(backup.createdAt),
+          restorable: Boolean(backup.snapshot),
           voices: backup.voiceCount,
           note: backup.note,
         }))}
@@ -149,8 +162,18 @@ export default async function StudioBookPage({
           videoHref: book.videoKey ? `/api/media/${book.slug}/video` : null,
           audioBytes: book.audiobookBytes,
           videoBytes: book.videoBytes,
-          audioName: book.audiobookKey?.endsWith(".mp3") ? `${book.slug}.mp3` : book.audiobookKey ? `${book.slug}.wav` : "",
-          videoName: book.videoKey ? `${book.slug}.mp4` : "",
+          audioName:
+            book.audiobookName ||
+            (book.audiobookKey?.endsWith(".mp3") ? `${book.slug}.mp3` : book.audiobookKey ? `${book.slug}.wav` : ""),
+          videoName: book.videoName || (book.videoKey ? `${book.slug}.mp4` : ""),
+        }}
+        settings={{
+          language: book.language,
+          voiceLimitPerDay: book.voiceLimitPerDay,
+          maxVoiceSeconds: book.maxVoiceSeconds,
+          hasAiKey,
+          canStoreKeys: canStoreKeys(),
+          mockMode: getConfig().aiMode === "mock",
         }}
         aiPaused={book.aiPaused}
         showPoll={book.showPoll}

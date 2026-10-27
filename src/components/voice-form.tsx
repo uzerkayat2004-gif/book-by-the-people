@@ -6,40 +6,10 @@ import { useRouter } from "next/navigation";
 import { IconGoogle, IconLock } from "@/components/icons";
 import { COUNTRIES, flagEmoji } from "@/lib/countries";
 import { LANGUAGES } from "@/lib/languages";
+import { SPEAK_LANGUAGES } from "@/lib/speak-languages";
 import { AGE_BANDS, regionsFor } from "@/lib/regions";
 
-const SPEAK_LANGUAGES = [
-  { code: "en", label: "English" },
-  { code: "hi", label: "हिन्दी Hindi" },
-  { code: "fr", label: "Français French" },
-  { code: "ar", label: "العربية Arabic" },
-  { code: "id", label: "Bahasa Indonesia" },
-  { code: "ms", label: "Bahasa Melayu" },
-  { code: "bn", label: "বাংলা Bengali" },
-  { code: "zh", label: "中文 Chinese" },
-  { code: "de", label: "Deutsch German" },
-  { code: "tr", label: "Türkçe Turkish" },
-  { code: "tl", label: "Filipino" },
-  { code: "it", label: "Italiano Italian" },
-  { code: "ja", label: "日本語 Japanese" },
-  { code: "sw", label: "Kiswahili Swahili" },
-  { code: "ko", label: "한국어 Korean" },
-  { code: "mr", label: "मराठी Marathi" },
-  { code: "nl", label: "Nederlands Dutch" },
-  { code: "ne", label: "नेपाली Nepali" },
-  { code: "es", label: "Español Spanish" },
-  { code: "fa", label: "فارسی Persian" },
-  { code: "pl", label: "Polski Polish" },
-  { code: "ru", label: "Русский Russian" },
-  { code: "pt", label: "Português Portuguese" },
-  { code: "sv", label: "Svenska Swedish" },
-  { code: "vi", label: "Tiếng Việt Vietnamese" },
-  { code: "ta", label: "தமிழ் Tamil" },
-  { code: "te", label: "తెలుగు Telugu" },
-  { code: "th", label: "ไทย Thai" },
-  { code: "uk", label: "Українська Ukrainian" },
-  { code: "ur", label: "اردو Urdu" },
-];
+
 
 const SPEECH_LANG: Record<string, string> = {
   en: "en-US",
@@ -95,6 +65,8 @@ export function VoiceForm({
   presetName = "",
   presetWord = null,
   leftToday = 3,
+  defaultLanguage = "en",
+  maxSeconds = 600,
 }: {
   bookId: string;
   slug: string;
@@ -109,9 +81,13 @@ export function VoiceForm({
   presetName?: string;
   presetWord?: string | null;
   leftToday?: number;
+  defaultLanguage?: string;
+  maxSeconds?: number;
 }) {
+  const maxShort = maxSeconds % 60 === 0 ? `${maxSeconds / 60} min` : `${maxSeconds} sec`;
+  const maxLong = maxSeconds % 60 === 0 ? `${maxSeconds / 60} ${maxSeconds === 60 ? "minute" : "minutes"}` : `${maxSeconds} seconds`;
   const router = useRouter();
-  const [language, setLanguage] = useState("en");
+  const [language, setLanguage] = useState(defaultLanguage);
   const [startWord, setStartWord] = useState("");
   const [englishGloss, setEnglishGloss] = useState("");
   const [languageName, setLanguageName] = useState("English");
@@ -162,10 +138,18 @@ export function VoiceForm({
   useEffect(() => {
     if (!recording) return;
     const timer = window.setInterval(() => {
-      setSeconds(Math.floor((Date.now() - startedRef.current) / 1000));
+      const elapsed = Math.floor((Date.now() - startedRef.current) / 1000);
+      setSeconds(elapsed);
+      if (elapsed >= maxSeconds) {
+        speechRef.current?.stop();
+        speechRef.current = null;
+        recorderRef.current?.stop();
+        recorderRef.current = null;
+        setRecording(false);
+      }
     }, 250);
     return () => window.clearInterval(timer);
-  }, [recording]);
+  }, [recording, maxSeconds]);
 
   async function startRecording() {
     setError(null);
@@ -325,7 +309,7 @@ export function VoiceForm({
             <span className="rec" />
             Start talking
           </button>
-          <div className="under">Up to 10 min</div>
+          <div className="under">Up to {maxShort}</div>
         </div>
       </main>
     );
@@ -545,7 +529,7 @@ export function VoiceForm({
           </button>
         )}
         {surface === "live" && !file ? (
-          <div className="under">Up to 10 min · {leftToday} left today</div>
+          <div className="under">Up to {maxShort} · {leftToday} left today</div>
         ) : (
           <>
             <div className="under">
@@ -574,7 +558,7 @@ export function VoiceForm({
             <button className="btn btn--red btn--big btn--block" type="button" onClick={() => void submit()} disabled={busy || !file || !consent} style={{ marginTop: 12 }}>
               {busy ? "Saving the voice…" : "Add this voice"}
             </button>
-            <div className="under">Up to 10 minutes · say the word, then answer</div>
+            <div className="under">Up to {maxLong} · say the word, then answer</div>
           </>
         )}
         {surface === "live" && !file && error ? (

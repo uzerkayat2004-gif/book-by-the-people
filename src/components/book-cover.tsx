@@ -2,10 +2,6 @@
 
 import { useId } from "react";
 
-function questionLines(text: string) {
-  return splitLines(text).slice(0, 3);
-}
-
 function splitLines(text: string) {
   const words = text.split(" ");
   if (words.length < 2) return [text];
@@ -29,18 +25,21 @@ export function BookCover({
   countries,
   names,
   compact = false,
+  title,
 }: {
   question: string;
   people: number;
   countries: number;
   names: string[];
   compact?: boolean;
+  title?: string;
 }) {
   const id = useId().replace(/:/g, "");
-  const lines = ["BOOK BY", "THE PEOPLE"];
+  const custom = title && title.trim().toLowerCase() !== "book by the people" ? title.trim().toUpperCase() : null;
+  const lines = custom ? (custom.length > 12 ? splitLines(custom) : [custom]) : ["BOOK BY", "THE PEOPLE"];
   const sub = splitLines(question);
   const longest = Math.max(...lines.map((line) => line.length));
-  const size = Math.min(52, 236 / (longest * 0.52));
+  const size = Math.min(50, 204 / (longest * 0.4));
   const texture = names.length ? names.join("  ·  ") : "voices";
   const nameLines = Array.from({ length: 13 }, (_, index) => texture.slice((index * 17) % Math.max(texture.length, 1)).padEnd(48, " · "));
   return (
@@ -82,8 +81,8 @@ export function BookCover({
         <path d="M326 56 352 40V500l-26 15z" fill={`url(#bkPages${id})`} />
         <g clipPath={`url(#bkClip${id})`}>
           <rect x="30" y="50" width="300" height="470" fill={`url(#bkCov${id})`} />
-          {compact ? null : (
-          <g fontFamily="Geist Mono, monospace" fontSize="5.2" fill="#fff" fillOpacity=".11">
+          {(
+          <g fontFamily="Geist Mono, monospace" fontSize="5.2" fill="#fff" fillOpacity=".05">
             {nameLines.map((line, index) => (
               <text key={index} x="52" y={120 + index * 7.4}>
                 {line}
@@ -92,47 +91,44 @@ export function BookCover({
           </g>
           )}
           <rect x="30" y="50" width="16" height="470" fill={`url(#bkSpine${id})`} />
-          <g transform="translate(64 74) scale(.7)" fill="#fbe4e1">
-            <path d="M8 27C15 23.2 23.2 23.4 30.4 27.8V51.5C23.2 47.2 15 47 8 50.6Z" />
-            <path d="M56 27C49 23.2 40.8 23.4 33.6 27.8V51.5C40.8 47.2 49 47 56 50.6Z" />
-            <rect x="21.6" y="13.5" width="4.8" height="7.5" rx="2.4" />
-            <rect x="29.6" y="8" width="4.8" height="13" rx="2.4" />
-            <rect x="37.6" y="13.5" width="4.8" height="7.5" rx="2.4" />
-          </g>
-          <text x={compact ? 292 : 306} y={compact ? 88 : 96} textAnchor="end" fontFamily="Geist Mono, monospace" fontSize={compact ? 8 : 10.5} letterSpacing={compact ? 1.6 : 2.4} fill="#fff" fillOpacity=".78">
+          <clipPath id={`bkIcon${id}`}>
+            <rect x="66" y="80" width="44" height="44" rx="10" />
+          </clipPath>
+          <rect x="66" y="80" width="44" height="44" rx="10" fill="#0b0b0d" />
+          <image href="/apple-touch-icon.png" x="66" y="80" width="44" height="44" clipPath={`url(#bkIcon${id})`} preserveAspectRatio="xMidYMid slice" />
+          <text x="306" y="98" textAnchor="end" fontFamily="Geist Mono, monospace" fontSize="10" letterSpacing="4.2" fill="#fff" fillOpacity=".72">
             VOL. 1
           </text>
           {lines.map((line, index) => (
             <text
               key={line}
-              x={compact ? 54 : 64}
-              y={(compact ? 168 : 250) + index * (compact ? 28 : size * 0.92)}
+              x="62"
+              y={304 + index * size * 0.86}
               fontFamily="Archivo, sans-serif"
               fontWeight="850"
-              fontSize={compact ? 26 : size}
-              letterSpacing={compact ? -0.4 : 0}
+              fontSize={size}
+              letterSpacing="-0.3"
               fill="#fcebe8"
-              style={{ fontStretch: compact ? "68%" : "64%" }}
+              style={{ fontStretch: "64%" }}
             >
               {line}
             </text>
           ))}
-          {(compact ? questionLines(question) : sub).map((line, index) => (
-            <text key={line} x={compact ? 54 : 65} y={(compact ? 236 : 250 + lines.length * size * 0.92 + 28) + index * (compact ? 14 : 24)} fontFamily="Newsreader, serif" fontStyle="italic" fontSize={compact ? 11 : 18} letterSpacing={compact ? 0.2 : 0} fill="#fff" fillOpacity=".92">
+          {sub.slice(0, 3).map((line, index) => (
+            <text key={line} x="63" y={304 + (lines.length - 1) * size * 0.86 + 38 + index * 25} fontFamily="Newsreader, serif" fontStyle="italic" fontSize="19.5" fill="#fff" fillOpacity=".9">
               {line}
             </text>
           ))}
-          {compact ? null : (
-            <>
-          <path d="M65 456H306" stroke="#fff" strokeOpacity=".3" />
-          <text x="65" y="478" fontFamily="Geist, sans-serif" fontSize="12.5" fill="#fff" fillOpacity=".86">
-            By <tspan fontWeight="700">{people.toLocaleString("en-US")}</tspan> people
+          <path d="M63 455H306" stroke="#fff" strokeOpacity=".28" />
+          <text x="63" y="482" fontFamily="Geist, sans-serif" fontSize="11.5" fill="#fff" fillOpacity=".88">
+            {people > 0 ? (
+              <>
+                by <tspan fontWeight="700">{people.toLocaleString("en-US")}</tspan> {people === 1 ? "person" : "people"} from <tspan fontWeight="700">{countries}</tspan> {countries === 1 ? "country" : "countries"}
+              </>
+            ) : compact ? null : (
+              "by the people · opens soon"
+            )}
           </text>
-          <text x="65" y="496" fontFamily="Geist, sans-serif" fontSize="12.5" fill="#fff" fillOpacity=".86">
-            from <tspan fontWeight="700">{countries}</tspan> countries
-          </text>
-            </>
-          )}
           <rect x="30" y="50" width="300" height="470" fill={`url(#bkLight${id})`} />
         </g>
         <path d="M33 50H322a8 8 0 0 1 8 8V512a8 8 0 0 1-8 8H33a3 3 0 0 1-3-3V53a3 3 0 0 1 3-3z" fill="none" stroke="#fff" strokeOpacity=".14" />

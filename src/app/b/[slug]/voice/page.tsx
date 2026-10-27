@@ -48,6 +48,8 @@ export default async function VoicePage({
       opens={opens}
       closed={!gate.ok}
       leftToday={await voicesLeftToday(loaded.id, user?.id ?? null)}
+      defaultLanguage={loaded.language}
+      maxSeconds={loaded.maxVoiceSeconds}
     />
   );
 

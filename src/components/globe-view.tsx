@@ -1,26 +1,32 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import createGlobe from "cobe";
-import landDots from "@/lib/land-dots.json";
+import { isLand } from "@/lib/land-mask";
 
 type Pin = { name: string; lat: number; lng: number };
 
-const BASE = (landDots as [number, number][]).filter(([lat]) => Math.abs(lat) < 78);
-const DOTS: [number, number][] = [];
-for (const [lat, lng] of BASE) {
-  for (let row = -2; row <= 2; row += 1) {
-    for (let col = -2; col <= 2; col += 1) {
-      DOTS.push([lat + row * 0.42, lng + col * 0.55]);
-    }
+/** Globe radius as a share of the canvas width. The CSS rim glow in globe.css follows it. */
+const R = 0.47;
+
+/** Evenly spaced points on the sphere (Fibonacci lattice), kept where the map has land. */
+function landPoints(samples: number): [number, number][] {
+  const out: [number, number][] = [];
+  const golden = Math.PI * (3 - Math.sqrt(5));
+  for (let index = 0; index < samples; index += 1) {
+    const y = 1 - ((index + 0.5) / samples) * 2;
+    const lat = (Math.asin(y) * 180) / Math.PI;
+    const lng = ((((index * golden * 180) / Math.PI) % 360) + 540) % 360 - 180;
+    if (Math.abs(lat) < 84 && isLand(lat, lng)) out.push([lat, lng]);
   }
+  return out;
 }
+const DOTS = landPoints(38000);
 
 function project(lat: number, lng: number, phi: number, theta: number) {
   const la = (lat * Math.PI) / 180;
   const lo = (lng * Math.PI) / 180 - Math.PI;
   const o = Math.cos(la);
-  const radius = 0.8;
+  const radius = R * 2;
   const x = -o * Math.cos(lo) * radius;
   const y = Math.sin(la) * radius;
   const z = o * Math.sin(lo) * radius;
@@ -37,12 +43,10 @@ function project(lat: number, lng: number, phi: number, theta: number) {
 export function GlobeView({ pins }: { pins: Pin[] }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const flatRef = useRef<HTMLCanvasElement>(null);
-  const webRef = useRef<HTMLCanvasElement>(null);
-  const phiRef = useRef(-2.8816);
-  const thetaRef = useRef(0.34);
+  const phiRef = useRef(-3.1);
+  const thetaRef = useRef(0.42);
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const [tip, setTip] = useState<{ name: string; x: number; y: number; left: boolean } | null>(null);
-  const [webgl, setWebgl] = useState(false);
   const pinsRef = useRef(pins);
   pinsRef.current = pins;
 
@@ -59,7 +63,7 @@ export function GlobeView({ pins }: { pins: Pin[] }) {
       if (!drag.current && !frozen) phiRef.current += 0.11 * dt;
       const size = Math.max(80, Math.round(wrap.clientWidth));
       const dpr = Math.min(2, window.devicePixelRatio || 1);
-      if (flat.width !== size * dpr) {
+      if (flat.width !== size * dpr || flat.height !== size * dpr) {
         flat.width = size * dpr;
         flat.height = size * dpr;
       }
@@ -69,45 +73,68 @@ export function GlobeView({ pins }: { pins: Pin[] }) {
       ctx.clearRect(0, 0, width, width);
       const phi = phiRef.current;
       const theta = thetaRef.current;
-      const radius = width * 0.4;
+      const radius = width * R;
       const cx = width / 2;
       const cy = width / 2;
-      const shade = ctx.createRadialGradient(cx - radius * 0.32, cy - radius * 0.34, radius * 0.08, cx, cy, radius);
-      shade.addColorStop(0, "#2a2c33");
-      shade.addColorStop(0.55, "#14161a");
-      shade.addColorStop(1, "#090a0c");
+      // Sphere body: near-black, lit to a soft grey toward the lower right like the live globe.
+      const shade = ctx.createRadialGradient(cx + radius * 0.18, cy + radius * 0.28, radius * 0.05, cx, cy, radius);
+      shade.addColorStop(0, "#26282d");
+      shade.addColorStop(0.6, "#16171b");
+      shade.addColorStop(1, "#0b0c0e");
       ctx.fillStyle = shade;
       ctx.beginPath();
       ctx.arc(cx, cy, radius, 0, Math.PI * 2);
       ctx.fill();
       ctx.save();
       ctx.beginPath();
-      ctx.arc(cx, cy, radius - 1, 0, Math.PI * 2);
+      ctx.arc(cx, cy, radius - 0.5, 0, Math.PI * 2);
       ctx.clip();
-      ctx.strokeStyle = "rgba(236,238,242,.95)";
-      ctx.lineWidth = Math.max(0.7, width * 0.0011);
-      ctx.lineCap = "round";
+      const dot = Math.max(1.1, width * 0.0055);
+      ctx.fillStyle = "#f4f3f0";
       for (const [lat, lng] of DOTS) {
         const point = project(lat, lng, phi, theta);
+        if (point.depth < 0.01) continue;
+        const facing = point.depth / (R * 2);
+        ctx.globalAlpha = Math.min(1, 0.3 + facing * 1.05);
+        const size = dot * (0.55 + 0.45 * facing);
+        ctx.fillRect(point.x * width - size / 2, point.y * width - size / 2, size, size);
+      }
+      ctx.globalAlpha = 1;
+      const drawn: Pin[] = [];
+      for (const pin of pinsRef.current) {
+        // One marker per place: voices from the same area share a dot, as on the live globe.
+        if (drawn.some((other) => Math.abs(other.lat - pin.lat) < 6 && Math.abs(other.lng - pin.lng) < 6)) continue;
+        drawn.push(pin);
+        const point = project(pin.lat, pin.lng, phi, theta);
         if (point.depth < 0.04) continue;
         const px = point.x * width;
         const py = point.y * width;
-        const hatch = Math.max(1.4, width * 0.0034 * (0.55 + point.depth));
-        ctx.globalAlpha = 0.35 + point.depth * 0.6;
+        const r = Math.max(2.2, width * 0.0085);
+        const glow = ctx.createRadialGradient(px, py, 0, px, py, r * 3);
+        glow.addColorStop(0, "rgba(255,59,48,.55)");
+        glow.addColorStop(1, "rgba(255,59,48,0)");
+        ctx.fillStyle = glow;
         ctx.beginPath();
-        ctx.moveTo(px - hatch, py + hatch * 0.35);
-        ctx.lineTo(px + hatch * 0.2, py - hatch);
-        ctx.stroke();
-      }
-      ctx.globalAlpha = 1;
-      for (const pin of pinsRef.current) {
-        const point = project(pin.lat, pin.lng, phi, theta);
-        if (point.depth < 0.08) continue;
+        ctx.arc(px, py, r * 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#ff2d24";
         ctx.beginPath();
-        ctx.fillStyle = "rgba(255,70,66,.95)";
-        ctx.arc(point.x * width, point.y * width, Math.max(2.4, width * 0.009), 0, Math.PI * 2);
+        ctx.arc(px, py, r, 0, Math.PI * 2);
         ctx.fill();
       }
+      ctx.restore();
+      // Red rim: a thin bright line with a soft outer glow.
+      ctx.save();
+      ctx.shadowColor = "rgba(229,56,59,.9)";
+      ctx.shadowBlur = width * 0.045;
+      ctx.strokeStyle = "rgba(236,72,72,.95)";
+      ctx.lineWidth = Math.max(1, width * 0.004);
+      for (let pass = 0; pass < 2; pass += 1) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
       ctx.restore();
       frame = requestAnimationFrame(draw);
     };
@@ -115,61 +142,6 @@ export function GlobeView({ pins }: { pins: Pin[] }) {
     frame = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(frame);
   }, []);
-
-  useEffect(() => {
-    const canvas = webRef.current;
-    const wrap = wrapRef.current;
-    if (!canvas || !wrap) return;
-    let globe: { destroy?: () => void } | null = null;
-    let alive = true;
-    try {
-      const css = Math.max(200, Math.round(wrap.clientWidth));
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
-      const size = Math.round(css * dpr);
-      globe = createGlobe(canvas, {
-        devicePixelRatio: dpr,
-        width: size,
-        height: size,
-        phi: phiRef.current,
-        theta: 0.34,
-        dark: 1,
-        diffuse: 1.45,
-        mapSamples: 90000,
-        mapBrightness: 11,
-        mapBaseBrightness: 0.035,
-        baseColor: [0.14, 0.14, 0.16],
-        markerColor: [1, 0.26, 0.25],
-        glowColor: [0.42, 0.08, 0.09],
-        markers: pinsRef.current.map((pin) => ({ location: [pin.lat, pin.lng], size: 0.025 })),
-        opacity: 0.97,
-        onRender: (state) => {
-          state.phi = phiRef.current;
-          state.theta = thetaRef.current;
-          if (!alive) return;
-        },
-      });
-      const check = window.setTimeout(() => {
-        try {
-          const gl = canvas.getContext("webgl2") || canvas.getContext("webgl");
-          if (!gl) return;
-          const pixel = new Uint8Array(4);
-          gl.readPixels(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
-          if (pixel[3] > 8) setWebgl(true);
-        } catch {
-          setWebgl(false);
-        }
-      }, 700);
-      return () => {
-        alive = false;
-        window.clearTimeout(check);
-        globe?.destroy?.();
-      };
-    } catch {
-      return () => {
-        alive = false;
-      };
-    }
-  }, [pins]);
 
   function pointerDown(event: React.PointerEvent<HTMLCanvasElement>) {
     drag.current = { x: event.clientX, y: event.clientY, moved: false };
@@ -223,16 +195,9 @@ export function GlobeView({ pins }: { pins: Pin[] }) {
 
   return (
     <div className="gwrap ready" ref={wrapRef}>
-      <div className="gwrap__atmo" />
-      <canvas
-        ref={webRef}
-        style={{ opacity: webgl ? 1 : 0, position: "absolute", inset: 0 }}
-        aria-hidden={webgl ? undefined : true}
-      />
       <canvas
         ref={flatRef}
         aria-label="Globe: one dot for every person who spoke"
-        style={{ opacity: webgl ? 0 : 1 }}
         onPointerDown={pointerDown}
         onPointerMove={pointerMove}
         onPointerUp={pointerUp}

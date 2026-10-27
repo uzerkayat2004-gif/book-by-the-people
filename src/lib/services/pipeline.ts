@@ -1,8 +1,9 @@
 import "server-only";
-import { reviewVoice, type Decision } from "../book/checks";
+import { mergeModelReview, reviewVoice, type Decision } from "../book/checks";
+import { getConfig } from "../config";
 import { shouldTranslate } from "../book/speech";
 import { prisma } from "../db";
-import { translateBatch } from "../ai";
+import { reviewWithModel, translateBatch } from "../ai";
 import { bookSpendPaused, recordUsage } from "./spend";
 
 const VOICE_STEPS = ["transcribe", "translate", "checks", "decide", "group"] as const;
@@ -134,21 +135,49 @@ async function runStep(step: (typeof VOICE_STEPS)[number], voiceId: string) {
   });
 
   if (step === "checks") {
+    let checked = review;
+    if (getConfig().aiMode === "live" && review.realPerson && !review.copyPaste && !review.duplicate) {
+      const kind = fresh.kind === "sourced_quote" ? "sourced_quote" : "voice";
+      const judged = await reviewWithModel({
+        bookId: fresh.bookId,
+        question: fresh.book.question,
+        name: fresh.contributorName,
+        text: fresh.englishText || fresh.originalText,
+        kind,
+      });
+      await recordUsage({
+        kind: "check",
+        provider: judged.provider,
+        model: judged.model,
+        bookId: fresh.bookId,
+        voiceId: fresh.id,
+        usage: judged.usage,
+      });
+      checked = mergeModelReview(review, judged.review, kind);
+    }
     await prisma.voice.update({
       where: { id: fresh.id },
-      data: { checkJson: JSON.stringify(review), pipelineStep: "checks" },
+      data: { checkJson: JSON.stringify(checked), pipelineStep: "checks" },
     });
     return;
   }
+  const stored = (() => {
+    try {
+      const parsed = JSON.parse(fresh.checkJson || "{}") as Partial<typeof review>;
+      return parsed.decision ? { ...review, ...parsed } : review;
+    } catch {
+      return review;
+    }
+  })();
   if (step === "decide") {
-    const mapped = STATUS[review.decision];
+    const mapped = STATUS[stored.decision];
     await prisma.voice.update({
       where: { id: fresh.id },
       data: {
-        decision: review.decision,
-        status: fresh.kind === "sourced_quote" && review.decision === "approved" ? "READY" : mapped.status,
+        decision: stored.decision,
+        status: fresh.kind === "sourced_quote" && stored.decision === "approved" ? "READY" : mapped.status,
         hidden: mapped.hidden || fresh.hidden,
-        rejectReason: review.notes[0] ?? null,
+        rejectReason: stored.notes[0] ?? null,
         pipelineStep: "decide",
       },
     });
@@ -156,7 +185,7 @@ async function runStep(step: (typeof VOICE_STEPS)[number], voiceId: string) {
   }
   await prisma.voice.update({
     where: { id: fresh.id },
-    data: { themeLabel: review.theme, pipelineStep: "group" },
+    data: { themeLabel: stored.theme, pipelineStep: "group" },
   });
 }
 

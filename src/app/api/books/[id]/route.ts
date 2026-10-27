@@ -15,6 +15,11 @@ const schema = z.object({
   showPoll: z.boolean().optional(),
   aiPaused: z.boolean().optional(),
   bookNumber: z.number().optional(),
+  language: z.string().max(16).optional(),
+  voiceLimitPerDay: z.number().int().optional(),
+  maxVoiceSeconds: z.number().int().optional(),
+  aiKey: z.string().max(400).optional(),
+  clearAiKey: z.boolean().optional(),
 });
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {

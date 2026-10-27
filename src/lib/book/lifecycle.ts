@@ -76,8 +76,13 @@ export function validateSourcedQuote(input: {
   speaker: string;
   text: string;
   sourceUrl: string;
+  sourceDate?: string;
+  requireDate?: boolean;
 }): { ok: true } | { ok: false; error: string } {
   if (!input.speaker.trim()) return { ok: false, error: "Name the person who said it." };
+  if (input.requireDate && !(input.sourceDate ?? "").trim()) {
+    return { ok: false, error: "Add the date it was said or published." };
+  }
   if (input.text.trim().length < 12) return { ok: false, error: "Paste the quotation itself." };
   let url: URL;
   try {

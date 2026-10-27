@@ -7,8 +7,14 @@ if (configured.startsWith("file:") && !configured.startsWith("file:/") && !confi
   process.env.DATABASE_URL = `file:${path.resolve(process.cwd(), configured.slice("file:".length))}`;
 }
 
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
+// The sealed per-book AI key never leaves the server by accident: it is omitted
+// from every query unless code selects it on purpose (src/lib/ai/keys.ts).
+function makeClient() {
+  return new PrismaClient({ omit: { book: { aiKeyCipher: true } } });
+}
 
-export const prisma = globalForPrisma.prisma ?? new PrismaClient();
+const globalForPrisma = globalThis as unknown as { prisma?: ReturnType<typeof makeClient> };
+
+export const prisma = globalForPrisma.prisma ?? makeClient();
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;

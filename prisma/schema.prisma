@@ -59,6 +59,11 @@ model Book {
   aiPaused             Boolean          @default(false)
   showPoll             Boolean          @default(true)
   voiceLimitPerDay     Int              @default(3)
+  maxVoiceSeconds      Int              @default(600)
+  language             String           @default("en")
+  aiKeyCipher          String           @default("")
+  audiobookName        String           @default("")
+  videoName            String           @default("")
   audiobookKey         String?
   videoKey             String?
   audiobookBytes       Int              @default(0)
@@ -186,6 +191,7 @@ model Backup {
   voiceCount Int      @default(0)
   label      String
   note       String   @default("")
+  snapshot   String   @default("")
   createdAt  DateTime @default(now())
 }
 

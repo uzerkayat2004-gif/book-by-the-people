@@ -80,6 +80,7 @@ export async function transcribeVoice(input: {
   clientTranscript: string | null;
   seed: string;
   startWord: string;
+  bookId?: string;
 }): Promise<SpeechResult> {
   const cfg = getConfig();
   if (cfg.aiMode === "live") {
@@ -87,21 +88,14 @@ export async function transcribeVoice(input: {
       audio: input.audio,
       languageName: languageByCode(input.language).muse,
       keywords: [input.startWord, ...input.keywords].filter(Boolean),
+      bookId: input.bookId,
     });
     const originalText = heard.transcript.trim();
     const durationMs = heard.audioDurationMs || input.durationMs;
-    let englishText = originalText;
-    let translated = false;
-    let usage = emptyUsage;
-    if (shouldTranslate(input.language, originalText) && originalText) {
-      const translatedResult = await translateBatch(
-        [{ id: "one", language: input.language, text: originalText }],
-        input.seed,
-      );
-      englishText = translatedResult.translations[0]?.english || originalText;
-      translated = englishText !== originalText;
-      usage = translatedResult.usage;
-    }
+    // Translation runs later in the pipeline, after the start-word check.
+    const englishText = originalText;
+    const translated = false;
+    const usage = emptyUsage;
     return {
       originalText,
       englishText,
@@ -117,13 +111,11 @@ export async function transcribeVoice(input: {
 
   const client = input.clientTranscript?.trim() ?? "";
   if (client) {
-    const needs = shouldTranslate(input.language, client);
-    const known = knownEnglish(client);
     const durationMs = Math.max(input.durationMs, 4000);
     return {
       originalText: client,
-      englishText: needs ? known ?? client : client,
-      translated: Boolean(needs && known),
+      englishText: client,
+      translated: false,
       turns: turnsFor(input.startWord, client, durationMs),
       durationMs,
       provider: "mock",
@@ -134,12 +126,11 @@ export async function transcribeVoice(input: {
   }
 
   const line = sampleLine(input.language, input.seed);
-  const needs = shouldTranslate(input.language, line.original);
   const durationMs = Math.max(input.durationMs, 6000);
   return {
     originalText: `${input.startWord}. ${line.original}`,
-    englishText: needs ? line.english : line.original,
-    translated: needs,
+    englishText: `${input.startWord}. ${line.original}`,
+    translated: false,
     turns: turnsFor(input.startWord, line.original, durationMs),
     durationMs,
     provider: "mock",
@@ -211,5 +202,48 @@ export async function writeBook(input: {
     provider: result.provider,
     modelId: result.model,
     usage: result.usage,
+  };
+}
+
+const reviewSchema = z.object({
+  onTopic: z.boolean(),
+  impersonation: z.boolean(),
+  theme: z.string(),
+  note: z.string().optional().default(""),
+});
+
+export const REVIEW_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["onTopic", "impersonation", "theme", "note"],
+  properties: {
+    onTopic: { type: "boolean" },
+    impersonation: { type: "boolean" },
+    theme: { type: "string" },
+    note: { type: "string" },
+  },
+};
+
+/** Live-mode voice check with muse-spark. Only called when AI_MODE is live. */
+export async function reviewWithModel(input: {
+  bookId: string;
+  question: string;
+  name: string;
+  text: string;
+  kind: "voice" | "sourced_quote";
+}) {
+  const result = await completeJson({
+    system:
+      "You check one contribution to a crowd-written book. Answer in JSON only. onTopic: does it actually answer the question (any stance counts)? impersonation: does the contributor name claim to be a famous public figure while this is an ordinary recorded voice (always false for sourced quotes)? theme: a 2-5 word chapter theme drawn from the contribution's own words, sentence case. note: one short sentence for the creator if anything is wrong, else empty.",
+    user: JSON.stringify({ question: input.question, name: input.name, kind: input.kind, text: input.text.slice(0, 4000) }),
+    schemaName: "voice_review",
+    schema: REVIEW_JSON_SCHEMA,
+    bookId: input.bookId,
+  });
+  return {
+    review: reviewSchema.parse(extractJson(result.content)),
+    usage: result.usage,
+    provider: result.provider,
+    model: result.model,
   };
 }

@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { IconArrow, IconBook, IconHeadphones, IconPause, IconPlay } from "@/components/icons";
-import { LogoMark } from "@/components/logo-mark";
 
 type Clip = { src: string; startMs: number; endMs: number; name: string; text: string };
 
@@ -141,7 +140,6 @@ function Dock({ kind, clips, question, onClose }: { kind: "audio" | "video"; cli
         <button className="mp__media" type="button" onClick={() => setFull(true)} aria-label="Expand">
           {video ? (
             <span className="mp__poster">
-              <LogoMark className="mp__logo" />
               <strong>
                 Written by
                 <br />
@@ -151,7 +149,6 @@ function Dock({ kind, clips, question, onClose }: { kind: "audio" | "video"; cli
             </span>
           ) : (
             <span className="mp__art">
-              <LogoMark className="mp__logo" />
               <span className="mp__eq">
                 <i />
                 <i />

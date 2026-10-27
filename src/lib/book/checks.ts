@@ -1,3 +1,4 @@
+import { themeLabel } from "./plan";
 export type Decision = "approved" | "needs_you" | "not_used" | "hidden";
 
 export type VoiceReview = {
@@ -81,8 +82,31 @@ export function reviewVoice(input: {
   else if (!onTopic || copyPaste || duplicate) decision = "not_used";
   else if (impersonation) decision = "needs_you";
 
-  const theme = titleWord(overlap[0] || words[0] || "voices");
+  const theme = words.length ? themeLabel([{ text: input.text }]) : titleWord(overlap[0] || "voices");
   return { onTopic, realPerson, copyPaste, impersonation, duplicate, decision, theme, notes };
+}
+
+/**
+ * Live mode: muse-spark judges topic, impersonation and the theme name.
+ * Copy-paste, duplicate and the real-person start-word check stay
+ * deterministic. The final decision is recomputed with the same rules.
+ */
+export function mergeModelReview(
+  base: VoiceReview,
+  model: { onTopic: boolean; impersonation: boolean; theme: string; note?: string },
+  kind: "voice" | "sourced_quote",
+): VoiceReview {
+  const onTopic = model.onTopic;
+  const impersonation = kind !== "sourced_quote" && (base.impersonation || model.impersonation);
+  const notes = base.notes.filter((note) => note !== "Off the question." && !note.startsWith("Name matches"));
+  if (!onTopic) notes.unshift("Off the question.");
+  if (impersonation) notes.push(model.note?.trim() || "Name matches a public figure. A person has to confirm it.");
+  let decision: Decision = "approved";
+  if (!base.realPerson) decision = "hidden";
+  else if (!onTopic || base.copyPaste || base.duplicate) decision = "not_used";
+  else if (impersonation) decision = "needs_you";
+  const theme = model.theme.trim().slice(0, 48) || base.theme;
+  return { ...base, onTopic, impersonation, decision, theme, notes };
 }
 
 export function stripPeopleCounts(text: string): string {

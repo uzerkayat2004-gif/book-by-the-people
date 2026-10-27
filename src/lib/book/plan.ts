@@ -41,22 +41,72 @@ export function similarity(left: Map<string, number>, right: Map<string, number>
   return Math.max(jaccard, cosine);
 }
 
-export function themeLabel(voices: { text: string }[]): string {
-  const documentFrequency = new Map<string, number>();
-  for (const voice of voices) {
-    for (const token of contentTokens(voice.text).keys()) {
-      documentFrequency.set(token, (documentFrequency.get(token) ?? 0) + 1);
+const EDGE = new Set([...STOP, "yaar", "gets", "get", "got", "makes", "make", "made", "when", "while", "lets", "let"]);
+
+const PRONOUN = new Set(["i", "me", "my", "you", "your", "we", "our", "us", "he", "she", "they", "them", "it", "i'm", "makes", "make", "gets", "get", "because", "will", "want", "did", "does", "when", "and", "or", "but", "not"]);
+
+function shape(phrase: string): number {
+  const parts = phrase.split(" ");
+  if (parts.length === 3 && parts[1] === "the") return 3;
+  if (parts.length === 3 && parts[0] === "the") return 2;
+  if (parts[0] === "the") return 1;
+  return 0;
+}
+
+function words(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}'\s]/gu, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function phrases(text: string): Set<string> {
+  const list = words(text);
+  const found = new Set<string>();
+  for (let size = 2; size <= 4; size += 1) {
+    for (let index = 0; index + size <= list.length; index += 1) {
+      const gram = list.slice(index, index + size);
+      if (EDGE.has(gram[0]) && gram[0] !== "the") continue;
+      if (EDGE.has(gram[gram.length - 1])) continue;
+      if (gram.filter((word) => !STOP.has(word) && word.length > 3).length === 0) continue;
+      if (gram.some((word) => PRONOUN.has(word))) continue;
+      found.add(gram.join(" "));
     }
   }
-  const weak = new Set(["fades", "forget", "worse", "gets", "make", "makes"]);
-  const ranked = [...documentFrequency.entries()]
-    .filter(([word]) => !weak.has(word) || documentFrequency.size <= 2)
-    .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length || a[0].localeCompare(b[0]));
-  const top = ranked.slice(0, 2).map(([word]) => word);
-  if (top.length === 0) return "Voices";
-  return top
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" & ");
+  return found;
+}
+
+function sentenceCase(text: string): string {
+  const clean = text.trim().replace(/\s+/g, " ");
+  return clean ? clean.charAt(0).toUpperCase() + clean.slice(1) : clean;
+}
+
+/**
+ * A short, readable chapter title built only from the voices' own words:
+ * the longest phrase that most voices in the group share, or the opening
+ * words of the first voice. Deterministic, so mock mode is repeatable.
+ */
+export function themeLabel(voices: { text: string }[]): string {
+  if (voices.length === 0) return "Voices";
+  const counts = new Map<string, number>();
+  for (const voice of voices) {
+    for (const phrase of phrases(voice.text)) counts.set(phrase, (counts.get(phrase) ?? 0) + 1);
+  }
+  const need = voices.length >= 2 ? 2 : 1;
+  const ranked = [...counts.entries()]
+    .filter(([, count]) => count >= need)
+    .sort((a, b) => b[1] - a[1] || shape(b[0]) - shape(a[0]) || b[0].split(" ").length - a[0].split(" ").length || a[0].localeCompare(b[0]));
+  if (ranked.length > 0 && voices.length >= 2) return sentenceCase(ranked[0][0]);
+  const own = [...phrases(voices[0].text)].sort((a, b) => shape(b) - shape(a) || a.localeCompare(b));
+  if (own.length > 0 && shape(own[0]) >= 2) return sentenceCase(own[0]);
+  const first = words(voices[0].text);
+  const start = first.findIndex((word) => !EDGE.has(word) && word.length > 3);
+  if (start < 0) return "Voices";
+  const slice = first.slice(Math.max(0, start - 1), start + 3);
+  while (slice.length > 1 && EDGE.has(slice[slice.length - 1])) slice.pop();
+  if (slice.length > 1 && STOP.has(slice[0]) && slice[0] !== "the") slice.shift();
+  return sentenceCase(slice.join(" "));
 }
 
 export function stanceScore(text: string): number {

@@ -7,6 +7,21 @@ import { renderReleaseMedia } from "../media/render";
 import { notifyReleased } from "../notify";
 import { prisma } from "../db";
 import { AppError } from "../errors";
+import { LANGUAGES } from "../languages";
+import { SPEAK_LANGUAGES } from "../speak-languages";
+import { canStoreKeys, sealKey } from "../secret-box";
+
+const LANGUAGE_CODES = new Set([...LANGUAGES, ...SPEAK_LANGUAGES].map((language) => language.code));
+
+function clampLimit(value: number | undefined, fallback: number): number {
+  if (value === undefined || !Number.isFinite(value)) return fallback;
+  return Math.min(50, Math.max(1, Math.round(value)));
+}
+
+function clampSeconds(value: number | undefined, fallback: number): number {
+  if (value === undefined || !Number.isFinite(value)) return fallback;
+  return Math.min(600, Math.max(15, Math.round(value)));
+}
 
 const TYPES = new Set(["SOLO", "INVITED", "OPEN", "FAMOUS"]);
 const VIBES = new Set(["ember", "night", "tide", "gold", "paper"]);
@@ -32,6 +47,9 @@ export async function createBook(input: {
   type: string;
   coverVibe: string;
   closesAt: string | null;
+  language?: string;
+  voiceLimitPerDay?: number;
+  maxVoiceSeconds?: number;
 }) {
   const title = input.title.trim();
   const question = input.question.trim();
@@ -44,6 +62,7 @@ export async function createBook(input: {
   if (input.closesAt) {
     const parsed = new Date(input.closesAt);
     if (Number.isNaN(parsed.getTime())) throw new AppError("That close time is not a date.");
+    if (parsed.getTime() <= Date.now()) throw new AppError("Pick a release time in the future.");
     closesAt = parsed;
   } else if (input.type === "OPEN" || input.type === "INVITED") {
     closesAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
@@ -61,6 +80,9 @@ export async function createBook(input: {
       type: input.type,
       coverVibe,
       closesAt,
+      language: input.language && LANGUAGE_CODES.has(input.language) ? input.language : "en",
+      voiceLimitPerDay: clampLimit(input.voiceLimitPerDay, input.type === "SOLO" ? 20 : 3),
+      maxVoiceSeconds: clampSeconds(input.maxVoiceSeconds, 600),
       creatorId: input.userId,
       inviteToken: randomBytes(16).toString("hex"),
       status: "COLLECTING",
@@ -85,6 +107,11 @@ export async function updateBookSettings(input: {
   showPoll?: boolean;
   aiPaused?: boolean;
   bookNumber?: number;
+  language?: string;
+  voiceLimitPerDay?: number;
+  maxVoiceSeconds?: number;
+  aiKey?: string;
+  clearAiKey?: boolean;
 }) {
   const book = await ownedBook(input.bookId, input.userId);
   const data: {
@@ -98,7 +125,25 @@ export async function updateBookSettings(input: {
     showPoll?: boolean;
     aiPaused?: boolean;
     bookNumber?: number;
+    language?: string;
+    voiceLimitPerDay?: number;
+    maxVoiceSeconds?: number;
+    aiKeyCipher?: string;
   } = {};
+
+  if (input.language !== undefined) {
+    if (!LANGUAGE_CODES.has(input.language)) throw new AppError("Pick a language from the list.");
+    data.language = input.language;
+  }
+  if (input.voiceLimitPerDay !== undefined) data.voiceLimitPerDay = clampLimit(input.voiceLimitPerDay, book.voiceLimitPerDay);
+  if (input.maxVoiceSeconds !== undefined) data.maxVoiceSeconds = clampSeconds(input.maxVoiceSeconds, book.maxVoiceSeconds);
+  if (input.clearAiKey) data.aiKeyCipher = "";
+  if (input.aiKey !== undefined && input.aiKey.trim()) {
+    const key = input.aiKey.trim();
+    if (key.length < 12 || /\s/.test(key)) throw new AppError("That doesn't look like an API key.");
+    if (!canStoreKeys()) throw new AppError("The server has no AI_KEY_SECRET, so it can't store keys safely yet.", 503);
+    data.aiKeyCipher = sealKey(key);
+  }
 
   if (input.title !== undefined) {
     const title = input.title.trim();

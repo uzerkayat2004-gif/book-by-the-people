@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireApiUser } from "@/lib/auth";
 import { assertSameOrigin, fromError } from "@/lib/http";
-import { createBook } from "@/lib/services/books";
+import { createBook, updateBookSettings } from "@/lib/services/books";
 
 const schema = z.object({
   title: z.string(),
@@ -10,6 +10,10 @@ const schema = z.object({
   type: z.string(),
   coverVibe: z.string().optional(),
   closesAt: z.string().nullable().optional(),
+  language: z.string().max(16).optional(),
+  voiceLimitPerDay: z.number().int().optional(),
+  maxVoiceSeconds: z.number().int().optional(),
+  aiKey: z.string().max(400).optional(),
 });
 
 export async function POST(request: Request) {
@@ -25,7 +29,13 @@ export async function POST(request: Request) {
       type: parsed.type,
       coverVibe: parsed.coverVibe ?? "ember",
       closesAt: parsed.closesAt ?? null,
+      language: parsed.language,
+      voiceLimitPerDay: parsed.voiceLimitPerDay,
+      maxVoiceSeconds: parsed.maxVoiceSeconds,
     });
+    if (parsed.aiKey?.trim()) {
+      await updateBookSettings({ bookId: book.id, userId: user.id, aiKey: parsed.aiKey });
+    }
     return NextResponse.json({ id: book.id, slug: book.slug });
   } catch (error) {
     return fromError(error);

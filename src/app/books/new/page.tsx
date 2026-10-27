@@ -21,10 +21,11 @@ export default async function NewBookPage() {
     }
   }
   return (
-    <main className="page admin">
+    <main className="page admin newbookpage">
       <div className="wrap admin4">
+        <p className="label">Studio · new book</p>
         <h1>New book</h1>
-        <p className="lead">One question. Pick who can answer it. The cover uses the same red book as the studio.</p>
+        <p className="lead">One question. Pick who can answer it and when it comes out.</p>
         <CreateBookForm suggestion={suggestion} />
       </div>
     </main>

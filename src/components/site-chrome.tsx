@@ -158,7 +158,6 @@ export function SiteFooter({ question, voiceHref }: { question: string | null; v
         <div className="wrap">
           <div className="foot4__top">
             <Link className="logo" href="/">
-              <LogoMark />
               <span className="logo__word">Book by the People</span>
             </Link>
             <nav className="foot4__links" aria-label="Footer">
@@ -177,10 +176,9 @@ export function SiteFooter({ question, voiceHref }: { question: string | null; v
           <div className="foot4__bot">
             <span>© 2026</span>
             <span className="age18">18+</span>
-            <a className="b44" href="https://base44.com" target="_blank" rel="noopener">
-              <span className="b44__dot" />
-              Built with Base44
-            </a>
+            <Link className="foot4__new" href="/books/new">
+              Start your own book
+            </Link>
           </div>
         </div>
       </footer>

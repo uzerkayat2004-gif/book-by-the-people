@@ -11,6 +11,7 @@ import "@/styles/proto/v6.css";
 import "@/styles/proto/v7.css";
 import "@/styles/proto/v8.css";
 import "@/styles/bridge.css";
+import "@/styles/studio-fit.css";
 
 export const dynamic = "force-dynamic";
 

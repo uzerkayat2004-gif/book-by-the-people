@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { convertToWavPcm } from "../audio/convert";
 import type { Turn } from "../book/types";
 import { getConfig } from "../config";
+import { bookAiKey, MISSING_KEY } from "./keys";
 import { roughTokens, type TokenUsage } from "./spend";
 
 export type ChatResult = {
@@ -130,13 +131,13 @@ export async function completeJson(input: {
   bookId: string;
 }): Promise<ChatResult> {
   const cfg = getConfig();
-  if (!cfg.writerApiKey) {
-    throw new Error("META_API_KEY is not set. Switch AI_MODE=mock or add a Meta key.");
-  }
+  const ownKey = await bookAiKey(input.bookId).catch(() => "");
+  const apiKey = (ownKey && ownKey !== cfg.metaApiKey ? ownKey : "") || cfg.writerApiKey;
+  if (!apiKey) throw new Error(MISSING_KEY);
   const safetyId = createHash("sha256").update(input.bookId).digest("hex").slice(0, 32);
   const primary: ChatTarget = {
     baseUrl: cfg.writerBaseUrl,
-    apiKey: cfg.writerApiKey,
+    apiKey,
     model: cfg.writerModel,
     provider: "meta",
     reasoningEffort: cfg.writerReasoningEffort || null,
@@ -173,9 +174,11 @@ export async function transcribeFile(input: {
   audio: Buffer;
   languageName: string;
   keywords: string[];
+  bookId?: string;
 }): Promise<TranscriptResult> {
   const cfg = getConfig();
-  if (!cfg.metaApiKey) throw new Error("META_API_KEY is not set, so Muse Voice Transcribe cannot run.");
+  const apiKey = await bookAiKey(input.bookId);
+  if (!apiKey) throw new Error(MISSING_KEY);
   const wav = await convertToWavPcm(input.audio);
   const form = new FormData();
   const request = {
@@ -191,7 +194,7 @@ export async function transcribeFile(input: {
   const response = await fetch(`${cfg.metaBaseUrl}/asr/transcribe`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${cfg.metaApiKey}`,
+      Authorization: `Bearer ${apiKey}`,
       Accept: "application/json",
     },
     body: form,

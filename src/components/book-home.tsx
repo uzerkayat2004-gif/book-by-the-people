@@ -36,7 +36,9 @@ export function BookHome({
   bookId,
   yourVote,
   clips,
+  title,
 }: {
+  title?: string;
   stage: Stage;
   question: string;
   voiceCount: number;
@@ -65,6 +67,7 @@ export function BookHome({
     <main className={stage === "after" ? "page" : "page home4"}>
       {stage === "after" ? (
         <After
+          title={title}
           question={question}
           voiceCount={voiceCount}
           countries={countries.length}
@@ -216,6 +219,7 @@ function Before({
 }
 
 function After({
+  title,
   question,
   voiceCount,
   countries,
@@ -237,13 +241,14 @@ function After({
   readMins: number;
   listenMins: number;
   clips: HomeClip[];
+  title?: string;
 }) {
   const date = releaseLabel.split(" · ")[0];
   return (
     <>
       <section className="wrap bookhero4">
         <div className="bookhero4__art in1">
-          <BookCover question={question} people={voiceCount} countries={countries} names={names} />
+          <BookCover title={title} question={question} people={voiceCount} countries={countries} names={names} />
         </div>
         <div className="bookhero4__side">
           <div className="label red in1">Out now · {date}</div>
