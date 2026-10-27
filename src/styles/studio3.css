@@ -48,7 +48,7 @@
 .s3-pick.on .s3-radio { border-color: var(--red, #e5383b); }
 .s3-pick.on .s3-radio::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--red, #e5383b); }
 .s3-pick__text { display: grid; gap: 3px; min-width: 0; flex: 1; }
-.s3-pick__text b { font-size: 14.5px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.s3-pick__text b { font-size: 14.5px; font-weight: 650; overflow-wrap: anywhere; line-height: 1.3; }
 .s3-pick__text span { color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .s3-dot { flex: none; display: inline-flex; align-items: center; gap: 6px; font: 600 11px/1 var(--mono); color: var(--muted); white-space: nowrap; }
 .s3-dot::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #5d6068; }

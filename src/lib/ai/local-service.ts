@@ -58,7 +58,7 @@ async function register(userId: string, model: LocalModel, engine: "builtin" | "
   if (!id) {
     const view = await providerStore.create(userId, {
       type,
-      label: `${model.name} · this computer`,
+      label: model.name,
       baseUrl: engine === "builtin" ? `http://127.0.0.1:${LOCAL_PORT}/v1` : `${OLLAMA_URL}/v1`,
       model: engine === "builtin" ? model.id : model.ollama,
       role: "writer",

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PROVIDER_PRESETS, presetFor, roleIncludes, type ProviderRole, type ProviderType, type ProviderView } from "@/lib/ai/provider-types";
+import { PROVIDER_PRESETS, presetFor, roleIncludes, shortLabel, type ProviderRole, type ProviderType, type ProviderView } from "@/lib/ai/provider-types";
 import { formatBytes, SERVER_MODELS, type LocalStatus } from "@/lib/ai/local-catalog";
 
 async function call<T>(url: string, method: string, body?: unknown): Promise<T> {
@@ -109,7 +109,7 @@ export function AiModels({
                 >
                   <i className="s3-radio" aria-hidden />
                   <span className="s3-pick__text">
-                    <b>{row.label}</b>
+                    <b>{shortLabel(row.label)}</b>
                     <span>
                       {row.type === "local" || row.type === "ollama" ? "On this computer" : row.typeName}
                       {row.hasKey ? ` · ••••${row.keyLast4}` : ""}

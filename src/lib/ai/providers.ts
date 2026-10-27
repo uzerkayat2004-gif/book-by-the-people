@@ -4,7 +4,7 @@ import { getConfig } from "../config";
 import { keyLast4, openKey, sealKey } from "../secret-box";
 import { chatJson, firstThatWorks, testTarget, transcribeWav, type CallTarget, type ChatOut, type HeardOut } from "./provider-client";
 import { createProviderStore, type ProviderDb, type ResolvedProvider } from "./provider-store";
-import { isLocalType, pickChain, presetFor } from "./provider-types";
+import { isLocalType, pickChain, presetFor, shortLabel } from "./provider-types";
 import { ensureServer, LOCAL_PORT } from "./local-runtime";
 
 export const providerStore = createProviderStore(prisma.aiProvider as unknown as ProviderDb, {
@@ -107,8 +107,8 @@ export async function aiSummary(userId: string) {
   const cfg = getConfig();
   const envLive = cfg.aiMode === "live";
   return {
-    writer: writers[0] ? `${writers[0].label}` : envLive ? `${cfg.writerModel} (server key)` : null,
-    hearer: hearers[0] ? `${hearers[0].label}` : envLive ? `${cfg.transcribeModel} (server key)` : null,
+    writer: writers[0] ? shortLabel(writers[0].label) : envLive ? `${cfg.writerModel} (server key)` : null,
+    hearer: hearers[0] ? shortLabel(hearers[0].label) : envLive ? `${cfg.transcribeModel} (server key)` : null,
     fallbacks: fallback ? Math.max(0, writers.length - 1) : 0,
     fallback,
   };

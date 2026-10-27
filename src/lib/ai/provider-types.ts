@@ -202,3 +202,8 @@ export type ProviderView = {
 export function pickChain<T>(chain: T[], fallback: boolean): T[] {
   return fallback ? chain : chain.slice(0, 1);
 }
+
+/** Older local rows were saved as "Name · this computer"; the picker already says where it runs. */
+export function shortLabel(label: string): string {
+  return label.replace(/\s*·\s*this computer$/i, "");
+}
