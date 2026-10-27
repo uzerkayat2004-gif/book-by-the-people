@@ -23,7 +23,6 @@
     "@prisma/client": "^6.19.3",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.0",
-    "cobe": "^0.6.3",
     "lucide-react": "^1.61.0",
     "next": "16.4.3",
     "prisma": "^6.19.3",

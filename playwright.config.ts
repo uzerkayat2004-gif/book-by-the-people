@@ -7,7 +7,7 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   use: {
-    baseURL: "http://127.0.0.1:43123",
+    baseURL: "http://localhost:43123",
     trace: "retain-on-failure",
   },
   webServer: {

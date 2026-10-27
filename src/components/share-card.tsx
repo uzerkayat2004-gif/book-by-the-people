@@ -175,7 +175,7 @@ function drawCard(props: ShareCardProps, format: "portrait" | "x") {
   roundRect(x, 18, 18, W - 36, H - 36, 34);
   x.stroke();
   const kicker = `I'M IN CHAPTER ${props.chapter}`;
-  const similar = `1 of ${props.similar.toLocaleString("en-US")} people who said ${props.theme.replace(/\.$/, "")}.`;
+  const similar = `One of the voices on: ${props.theme.replace(/\.$/, "")}.`;
   if (!wide) {
     const M = 84;
     brandRow(x, M, 128, 46);
@@ -254,7 +254,7 @@ function drawCard(props: ShareCardProps, format: "portrait" | "x") {
     const after = 246 + quote.lines.length * quote.size * 1.28 + 14;
     x.fillStyle = "#c3c4c9";
     x.font = '600 24px "Geist"';
-    x.fillText(`— ${props.name}, ${props.place} · 1 of ${props.similar.toLocaleString("en-US")} who said this`, L + 44, after + 18);
+    x.fillText(`— ${props.name}, ${props.place}`, L + 44, after + 18);
     x.font = '700 22px "Geist"';
     const lw = x.measureText(props.linkHost).width + 40;
     x.fillStyle = "#f3f2ee";
