@@ -153,7 +153,7 @@ export function StudioDesk({
   books?: { id: string; slug: string; title: string }[];
   backups?: { id: string; label: string; voices: number; note: string; restorable: boolean }[];
   settings: StudioSettings;
-  media: { audioHref: string | null; videoHref: string | null; audioBytes: number; videoBytes: number; audioName: string; videoName: string };
+  media: { audioHref: string | null; videoHref: string | null; audioBytes: number; videoBytes: number; audioName: string; videoName: string; status: string; note: string | null };
   aiPaused?: boolean;
   showPoll?: boolean;
   bookNumber?: number;
@@ -402,6 +402,7 @@ export function StudioDesk({
                   <MediaRow step={2} bookId={book.id} kind="audiobook" label="Audiobook" href={media.audioHref} name={media.audioName} bytes={media.audioBytes} />
                   <MediaRow step={3} bookId={book.id} kind="video" label="Video" href={media.videoHref} name={media.videoName} bytes={media.videoBytes} />
                 </ol>
+                <MakeMedia bookId={book.id} status={media.status} note={media.note} hasDraft={drafts.length > 0} hasAudio={Boolean(media.audioHref)} />
                 {book.status === "PUBLISHED" ? (
                   <a className="s2-btn s2-btn--red s2-btn--big" href={`/b/${book.slug}/read`}>
                     Read the book
@@ -507,6 +508,7 @@ function AiTab({
                     <b>{voice.name}</b>
                     <q>{snippet(voice.englishText || voice.originalText, 160) || "No words heard."}</q>
                     <span className="s2-why">{voice.rejectReason || (voice.impersonation ? "Uses a public figure's name." : "The AI was not sure.")}</span>
+                    {voice.status === "FAILED" && voice.hasAudio ? <FailedVoice voiceId={voice.id} onDone={onDone} /> : null}
                   </div>
                   <span className="s2-row">
                     {voice.status !== "FAILED" ? (
@@ -838,6 +840,117 @@ function CopyButton({ text, label = "Copy" }: { text: string | (() => string); l
     >
       {done ? "Copied" : label}
     </button>
+  );
+}
+
+/** A recording nobody could transcribe: listen to it, then type the words or try the AI again. */
+function FailedVoice({ voiceId, onDone }: { voiceId: string; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function send(transcript: string | null) {
+    setBusy(true);
+    setError("");
+    const response = await fetch(`/api/voices/${voiceId}/retry`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(transcript ? { transcript } : {}),
+    });
+    const data = (await response.json().catch(() => ({}))) as { error?: string; status?: string; rejectReason?: string | null };
+    setBusy(false);
+    if (!response.ok) return setError(data.error ?? "That did not work.");
+    if (data.status === "FAILED") return setError(data.rejectReason ?? "Still no words. Type them instead.");
+    onDone();
+  }
+  return (
+    <div className="s4-failed">
+      <audio controls preload="none" src={`/api/audio/${voiceId}`} />
+      {open ? (
+        <div className="s4-failed__type">
+          <textarea className="s2-input" rows={3} value={text} placeholder="Type what they said" onChange={(event) => setText(event.target.value)} />
+          <span className="s2-row">
+            <button className="s2-btn s2-btn--sm s2-btn--red" type="button" disabled={busy || !text.trim()} onClick={() => void send(text)}>
+              {busy ? "Saving…" : "Save words"}
+            </button>
+            <button className="s2-link" type="button" onClick={() => setOpen(false)}>
+              Cancel
+            </button>
+          </span>
+        </div>
+      ) : (
+        <span className="s2-row">
+          <button className="s2-link" type="button" disabled={busy} onClick={() => setOpen(true)}>
+            Type the words
+          </button>
+          <button className="s2-link" type="button" disabled={busy} onClick={() => void send(null)}>
+            {busy ? "Trying…" : "Try AI again"}
+          </button>
+        </span>
+      )}
+      {error ? (
+        <span className="s2-err" role="alert">
+          {error}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/** Speaks the book into the audiobook and video, in the background, and shows how it went. */
+function MakeMedia({ bookId, status, note, hasDraft, hasAudio }: { bookId: string; status: string; note: string | null; hasDraft: boolean; hasAudio: boolean }) {
+  const router = useRouter();
+  const [state, setState] = useState(status);
+  const [message, setMessage] = useState(note);
+  useEffect(() => {
+    setState(status);
+    setMessage(note);
+  }, [status, note]);
+  useEffect(() => {
+    if (state !== "running") return;
+    const timer = window.setInterval(async () => {
+      const response = await fetch(`/api/books/${bookId}/media/render`).catch(() => null);
+      const data = (await response?.json().catch(() => null)) as { status?: string; note?: string | null } | null;
+      if (data?.status && data.status !== "running") {
+        setState(data.status);
+        setMessage(data.note ?? null);
+        router.refresh();
+      }
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [state, bookId, router]);
+  async function start() {
+    setState("running");
+    setMessage(null);
+    const response = await fetch(`/api/books/${bookId}/media/render`, { method: "POST" });
+    const data = (await response.json().catch(() => ({}))) as { error?: string };
+    if (!response.ok) {
+      setState("failed");
+      setMessage(data.error ?? "Could not start.");
+    }
+  }
+  if (!hasDraft) return null;
+  return (
+    <div className={`s4-media s4-media--${state}`} aria-live="polite">
+      <span>
+        {state === "running" ? (
+          <>
+            <i className="s4-spin" aria-hidden /> Making the audiobook and video…
+          </>
+        ) : state === "failed" ? (
+          message ?? "The audiobook could not be made."
+        ) : message ? (
+          message
+        ) : hasAudio ? (
+          "Made from the book text."
+        ) : (
+          "Spoken from the book text on this computer."
+        )}
+      </span>
+      <button className="s2-link" type="button" disabled={state === "running"} onClick={() => void start()}>
+        {hasAudio ? "Make again" : "Make audiobook"}
+      </button>
+    </div>
   );
 }
 

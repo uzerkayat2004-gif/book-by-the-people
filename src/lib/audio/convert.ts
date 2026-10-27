@@ -1,12 +1,9 @@
 import "server-only";
-import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
-
-const exec = promisify(execFile);
+import { ffmpeg } from "../media/tools";
 
 /** Muse Voice Transcribe accepts mono 16-bit PCM WAV at 16 kHz or 24 kHz. */
 export async function convertToWavPcm(input: Buffer): Promise<Buffer> {
@@ -15,11 +12,7 @@ export async function convertToWavPcm(input: Buffer): Promise<Buffer> {
   const target = path.join(dir, "voice.wav");
   try {
     await writeFile(source, input);
-    await exec(
-      "ffmpeg",
-      ["-y", "-i", source, "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le", "-map_metadata", "-1", target],
-      { timeout: 60_000 },
-    );
+    await ffmpeg(["-y", "-i", source, "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le", "-map_metadata", "-1", target], 60_000);
     return await readFile(target);
   } catch (error) {
     const message = error instanceof Error ? error.message : "ffmpeg failed";

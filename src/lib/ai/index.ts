@@ -72,6 +72,9 @@ function knownEnglish(transcript: string): string | null {
   return null;
 }
 
+export const NO_TRANSCRIPT =
+  "This browser gave no transcript and no speech model is set up. Record in Chrome or Edge, or add a Meta key for speech in Book settings.";
+
 export async function transcribeVoice(input: {
   audio: Buffer;
   language: string;
@@ -130,6 +133,11 @@ export async function transcribeVoice(input: {
     };
   }
 
+  // A sample line stands in only in full demo mode (no AI model anywhere). With a real
+  // writing model, an untranscribed voice must never become made-up words in the book.
+  if (await writerLive(input.bookId)) {
+    throw new Error(NO_TRANSCRIPT);
+  }
   const line = sampleLine(input.language, input.seed);
   const durationMs = Math.max(input.durationMs, 6000);
   return {

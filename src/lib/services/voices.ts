@@ -207,10 +207,35 @@ export async function ingestRecording(input: {
   }
 }
 
-export async function retryTranscription(voiceId: string, userId: string) {
+export async function retryTranscription(voiceId: string, userId: string, typed?: string | null) {
   const voice = await prisma.voice.findUnique({ include: { book: true }, where: { id: voiceId } });
   if (!voice || voice.book.creatorId !== userId) throw new AppError("That voice is not in your studio.", 404);
   if (voice.status !== "FAILED" || !voice.storageKey) throw new AppError("Only a failed recording can be tried again.");
+  const words = typed?.replace(/\s+/g, " ").trim() ?? "";
+  if (words) {
+    // The creator listened and typed what was said. No AI call, and no start-word check:
+    // the creator is the one vouching for it.
+    if (words.length > 6000) throw new AppError("Keep the typed words under 6,000 characters.");
+    const text = dropStartWord(words, voice.startWord);
+    const updated = await prisma.voice.update({
+      where: { id: voice.id },
+      data: {
+        originalText: text,
+        englishText: text,
+        translated: false,
+        turnsJson: JSON.stringify([{ turnId: 0, startMs: 0, endMs: Math.max(voice.durationMs, 1000), transcript: text }] satisfies Turn[]),
+        startWordPassed: true,
+        status: "READY",
+        rejectReason: null,
+        decision: "",
+      },
+    });
+    try {
+      return (await settleVoice(updated.id)) ?? updated;
+    } catch {
+      return updated;
+    }
+  }
   if (await spendPaused(voice.bookId)) throw new AppError("This book reached its AI usage limit. Raise it in Book settings.", 429);
   const audio = await getAudio(voice.storageKey);
   await prisma.voice.update({ where: { id: voice.id }, data: { status: "PROCESSING", rejectReason: null } });

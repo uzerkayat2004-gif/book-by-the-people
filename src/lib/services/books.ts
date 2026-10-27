@@ -281,22 +281,40 @@ export async function publishBook(bookId: string, userId: string) {
       publishedAt: book.publishedAt ?? new Date(),
     },
   });
-  try {
-    await renderReleaseMedia(book.id, document);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "The audiobook could not be made.";
-    await prisma.pipelineJob.upsert({
-      where: { key: `${book.id}:make:media` },
-      create: { bookId: book.id, step: "media", key: `${book.id}:make:media`, status: "failed", lastError: message },
-      update: { status: "failed", lastError: message, attempts: { increment: 1 } },
-    });
-  }
+  // Speaking a whole book takes minutes on a laptop, so the audiobook and video are made
+  // in the background. The Release tab shows "Making…" until the job is done.
+  void makeMediaInBackground(book.id, document!);
   try {
     await notifyReleased(book.id);
   } catch {
     // Email is optional. A missing key or a provider error does not unpublish the book.
   }
   return published;
+}
+
+const mediaRuns = new Set<string>();
+
+export async function makeMediaInBackground(bookId: string, document: NonNullable<ReturnType<typeof parseDocument>>, force = false) {
+  if (mediaRuns.has(bookId)) return;
+  mediaRuns.add(bookId);
+  const key = `${bookId}:make:media`;
+  await prisma.pipelineJob.upsert({
+    where: { key },
+    create: { bookId, step: "media", key, status: "running" },
+    update: { status: "running", lastError: null },
+  });
+  try {
+    await renderReleaseMedia(bookId, document, { force });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "The audiobook could not be made.";
+    await prisma.pipelineJob.upsert({
+      where: { key },
+      create: { bookId, step: "media", key, status: "failed", lastError: message },
+      update: { status: "failed", lastError: message, attempts: { increment: 1 } },
+    });
+  } finally {
+    mediaRuns.delete(bookId);
+  }
 }
 
 export async function votePoll(bookId: string, optionId: string, voterKey: string) {

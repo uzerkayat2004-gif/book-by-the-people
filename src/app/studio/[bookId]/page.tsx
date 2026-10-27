@@ -43,6 +43,10 @@ export default async function StudioBookPage({
   const hasAiKey = Boolean((await prisma.book.findUnique({ where: { id: book.id }, select: { aiKeyCipher: true } }))?.aiKeyCipher);
   const paused = await spendPaused(book.id);
   const [providers, ai] = await Promise.all([providerStore.list(user.id), aiSummary(user.id)]);
+  const mediaJob = await prisma.pipelineJob.findUnique({ where: { key: `${book.id}:make:media` } });
+  // A run older than 30 minutes was cut off (for example by a restart); let the creator start it again.
+  const mediaStatus =
+    mediaJob?.status === "running" && Date.now() - mediaJob.updatedAt.getTime() > 30 * 60_000 ? "failed" : mediaJob?.status ?? "none";
   let log: string[] = [];
   try {
     const parsed = book.generationLog ? (JSON.parse(book.generationLog) as string[]) : [];
@@ -187,6 +191,8 @@ export default async function StudioBookPage({
             book.audiobookName ||
             (book.audiobookKey?.endsWith(".mp3") ? `${book.slug}.mp3` : book.audiobookKey ? `${book.slug}.wav` : ""),
           videoName: book.videoName || (book.videoKey ? `${book.slug}.mp4` : ""),
+          status: mediaStatus,
+          note: mediaJob?.lastError ?? null,
         }}
         settings={{
           language: book.language,

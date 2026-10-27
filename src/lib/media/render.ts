@@ -1,15 +1,13 @@
 import { existsSync } from "node:fs";
-import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
 import type { BookDocument } from "../book/types";
 import { stripPeopleCounts } from "../book/checks";
 import { prisma } from "../db";
 import { putAudio } from "../storage";
+import { SPEECH_NAMES, ffmpeg, ffmpegBin, speakToWav } from "./tools";
 
-const exec = promisify(execFile);
 const FONT_CANDIDATES = [
   process.env.MEDIA_FONT ?? "",
   "/usr/share/fonts/truetype/macos/Inter-Bold.ttf",
@@ -17,10 +15,22 @@ const FONT_CANDIDATES = [
   "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
   "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
   "/Library/Fonts/Arial Bold.ttf",
+  "C:\\Windows\\Fonts\\segoeuib.ttf",
+  "C:\\Windows\\Fonts\\arialbd.ttf",
 ];
-const FONT_FILE = FONT_CANDIDATES.find((file) => file && existsSync(file)) ?? "";
-/** drawtext font option; falls back to fontconfig's default when no file is found. */
-const FONT = FONT_FILE ? FONT_FILE.replace(/:/g, "\\:").replace(/ /g, "\\ ") : "";
+
+/** drawtext wants forward slashes, an escaped drive colon and quotes: 'C\:/Windows/Fonts/arialbd.ttf'. */
+export function drawtextFont(file: string): string {
+  return `'${file.replace(/\\/g, "/").replace(/'/g, "").replace(/:/g, "\\:")}'`;
+}
+
+function fontOption(): string {
+  const file = FONT_CANDIDATES.find((candidate) => candidate && existsSync(candidate));
+  return file ? `fontfile=${drawtextFont(file)}:` : "";
+}
+
+/** The narration reads every chapter title and visible quote. Capped near an hour of speech. */
+const MAX_SCRIPT = 50_000;
 
 export function narrationScript(document: BookDocument): string {
   const parts: string[] = [];
@@ -32,8 +42,14 @@ export function narrationScript(document: BookDocument): string {
       if (text) parts.push(text);
     }
   }
-  const script = parts.join(". ").replace(/\s+/g, " ").trim();
-  return (script || document.title).slice(0, 700);
+  const script = parts
+    .map((part) => part.trim().replace(/[.!?…]+$/u, ""))
+    .filter(Boolean)
+    .join(". ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const intro = [document.title, document.question].filter(Boolean).join(". ");
+  return `${intro}${intro && script ? ". " : ""}${script}`.slice(0, MAX_SCRIPT) || document.title;
 }
 
 function escapeDrawtext(value: string): string {
@@ -41,35 +57,7 @@ function escapeDrawtext(value: string): string {
 }
 
 export async function synthesizeSpeech(text: string): Promise<Buffer> {
-  const provider = (process.env.TTS_PROVIDER || "mock").toLowerCase();
-  if (provider === "http" && process.env.TTS_URL) {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (process.env.TTS_API_KEY) headers.Authorization = `Bearer ${process.env.TTS_API_KEY}`;
-    const response = await fetch(process.env.TTS_URL, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ text }),
-    });
-    if (!response.ok) throw new Error(`TTS provider failed (${response.status}).`);
-    return Buffer.from(await response.arrayBuffer());
-  }
-
-  const dir = await mkdtemp(path.join(tmpdir(), "bbtp-tts-"));
-  const wav = path.join(dir, "speech.wav");
-  try {
-    try {
-      await exec("espeak-ng", ["-v", "en-us", "-s", "152", "-w", wav, text], { timeout: 30_000 });
-    } catch {
-      await exec(
-        "ffmpeg",
-        ["-y", "-f", "lavfi", "-i", "sine=frequency=196:duration=4", "-ac", "1", "-ar", "24000", wav],
-        { timeout: 20_000 },
-      );
-    }
-    return await readFile(wav);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
+  return (await speakToWav(text)).wav;
 }
 
 async function transcode(input: Buffer, args: string[], name: string): Promise<Buffer> {
@@ -78,80 +66,115 @@ async function transcode(input: Buffer, args: string[], name: string): Promise<B
   const target = path.join(dir, name);
   try {
     await writeFile(source, input);
-    await exec("ffmpeg", ["-y", "-i", source, ...args, target], { timeout: 45_000 });
+    await ffmpeg(["-y", "-i", source, ...args, target], 900_000);
     return await readFile(target);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 }
 
-export async function renderReleaseMedia(bookId: string, document: BookDocument) {
+function videoArgs(title: string, chapters: string, withText: boolean): string[] {
+  const font = fontOption();
+  const text = withText
+    ? `,drawtext=${font}text='BOOK BY THE PEOPLE':fontsize=28:fontcolor=white:x=(w-text_w)/2:y=150,drawtext=${font}text='${title}':fontsize=22:fontcolor=white:x=(w-text_w)/2:y=210,drawtext=${font}text='${chapters}':fontsize=16:fontcolor=white:x=(w-text_w)/2:y=270`
+    : "";
+  return [
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=0x9b1c24:s=854x480:r=2",
+    "-filter_complex",
+    `[1:v]format=yuv420p${text}[v]`,
+    "-map",
+    "[v]",
+    "-map",
+    "0:a",
+    "-shortest",
+    "-c:v",
+    "libx264",
+    "-tune",
+    "stillimage",
+    "-preset",
+    "veryfast",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "96k",
+    "-movflags",
+    "+faststart",
+  ];
+}
+
+export type MediaResult = { audio: boolean; video: boolean; note: string | null; engine: string | null };
+
+/**
+ * Speaks the book into an audiobook (mp3 when ffmpeg is there, otherwise wav) and,
+ * with ffmpeg, a simple video. Uploaded files are kept unless `force` is set.
+ */
+export async function renderReleaseMedia(bookId: string, document: BookDocument, options: { force?: boolean } = {}): Promise<MediaResult> {
   const script = narrationScript(document);
-  const wav = await synthesizeSpeech(script);
+  const spoken = await speakToWav(script);
+  const wav = spoken.wav;
+  const hasFfmpeg = Boolean(await ffmpegBin());
   let audio = wav;
   let audioMime = "audio/wav";
   let audioExt = "wav";
-  try {
-    audio = await transcode(wav, ["-codec:a", "libmp3lame", "-qscale:a", "8"], "book.mp3");
-    audioMime = "audio/mpeg";
-    audioExt = "mp3";
-  } catch {
-    audio = wav;
+  const notes: string[] = [];
+  if (hasFfmpeg) {
+    try {
+      audio = await transcode(wav, ["-codec:a", "libmp3lame", "-qscale:a", "6"], "book.mp3");
+      audioMime = "audio/mpeg";
+      audioExt = "mp3";
+    } catch {
+      audio = wav;
+    }
   }
   const title = escapeDrawtext(document.title || "Book by the People");
   const chapters = escapeDrawtext(document.chapters.map((chapter) => chapter.title).join("  ·  ") || document.question);
   let video: Buffer | null = null;
-  try {
-    video = await transcode(
-      wav,
-      [
-        "-f",
-        "lavfi",
-        "-i",
-        "color=c=0x9b1c24:s=854x480:d=8",
-        "-filter_complex",
-        `[1:v]drawtext=${FONT ? `fontfile=${FONT}:` : ""}text='BOOK BY THE PEOPLE':fontsize=28:fontcolor=white:x=(w-text_w)/2:y=150,drawtext=${FONT ? `fontfile=${FONT}:` : ""}text='${title}':fontsize=22:fontcolor=white:x=(w-text_w)/2:y=210,drawtext=${FONT ? `fontfile=${FONT}:` : ""}text='${chapters}':fontsize=16:fontcolor=white:x=(w-text_w)/2:y=270[v]`,
-        "-map",
-        "[v]",
-        "-map",
-        "0:a",
-        "-shortest",
-        "-c:v",
-        "libx264",
-        "-pix_fmt",
-        "yuv420p",
-        "-c:a",
-        "aac",
-        "-b:a",
-        "96k",
-        "-movflags",
-        "+faststart",
-      ],
-      "book.mp4",
-    );
-  } catch {
-    video = null;
+  if (hasFfmpeg) {
+    try {
+      video = await transcode(wav, videoArgs(title, chapters, true), "book.mp4");
+    } catch {
+      // Some ffmpeg builds have no drawtext; a plain cover still carries the narration.
+      try {
+        video = await transcode(wav, videoArgs(title, chapters, false), "book.mp4");
+      } catch (error) {
+        notes.push(`Video failed: ${error instanceof Error ? error.message.split("\n")[0].slice(0, 160) : "ffmpeg error"}`);
+      }
+    }
+  } else {
+    notes.push("Video needs ffmpeg. Get it in Book settings → AI model → Audio tools.");
   }
 
-  const current = await prisma.book.findUnique({ where: { id: bookId }, select: { audiobookName: true, videoName: true } });
-  const data: { audiobookKey?: string; audiobookBytes?: number; videoKey?: string; videoBytes?: number } = {};
-  if (!current?.audiobookName) {
+  const current = await prisma.book.findUnique({ where: { id: bookId }, select: { audiobookName: true, videoName: true, audiobookKey: true, videoKey: true } });
+  const data: { audiobookKey?: string; audiobookBytes?: number; audiobookName?: string; videoKey?: string; videoBytes?: number; videoName?: string } = {};
+  let wroteAudio = false;
+  let wroteVideo = false;
+  if (options.force || !current?.audiobookName) {
     const audioKey = `book-${bookId}-audiobook.${audioExt}`;
     await putAudio(audioKey, audio, audioMime);
     data.audiobookKey = audioKey;
     data.audiobookBytes = audio.length;
+    data.audiobookName = "";
+    wroteAudio = true;
   }
-  if (video && !current?.videoName) {
+  if (video && (options.force || !current?.videoName)) {
     const videoKey = `book-${bookId}-video.mp4`;
     await putAudio(videoKey, video, "video/mp4");
     data.videoKey = videoKey;
     data.videoBytes = video.length;
+    data.videoName = "";
+    wroteVideo = true;
   }
   await prisma.book.update({ where: { id: bookId }, data });
+  const note = notes.join(" ") || null;
   await prisma.pipelineJob.upsert({
     where: { key: `${bookId}:make:media` },
-    create: { bookId, step: "media", key: `${bookId}:make:media`, status: "done" },
-    update: { status: "done", lastError: video ? null : "Video assembly did not finish. The audiobook is ready." },
+    create: { bookId, step: "media", key: `${bookId}:make:media`, status: "done", lastError: note },
+    update: { status: "done", lastError: note },
   });
-  return data;
+  return { audio: wroteAudio || Boolean(current?.audiobookKey), video: wroteVideo || Boolean(current?.videoKey), note, engine: SPEECH_NAMES[spoken.engine] };
 }
