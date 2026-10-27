@@ -33,7 +33,7 @@ test("Studio: voices in, make the book, release audiobook + video, read it", asy
         clientTranscript: `${word.startWord}. ${line}`,
       },
     });
-    expect(voice.ok()).toBeTruthy();
+    expect(voice.ok(), await voice.text()).toBeTruthy();
   }
   expect((await api.post(`/api/books/${book.id}/close`, { headers: { origin: BASE } })).ok()).toBeTruthy();
 

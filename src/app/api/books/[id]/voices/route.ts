@@ -9,7 +9,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (origin) return origin;
   try {
     const ip = clientIp(request);
-    if (!rateLimit(`voice:${ip}`, 20, 60 * 60 * 1000)) {
+    if (!rateLimit(`voice:${ip}`, process.env.NODE_ENV === "production" ? 20 : 1000, 60 * 60 * 1000)) {
       return jsonError("Too many recordings from here. Try again later.", 429);
     }
     const { id } = await context.params;
