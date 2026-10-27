@@ -107,12 +107,12 @@ export function BookHome({
           <div className="cta-band">
             <h2>Your voice belongs in this book.</h2>
             {voiceHref && !paused ? (
-              <Link className="btn btn--red btn--big" href={voiceHref}>
+              <Link className="btn btn--red btn--big cta4" href={voiceHref}>
                 <span className="rec" />
                 Add your voice
               </Link>
             ) : (
-              <span className="btn btn--red btn--big">
+              <span className="btn btn--red btn--big cta4 is-closed" aria-disabled="true">
                 <span className="rec" />
                 {paused ? "Voices are paused right now" : "Voices are closed"}
               </span>
@@ -170,14 +170,12 @@ function Before({
   return (
     <section className="wrap hero4">
       <div className="hero4__text">
-        <div className="eyebrow in1">
+        <span className="eyebrow in1">
           <span className="live">
             <i />
           </span>
-          <span>
-            <b>{voiceCount.toLocaleString("en-US")}</b> voices so far
-          </span>
-        </div>
+          <b>{voiceCount.toLocaleString("en-US")}</b> voices so far
+        </span>
         <h1 className="hero4__title">
           <span className="w">
             <span style={{ ["--d" as string]: "80ms" }}>{lineA}</span>
@@ -204,12 +202,12 @@ function Before({
             </div>
           )}
           {paused ? (
-            <span className="btn btn--red btn--big btn--block cta4">
+            <span className="btn btn--red btn--big btn--block cta4 is-closed" aria-disabled="true">
               <span className="rec" />
               Voices are paused right now
             </span>
           ) : closed || !voiceHref ? (
-            <span className="btn btn--red btn--big btn--block cta4 is-closed">
+            <span className="btn btn--red btn--big btn--block cta4 is-closed" aria-disabled="true">
               <span className="rec" />
               Voices are closed
               <span className="cta4__t">10 min</span>
@@ -324,10 +322,6 @@ function How({ releaseLabel }: { releaseLabel: string }) {
         <span className="red">A real book.</span>
       </h2>
       <ol className="how5__steps">
-        <span className="how5__line" aria-hidden="true">
-          <i />
-          <em />
-        </span>
         {steps.map(([Icon, title, copy], index) => (
           <li className="how5__s" style={{ ["--i" as string]: index }} key={title}>
             <span className="how5__ic">

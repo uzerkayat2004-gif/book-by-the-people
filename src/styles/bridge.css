@@ -110,13 +110,10 @@ label.field > span {
 .vibe button.on {
   border-color: #fff;
 }
+/* Closed state reads like live's disabled button */
 .btn.is-closed {
-  background: #5c2226;
-  box-shadow: none;
-}
-.btn.is-closed .rec {
-  background: #b9b9b9;
-  box-shadow: none;
+  opacity: .38;
+  pointer-events: none;
 }
 .vote2 {
   margin: 0 0 12px;
@@ -322,15 +319,6 @@ body.is-404 .foot4 {
   width: 70%;
   height: 70%;
 }
-@media (min-width: 980px) {
-  .hero4__globe .globebox {
-    max-width: 560px;
-  }
-  .hero4__globe .gpanel {
-    margin-top: -128px;
-    width: min(100%, 440px);
-  }
-}
 .nrow__track {
   animation: marquee 48s linear infinite;
 }
@@ -357,17 +345,6 @@ body.is-404 .foot4 {
   background: #1a1c22;
   color: #d7d8dc;
 }
-.top__bar {
-  width: min(calc(100% - 24px), 788px);
-  min-height: 36px;
-  padding: 3px 5px 3px 8px;
-}
-.btn.is-closed {
-  background: linear-gradient(180deg, #9a2430, #7c1c28);
-  color: #f3d7d4;
-  border-color: transparent;
-  box-shadow: 0 10px 30px -16px rgba(180, 30, 40, 0.9);
-}
 .word b {
   text-transform: uppercase;
 }
@@ -377,24 +354,18 @@ body.is-404 .foot4 {
 }
 .word.liveword b {
   text-transform: none;
-  font-family: var(--sans);
-  font-stretch: normal;
-  font-weight: 760;
-  letter-spacing: 0;
   font-size: 42px;
-  line-height: 1;
+}
+.word.liveword > .muted {
+  display: block;
+  font-size: 12px;
+  margin: 2px 0 8px;
 }
 .page.speak .question {
-  font-style: italic;
-  text-align: center;
-  margin-bottom: 8px;
-}
-.page.speak .lead {
-  text-align: center;
+  margin-bottom: 16px;
 }
 .page.speak .field,
-.page.speak .hint,
-.page.speak .under {
+.page.speak .hint {
   text-align: left;
 }
 .ownerout {
@@ -552,258 +523,161 @@ body.is-404 .foot4 {
   display: block;
   color: var(--muted);
 }
-.gate-live {
-  min-height: calc(100vh - 120px);
-}
-.gate-live .narrow {
-  min-height: calc(100vh - 160px);
-}
-/* Sizes measured from the live 1280×742 page (chrome cropped). */
-.top {
-  padding: 10px 0 0;
-}
-.logo__mark {
-  width: 26px;
-  height: 26px;
-}
-.avatar,
-.avatar.on {
-  width: 32px;
-  height: 32px;
-  font-size: 12px;
-}
-.signin-link {
-  min-height: 28px;
-  padding: 6px 12px;
-  font-size: 13px;
-}
-.studio-pill {
-  padding: 5px 10px;
-  font-size: 11px;
-}
-.page.home4 .wrap,
-.foot4 .wrap {
-  width: min(100% - 24px, 788px);
-}
 .page.admin .wrap.admin4 {
-  width: min(100% - 48px, 1180px);
-  margin: 6px auto 0 28px;
-}
-.page.me .narrow,
-.page.speak .narrow {
-  width: min(100% - 24px, 420px);
-}
-.hero4__title {
-  font-size: 72px;
-  line-height: 0.86;
-  margin: 8px 0 10px;
-}
-.cd__b {
-  padding: 8px 4px 6px;
-  border-radius: 12px;
-}
-.cd__b b {
-  font-size: 32px;
-}
-.topic {
-  padding: 12px 14px 10px;
-}
-.topic__q {
-  font-size: 22px;
-  margin: 8px 0;
-}
-.btn {
-  min-height: 42px;
-  font-size: 14.5px;
-  padding: 0 16px;
-}
-.btn--big {
-  min-height: 44px;
-}
-.how5__h {
-  font-size: 64px;
-}
-.how5__n {
-  font-size: 72px;
-}
-.poll h2,
-.cta-band h2 {
-  font-size: 34px;
+  width: min(100% - 72px, 1180px);
+  margin: 9px auto 0 42px;
 }
 .setcard textarea,
 .setcard .ta {
   font-family: "Newsreader", Georgia, serif;
   font-style: italic;
-  font-size: 16px;
+  font-size: 24px;
   line-height: 1.35;
-  min-height: 64px;
+  min-height: 96px;
 }
 .setcard .input {
-  min-height: 40px;
-  font-size: 14.5px;
+  min-height: 60px;
+  font-size: 22px;
   font-family: var(--sans);
 }
 .setcard .live-grid {
-  grid-template-columns: minmax(0, 1fr) 112px;
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) 168px;
+  gap: 15px;
 }
 .bk6--compact {
-  width: 124px;
+  width: 186px;
 }
 .bk6--compact .bk6__svg {
-  width: 112px;
+  width: 168px;
   height: auto;
   display: block;
 }
 .relprev .bk6 {
-  width: 210px;
+  width: 315px;
 }
-.gpanel__stats b {
-  font-size: 22px;
-}
-@media (min-width: 980px) {
-  .hero4 {
-    min-height: 0;
-    align-items: start;
-    grid-template-columns: minmax(0, 1fr) 300px;
-    gap: 16px;
-    padding-top: 108px;
-  }
-  .hero4__title {
-    font-size: 72px;
-  }
-  .hero4__globe .globebox {
-    max-width: 300px;
-  }
-  .hero4__globe .gpanel {
-    margin-top: 18px;
-    width: min(100%, 300px);
-  }
-}
-
 .page.admin .wrap.admin4 {
-  margin: 2px 0 0 40px;
-  width: min(100% - 56px, 1200px);
+  margin: 2px 0 0 60px;
+  width: min(100% - 84px, 1200px);
 }
 .page.admin .ownerbar {
-  margin: 2px 0 8px;
-  gap: 6px;
+  margin: 2px 0 12px;
+  gap: 9px;
 }
 .page.admin .otabs a {
-  padding: 3px 9px;
-  font-size: 12px;
-  gap: 5px;
+  padding: 4.5px 13.5px;
+  font-size: 18px;
+  gap: 7.5px;
 }
 .page.admin .otabs a b {
-  width: 14px;
-  height: 14px;
-  font-size: 9px;
+  width: 21px;
+  height: 21px;
+  font-size: 13.5px;
 }
 .page.admin .running,
 .page.admin .ownerout {
-  padding: 4px 10px;
-  font-size: 12px;
+  padding: 6px 15px;
+  font-size: 18px;
 }
 .page.admin h1,
 .page.admin .live-col > h1,
 .page.admin .ai__head h1 {
-  font-size: 42px;
+  font-size: 63px;
   margin-bottom: 2px;
 }
 .page.admin .lead {
-  font-size: 13px;
-  margin: 2px 0 10px;
+  font-size: 19.5px;
+  margin: 2px 0 15px;
 }
 .page.admin .setcard {
-  padding: 10px 12px 11px;
-  margin-bottom: 8px;
-  border-radius: 14px;
+  padding: 15px 18px 16.5px;
+  margin-bottom: 12px;
+  border-radius: 21px;
 }
 .page.admin .setcard h2,
 .page.admin .setcard__head h2 {
-  font-size: 14.5px;
+  font-size: 22px;
 }
 .page.admin .setcard__head {
-  margin-bottom: 6px;
+  margin-bottom: 9px;
 }
 .page.admin .field > span,
 .page.admin label.field > span {
-  font-size: 12px;
-  margin-bottom: 3px;
+  font-size: 18px;
+  margin-bottom: 4.5px;
 }
 .page.admin .setcard .input,
 .page.admin .input {
-  min-height: 32px;
-  font-size: 13px;
-  padding: 0 10px;
-  border-radius: 10px;
+  min-height: 48px;
+  font-size: 19.5px;
+  padding: 0 15px;
+  border-radius: 15px;
 }
 .page.admin .setcard textarea,
 .page.admin .setcard .ta {
-  font-size: 14px;
-  min-height: 46px;
-  padding: 7px 10px;
-  border-radius: 10px;
+  font-size: 21px;
+  min-height: 69px;
+  padding: 10.5px 15px;
+  border-radius: 15px;
 }
 .page.admin .savepill {
-  min-height: 26px;
-  padding: 0 10px;
-  font-size: 12px;
+  min-height: 39px;
+  padding: 0 15px;
+  font-size: 18px;
 }
 .page.admin .aitiles {
-  max-width: 700px;
-  gap: 8px;
+  max-width: 1050px;
+  gap: 12px;
 }
 .page.admin .aitiles .card {
-  padding: 8px 10px;
+  padding: 12px 15px;
 }
 .page.admin .aitiles b {
-  font-size: 28px;
+  font-size: 42px;
 }
 .page.admin .aitiles span {
-  font-size: 11px;
+  font-size: 16.5px;
 }
 .page.admin .pipe {
-  max-width: 740px;
-  margin: 10px 0 6px;
+  max-width: 1110px;
+  margin: 15px 0 9px;
 }
 .page.admin .pipe span {
-  padding: 3px 8px;
-  font-size: 11px;
+  padding: 4.5px 12px;
+  font-size: 16.5px;
 }
 .page.admin .ai__grid,
 .page.admin .live-grid {
-  max-width: 760px;
-  gap: 12px;
+  max-width: 1140px;
+  gap: 18px;
 }
 .page.admin .setcard .live-grid {
   max-width: none;
-  grid-template-columns: minmax(0, 1fr) 118px;
+  grid-template-columns: minmax(0, 1fr) 177px;
 }
 .page.admin .card {
-  padding: 10px 12px;
+  padding: 15px 18px;
 }
 .page.admin .btn {
-  min-height: 32px;
-  font-size: 13px;
-  padding: 0 12px;
+  min-height: 48px;
+  font-size: 19.5px;
+  padding: 0 18px;
 }
 .page.admin .btn--big {
-  min-height: 40px;
-  font-size: 14px;
+  min-height: 60px;
+  font-size: 21px;
 }
 .page.admin .bk6--compact {
-  width: 92px;
+  width: 138px;
 }
 .page.admin h1,
 .page.admin .live-col > h1,
 .page.admin .ai__head h1 {
-  font-size: 48px;
+  font-size: 72px;
   letter-spacing: -0.03em;
 }
 .page.admin .setcard h2,
 .page.admin .setcard__head h2 {
-  font-size: 15px;
+  font-size: 22.5px;
 }
 .page.admin .aitiles {
   max-width: 68%;
@@ -836,6 +710,10 @@ body.is-404 .foot4 {
   margin: 18px 0 0;
   font-family: var(--sans);
 }
+p.ownbook.wrap { margin: 28px auto 0; text-align: center; font-size: 14px; color: var(--muted); }
+p.ownbook.wrap a { color: var(--soft); text-decoration: underline; text-underline-offset: 3px; }
+p.ownbook.wrap a:hover { color: var(--text); }
+.nm__flag { width: 18px; height: 14px; border-radius: 2px; display: inline-block; vertical-align: middle; margin: 0 2px; }
 .pq.prose {
   border: 0;
   background: transparent;
@@ -848,12 +726,8 @@ body.is-404 .foot4 {
   line-height: 1.45;
 }
 @media (max-width: 800px) {
-  .page.admin .wrap.admin4,
-  .page.home4 .wrap,
-  .foot4 .wrap,
-  .page.me .narrow,
-  .page.speak .narrow {
-    width: min(100% - 20px, 788px);
+  .page.admin .wrap.admin4 {
+    width: calc(100% - var(--pad) * 2);
     margin-left: auto;
     margin-right: auto;
   }
@@ -867,10 +741,9 @@ body.is-404 .foot4 {
   .page.admin .aitiles,
   .page.admin .ai__grid,
   .page.admin .live-grid,
-  .hero4,
   .setcard .live-grid {
     max-width: none;
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .page.admin .aitiles {
     grid-template-columns: 1fr 1fr;
@@ -879,13 +752,12 @@ body.is-404 .foot4 {
   .page.admin .ai__head h1 {
     font-size: 36px;
   }
-  .hero4__title {
-    font-size: 46px;
-  }
-  .top__bar {
-    width: min(100% - 16px, 930px);
-  }
   .relprev .bk6 {
     width: min(180px, 46vw);
   }
 }
+
+/* Pages that have no site footer on live (about, privacy, /book, 404, speak) */
+body:has(main[data-nofoot]) .foot4,
+body:has(.page.speak.gate-live) .foot4,
+body:has(.page.speak.speak-rec) .foot4 { display: none; }

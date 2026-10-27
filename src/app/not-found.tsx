@@ -2,16 +2,18 @@ import Link from "next/link";
 
 export default function NotFound() {
   return (
-    <main className="page404">
+    <main className="page" data-nofoot="">
       <script
         dangerouslySetInnerHTML={{
           __html: "document.body.classList.add('is-404')",
         }}
       />
-      <h1 className="h-quiet">Page not found.</h1>
-      <Link className="btn btn--red" href="/" style={{ marginTop: 18 }}>
-        Go home
-      </Link>
+      <div className="narrow done">
+        <h1>Page not found.</h1>
+        <Link className="btn btn--red btn--big" href="/" style={{ marginTop: 18, display: "inline-block" }}>
+          Go home
+        </Link>
+      </div>
     </main>
   );
 }

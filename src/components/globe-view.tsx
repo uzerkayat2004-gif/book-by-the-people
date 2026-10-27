@@ -1,215 +1,352 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { isLand } from "@/lib/land-mask";
+import { useEffect, useRef } from "react";
+import { GLOBE_DOTS } from "@/lib/globe-dots";
 
 type Pin = { name: string; lat: number; lng: number };
 
-/** Globe radius as a share of the canvas width. The CSS rim glow in globe.css follows it. */
-const R = 0.47;
+/** Sphere radius in the [-1, 1] view, as on the live globe (0.805 → 40.25% of the canvas width). */
+const RADIUS = 0.805;
+/** Start facing India (lng 79), tilted slightly toward the viewer. */
+const START_LNG = 79;
+const REST_THETA = 0.3;
+const MIN_THETA = -0.6;
+const MAX_THETA = 0.9;
+/** Slow auto-spin (radians per second) once the globe has been left alone for a moment. */
+const SPIN = 0.157;
+const IDLE_MS = 2500;
+const TAP_MS = 600;
+const TAP_MOVE = 6;
+const PICK_MOUSE = 12;
+const PICK_TOUCH = 18;
 
-/** Evenly spaced points on the sphere (Fibonacci lattice), kept where the map has land. */
-function landPoints(samples: number): [number, number][] {
-  const out: [number, number][] = [];
-  const golden = Math.PI * (3 - Math.sqrt(5));
-  for (let index = 0; index < samples; index += 1) {
-    const y = 1 - ((index + 0.5) / samples) * 2;
-    const lat = (Math.asin(y) * 180) / Math.PI;
-    const lng = ((((index * golden * 180) / Math.PI) % 360) + 540) % 360 - 180;
-    if (Math.abs(lat) < 84 && isLand(lat, lng)) out.push([lat, lng]);
-  }
-  return out;
-}
-const DOTS = landPoints(90000);
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+const phiFacing = (lng: number) => Math.PI / 2 - ((lng * Math.PI) / 180 - Math.PI);
+const angleDelta = (from: number, to: number) => {
+  let delta = (to - from) % (Math.PI * 2);
+  if (delta > Math.PI) delta -= Math.PI * 2;
+  if (delta < -Math.PI) delta += Math.PI * 2;
+  return delta;
+};
 
-function project(lat: number, lng: number, phi: number, theta: number) {
+/** Orthographic projection to canvas pixels; depth > 0 is the visible side. */
+function project(lat: number, lng: number, phi: number, theta: number, size: number, scale = 1) {
   const la = (lat * Math.PI) / 180;
   const lo = (lng * Math.PI) / 180 - Math.PI;
   const o = Math.cos(la);
-  const radius = R * 2;
-  const x = -o * Math.cos(lo) * radius;
-  const y = Math.sin(la) * radius;
-  const z = o * Math.sin(lo) * radius;
-  const ct = Math.cos(theta);
+  const r = RADIUS * scale;
+  const x = -o * Math.cos(lo) * r;
+  const y = Math.sin(la) * r;
+  const z = o * Math.sin(lo) * r;
   const cp = Math.cos(phi);
-  const st = Math.sin(theta);
   const sp = Math.sin(phi);
-  const cx = cp * x + sp * z;
-  const cy = sp * st * x + ct * y - cp * st * z;
+  const ct = Math.cos(theta);
+  const st = Math.sin(theta);
+  const px = cp * x + sp * z;
+  const py = sp * st * x + ct * y - cp * st * z;
   const depth = -sp * ct * x + st * y + cp * ct * z;
-  return { x: (cx + 1) / 2, y: (-cy + 1) / 2, depth };
+  return { x: ((px + 1) / 2) * size, y: ((-py + 1) / 2) * size, depth };
+}
+
+const smoothstep = (a: number, b: number, x: number) => {
+  const t = clamp((x - a) / (b - a), 0, 1);
+  return t * t * (3 - 2 * t);
+};
+const mix = (a: number, b: number, t: number) => Math.round(a + (b - a) * t);
+
+/** Pre-renders the sphere body and the red rim light once per size. */
+function paintBody(size: number, dpr: number) {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = Math.round(size * dpr);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return canvas;
+  ctx.scale(dpr, dpr);
+  const c = size / 2;
+  const r = (RADIUS * size) / 2;
+  // Body: |n.z| shading, dark at the limb and a touch lighter in the middle.
+  const body = ctx.createRadialGradient(c, c, 0, c, c, r);
+  for (let step = 0; step <= 24; step += 1) {
+    const t = step / 24;
+    const f = Math.sqrt(Math.max(0, 1 - t * t));
+    const k = smoothstep(0.55, 1, f);
+    body.addColorStop(t, `rgb(${mix(10, 28, k)},${mix(11, 30, k)},${mix(13, 36, k)})`);
+  }
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.arc(c, c, r, 0, Math.PI * 2);
+  ctx.fill();
+  // Rim light: a 1.02× shell lit by (1 - |n.z|)^3.5, added on top (colour × alpha, as additive blending does).
+  const shell = r * 1.02;
+  const rim = ctx.createRadialGradient(c, c, 0, c, c, shell);
+  for (let step = 0; step <= 40; step += 1) {
+    const t = 0.6 + (step / 40) * 0.4;
+    const f = Math.pow(1 - Math.sqrt(Math.max(0, 1 - t * t)), 3.5);
+    rim.addColorStop(t, `rgba(${Math.round(235 * f)},${Math.round(61 * f)},${Math.round(66 * f)},${(f * 0.85).toFixed(3)})`);
+  }
+  rim.addColorStop(0, "rgba(235,61,66,0)");
+  ctx.globalCompositeOperation = "lighter";
+  ctx.fillStyle = rim;
+  ctx.beginPath();
+  ctx.arc(c, c, shell, 0, Math.PI * 2);
+  ctx.fill();
+  return canvas;
 }
 
 export function GlobeView({ pins }: { pins: Pin[] }) {
   const wrapRef = useRef<HTMLDivElement>(null);
-  const flatRef = useRef<HTMLCanvasElement>(null);
-  const phiRef = useRef(-3.75);
-  const thetaRef = useRef(0.42);
-  const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
-  const [tip, setTip] = useState<{ name: string; x: number; y: number; left: boolean } | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const tipRef = useRef<HTMLDivElement>(null);
+  const selRef = useRef<HTMLDivElement>(null);
   const pinsRef = useRef(pins);
   useEffect(() => {
     pinsRef.current = pins;
   }, [pins]);
 
   useEffect(() => {
-    const flat = flatRef.current;
+    const canvas = canvasRef.current;
     const wrap = wrapRef.current;
-    if (!flat || !wrap) return;
+    if (!canvas || !wrap) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const state = {
+      phi: phiFacing(START_LNG),
+      theta: REST_THETA,
+      vPhi: 0,
+      vTheta: 0,
+      dragging: false,
+      selected: -1,
+      lastInput: -Infinity,
+      size: 0,
+      dpr: 1,
+      body: null as HTMLCanvasElement | null,
+    };
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let drag: { id: number; lx: number; ly: number; t: number; moved: number; mouse: boolean } | null = null;
+
+    const resize = () => {
+      const size = Math.max(80, Math.round(wrap.clientWidth || 320));
+      const dpr = clamp(window.devicePixelRatio || 1, 1, 2.5);
+      if (size === state.size && dpr === state.dpr && state.body) return;
+      state.size = size;
+      state.dpr = dpr;
+      canvas.width = canvas.height = Math.round(size * dpr);
+      state.body = paintBody(size, dpr);
+    };
+
+    const render = () => {
+      const { size, dpr, phi, theta } = state;
+      if (!size) return;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (state.body) ctx.drawImage(state.body, 0, 0);
+      // Land dots, front side only. Small dots are drawn as crisp pixel squares (like WebGL points);
+      // bigger ones (high-DPI screens) as round dots, all in one path.
+      const dot = Math.max(1.3, size * 0.0042) * dpr;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.fillStyle = "#e5e2da";
+      ctx.beginPath();
+      const square = dot < 3.5;
+      const side = Math.max(1, Math.round(dot));
+      for (let index = 0; index < GLOBE_DOTS.length; index += 2) {
+        const point = project(GLOBE_DOTS[index], GLOBE_DOTS[index + 1], phi, theta, size, 1.004);
+        if (point.depth <= 0) continue;
+        const x = point.x * dpr;
+        const y = point.y * dpr;
+        if (square) {
+          ctx.rect(Math.round(x - side / 2), Math.round(y - side / 2), side, side);
+        } else {
+          ctx.moveTo(x + dot / 2, y);
+          ctx.arc(x, y, dot / 2, 0, Math.PI * 2);
+        }
+      }
+      ctx.fill();
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // Voices: red dots.
+      const marker = Math.max(5.5, size * 0.0125) / 2;
+      ctx.fillStyle = "#ff4340";
+      ctx.beginPath();
+      for (const pin of pinsRef.current) {
+        const point = project(pin.lat, pin.lng, phi, theta, size, 1.012);
+        if (point.depth <= 0) continue;
+        ctx.moveTo(point.x + marker, point.y);
+        ctx.arc(point.x, point.y, marker, 0, Math.PI * 2);
+      }
+      ctx.fill();
+    };
+
+    const placeTip = () => {
+      const tip = tipRef.current;
+      const sel = selRef.current;
+      if (!tip) return;
+      const pin = state.selected >= 0 ? pinsRef.current[state.selected] : undefined;
+      if (!pin) {
+        tip.classList.remove("on");
+        sel?.classList.add("hid");
+        return;
+      }
+      const point = project(pin.lat, pin.lng, state.phi, state.theta, state.size);
+      const transform = `translate3d(${point.x}px,${point.y}px,0)`;
+      tip.style.transform = transform;
+      tip.classList.add("on");
+      tip.classList.toggle("hid", point.depth < 0.05);
+      tip.classList.toggle("l", point.x > state.size * 0.62);
+      if (sel) {
+        sel.style.transform = transform;
+        sel.classList.toggle("hid", point.depth < 0.05);
+      }
+    };
+
+    const step = (dt: number, now: number) => {
+      if (!state.dragging && (Math.abs(state.vPhi) > 0.02 || Math.abs(state.vTheta) > 0.02)) {
+        // Fling: keep turning after release and slow down.
+        state.phi += state.vPhi * dt;
+        state.theta = clamp(state.theta + state.vTheta * dt, MIN_THETA, MAX_THETA);
+        const decay = Math.exp(-2.2 * dt);
+        state.vPhi *= decay;
+        state.vTheta *= decay;
+        if (Math.abs(state.vPhi) <= 0.02 && Math.abs(state.vTheta) <= 0.02) {
+          state.vPhi = 0;
+          state.vTheta = 0;
+          state.lastInput = now;
+        }
+      } else if (!state.dragging && state.selected < 0 && !reduced && now - state.lastInput > IDLE_MS) {
+        state.phi += SPIN * dt;
+        state.theta += (REST_THETA - state.theta) * (1 - Math.exp(-3 * dt));
+      }
+      render();
+      placeTip();
+    };
+
     let frame = 0;
     let last = 0;
-    const draw = (now: number) => {
-      const dt = last ? Math.min(0.05, (now - last) / 1000) : 0;
+    let stopped = false;
+    const loop = (now: number) => {
+      if (stopped) return;
+      const dt = last ? Math.min(0.05, (now - last) / 1000) : 0.016;
       last = now;
-      const frozen = document.documentElement.classList.contains("static");
-      if (!drag.current && !frozen) phiRef.current += 0.11 * dt;
-      const size = Math.max(80, Math.round(wrap.clientWidth));
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
-      if (flat.width !== size * dpr || flat.height !== size * dpr) {
-        flat.width = size * dpr;
-        flat.height = size * dpr;
-      }
-      const ctx = flat.getContext("2d");
-      if (!ctx) return;
-      const width = flat.width;
-      ctx.clearRect(0, 0, width, width);
-      const phi = phiRef.current;
-      const theta = thetaRef.current;
-      const radius = width * R;
-      const cx = width / 2;
-      const cy = width / 2;
-      // Sphere body: near-black, lit to a soft grey toward the lower right like the live globe.
-      const shade = ctx.createRadialGradient(cx + radius * 0.18, cy + radius * 0.28, radius * 0.05, cx, cy, radius);
-      shade.addColorStop(0, "#26282d");
-      shade.addColorStop(0.6, "#16171b");
-      shade.addColorStop(1, "#0b0c0e");
-      ctx.fillStyle = shade;
-      ctx.beginPath();
-      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(cx, cy, radius - 0.5, 0, Math.PI * 2);
-      ctx.clip();
-      const dot = Math.max(1, width * 0.0036);
-      ctx.fillStyle = "#f4f3f0";
-      for (const [lat, lng] of DOTS) {
-        const point = project(lat, lng, phi, theta);
-        if (point.depth < 0.01) continue;
-        const facing = point.depth / (R * 2);
-        ctx.globalAlpha = Math.min(1, 0.3 + facing * 1.05);
-        const size = dot * (0.55 + 0.45 * facing);
-        ctx.fillRect(point.x * width - size / 2, point.y * width - size / 2, size, size);
-      }
-      ctx.globalAlpha = 1;
-      const drawn: Pin[] = [];
-      for (const pin of pinsRef.current) {
-        // One marker per place: voices from the same area share a dot, as on the live globe.
-        if (drawn.some((other) => Math.abs(other.lat - pin.lat) < 6 && Math.abs(other.lng - pin.lng) < 6)) continue;
-        drawn.push(pin);
-        const point = project(pin.lat, pin.lng, phi, theta);
-        if (point.depth < 0.04) continue;
-        const px = point.x * width;
-        const py = point.y * width;
-        const r = Math.max(2.2, width * 0.0085);
-        const glow = ctx.createRadialGradient(px, py, 0, px, py, r * 3);
-        glow.addColorStop(0, "rgba(255,59,48,.55)");
-        glow.addColorStop(1, "rgba(255,59,48,0)");
-        ctx.fillStyle = glow;
-        ctx.beginPath();
-        ctx.arc(px, py, r * 3, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "#ff2d24";
-        ctx.beginPath();
-        ctx.arc(px, py, r, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.restore();
-      // Red rim: a thin bright line with a soft outer glow.
-      ctx.save();
-      ctx.shadowColor = "rgba(229,56,59,.9)";
-      ctx.shadowBlur = width * 0.045;
-      ctx.strokeStyle = "rgba(236,72,72,.95)";
-      ctx.lineWidth = Math.max(1, width * 0.004);
-      for (let pass = 0; pass < 2; pass += 1) {
-        ctx.beginPath();
-        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      ctx.restore();
-      ctx.restore();
-      frame = requestAnimationFrame(draw);
+      step(dt, now);
+      frame = requestAnimationFrame(loop);
     };
-    draw(performance.now());
-    frame = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(frame);
-  }, []);
-
-  function pointerDown(event: React.PointerEvent<HTMLCanvasElement>) {
-    drag.current = { x: event.clientX, y: event.clientY, moved: false };
-  }
-  function pointerMove(event: React.PointerEvent<HTMLCanvasElement>) {
-    const current = drag.current;
-    if (!current) return;
-    const dx = event.clientX - current.x;
-    const dy = event.clientY - current.y;
-    if (!current.moved && Math.hypot(dx, dy) < 6) return;
-    current.moved = true;
-    const size = wrapRef.current?.clientWidth || 400;
-    const k = Math.PI / Math.max(240, size);
-    phiRef.current += dx * k;
-    thetaRef.current = Math.max(-1.05, Math.min(1.05, thetaRef.current + dy * k));
-    current.x = event.clientX;
-    current.y = event.clientY;
-  }
-  function pointerUp(event: React.PointerEvent<HTMLCanvasElement>) {
-    const current = drag.current;
-    drag.current = null;
-    if (!current || current.moved) {
-      setTip(null);
-      return;
-    }
-    const canvas = flatRef.current;
-    if (!canvas) return;
-    const box = canvas.getBoundingClientRect();
-    const mx = (event.clientX - box.left) / box.width;
-    const my = (event.clientY - box.top) / box.height;
-    let best = -1;
-    let bestD = 0.04;
-    pinsRef.current.forEach((pin, index) => {
-      const point = project(pin.lat, pin.lng, phiRef.current, thetaRef.current);
-      if (point.depth < 0.08) return;
-      const d = (point.x - mx) ** 2 + (point.y - my) ** 2;
-      if (d < bestD) {
-        bestD = d;
-        best = index;
-      }
+    resize();
+    render();
+    frame = requestAnimationFrame(loop);
+    const observer = new ResizeObserver(() => {
+      resize();
+      render();
     });
-    if (best < 0) {
-      setTip(null);
-      return;
-    }
-    const pin = pinsRef.current[best];
-    const point = project(pin.lat, pin.lng, phiRef.current, thetaRef.current);
-    const size = canvas.getBoundingClientRect().width;
-    setTip({ name: pin.name, x: point.x * size, y: point.y * size, left: point.x > 0.62 });
-  }
+    observer.observe(wrap);
+
+    const endDrag = () => {
+      drag = null;
+      state.dragging = false;
+      wrap.classList.remove("gwrap--drag");
+    };
+    const select = (index: number) => {
+      state.selected = index;
+      state.lastInput = performance.now();
+      const span = tipRef.current?.firstElementChild;
+      if (span) span.textContent = index >= 0 ? (pinsRef.current[index]?.name ?? "") : "";
+    };
+
+    const onDown = (event: PointerEvent) => {
+      // Mouse: left button only. Touch and pen always start a drag.
+      if (event.pointerType === "mouse" && event.button !== 0) return;
+      try {
+        canvas.setPointerCapture(event.pointerId);
+      } catch {
+        // Capture can fail if the pointer is already gone; the drag still works inside the canvas.
+      }
+      drag = { id: event.pointerId, lx: event.clientX, ly: event.clientY, t: performance.now(), moved: 0, mouse: event.pointerType === "mouse" };
+      state.dragging = true;
+      state.vPhi = 0;
+      state.vTheta = 0;
+      state.lastInput = performance.now();
+      wrap.classList.add("gwrap--drag");
+    };
+    const onMove = (event: PointerEvent) => {
+      if (!drag || drag.id !== event.pointerId || !state.size) return;
+      // The left button is no longer held (released outside the window, etc.): stop dragging.
+      if (drag.mouse && (event.buttons & 1) === 0) {
+        endDrag();
+        state.vPhi = 0;
+        state.vTheta = 0;
+        state.lastInput = performance.now();
+        return;
+      }
+      const dx = event.clientX - drag.lx;
+      const dy = event.clientY - drag.ly;
+      drag.lx = event.clientX;
+      drag.ly = event.clientY;
+      drag.moved += Math.abs(dx) + Math.abs(dy);
+      if (drag.moved <= TAP_MOVE) return;
+      if (state.selected >= 0) select(-1);
+      const touch = event.pointerType === "touch";
+      state.phi += (dx / state.size) * Math.PI;
+      if (!touch) state.theta = clamp(state.theta + (dy / state.size) * Math.PI, MIN_THETA, MAX_THETA);
+      state.vPhi = (dx / state.size) * Math.PI * 60;
+      state.vTheta = touch ? 0 : (dy / state.size) * Math.PI * 60;
+      state.lastInput = performance.now();
+    };
+    const onUp = (event: PointerEvent) => {
+      if (!drag || drag.id !== event.pointerId) return;
+      const tap = drag.moved < TAP_MOVE && performance.now() - drag.t < TAP_MS;
+      endDrag();
+      state.lastInput = performance.now();
+      if (!tap) return;
+      state.vPhi = 0;
+      state.vTheta = 0;
+      const box = canvas.getBoundingClientRect();
+      const mx = event.clientX - box.left;
+      const my = event.clientY - box.top;
+      let best = -1;
+      let bestDistance = event.pointerType === "touch" ? PICK_TOUCH : PICK_MOUSE;
+      pinsRef.current.forEach((pin, index) => {
+        const point = project(pin.lat, pin.lng, state.phi, state.theta, state.size);
+        if (point.depth < 0.05) return;
+        const distance = Math.hypot(point.x - mx, point.y - my);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = index;
+        }
+      });
+      select(best >= 0 && best !== state.selected ? best : -1);
+    };
+    const onCancel = () => {
+      endDrag();
+      state.vPhi = 0;
+      state.vTheta = 0;
+    };
+    const onLost = (event: PointerEvent) => {
+      if (drag && drag.id === event.pointerId) onCancel();
+    };
+
+    canvas.addEventListener("pointerdown", onDown);
+    canvas.addEventListener("pointermove", onMove);
+    canvas.addEventListener("pointerup", onUp);
+    canvas.addEventListener("pointercancel", onCancel);
+    canvas.addEventListener("lostpointercapture", onLost);
+    window.addEventListener("blur", onCancel);
+    return () => {
+      stopped = true;
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      canvas.removeEventListener("pointerdown", onDown);
+      canvas.removeEventListener("pointermove", onMove);
+      canvas.removeEventListener("pointerup", onUp);
+      canvas.removeEventListener("pointercancel", onCancel);
+      canvas.removeEventListener("lostpointercapture", onLost);
+      window.removeEventListener("blur", onCancel);
+    };
+  }, []);
 
   return (
     <div className="gwrap ready" ref={wrapRef}>
-      <canvas
-        ref={flatRef}
-        aria-label="Globe: one dot for every person who spoke"
-        onPointerDown={pointerDown}
-        onPointerMove={pointerMove}
-        onPointerUp={pointerUp}
-        onPointerCancel={() => {
-          drag.current = null;
-        }}
-      />
+      <div className="gwrap__atmo" />
+      <canvas ref={canvasRef} aria-label="Globe: one dot for every person who spoke" />
       <div className="gwrap__ov">
-        <div className={`gtip${tip ? " on" : ""}${tip?.left ? " l" : ""}`} style={tip ? { transform: `translate3d(${tip.x}px, ${tip.y}px, 0)` } : undefined}>
-          <span>{tip?.name}</span>
+        <div className="gsel hid" ref={selRef} aria-hidden="true" />
+        <div className="gtip" ref={tipRef} role="status" aria-live="polite">
+          <span />
         </div>
       </div>
     </div>

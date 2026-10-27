@@ -16,7 +16,7 @@ export default async function SpeakPage({ searchParams }: { searchParams: Promis
   const cfg = getConfig();
   if (!user || !book) {
     return (
-      <main className="page speak gate gate-live">
+      <main className="page speak gate-live">
         <div className="narrow">
           <div className="stepdots">
             <i className="on" />

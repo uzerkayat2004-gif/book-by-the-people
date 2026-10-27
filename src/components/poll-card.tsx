@@ -32,16 +32,18 @@ export function PollCard({
   return (
     <section className="wrap section rv in">
       <div className="card poll" id="poll">
-        <div className="label red">Next book</div>
-        <h2 style={{ fontSize: "clamp(32px, 5vw, 44px)", margin: "6px 0 16px" }}>Vote for book 2</h2>
+        <span className="label red">Next book</span>
+        <div className="section__head">
+          <h2>Vote for book 2</h2>
+        </div>
         {counts.map((option) => (
-          <div key={option.id} className="vote2">
+          <div key={option.id}>
             <button className={`poll__opt${vote === option.id ? " mine" : ""}`} type="button" disabled={Boolean(vote)} onClick={() => void choose(option.id)}>
               <span>{option.label}</span>
             </button>
-            <small>
+            <span className="poll__meta">
               {option.votes} {option.votes === 1 ? "vote" : "votes"}
-            </small>
+            </span>
           </div>
         ))}
         <p className="sr">{question || "Next book"} {total}</p>

@@ -161,16 +161,22 @@ export function SiteFooter({ question, voiceHref }: { question: string | null; v
               <span className="logo__word">Book by the People</span>
             </Link>
             <nav className="foot4__links" aria-label="Footer">
-              <Link href="/speak">Add your voice</Link>
-              <button type="button" onClick={() => setSheet("about")}>
-                About
-              </button>
-              <button type="button" onClick={() => setSheet("trust")}>
-                How AI checks
-              </button>
-              <button type="button" onClick={() => setSheet("privacy")}>
-                Privacy
-              </button>
+              <div>
+                <Link href="/speak">Add your voice</Link>
+              </div>
+              <div>
+                <button type="button" onClick={() => setSheet("about")}>
+                  About
+                </button>
+                <button type="button" onClick={() => setSheet("privacy")}>
+                  Privacy
+                </button>
+              </div>
+              <div>
+                <button type="button" onClick={() => setSheet("trust")}>
+                  How AI checks
+                </button>
+              </div>
             </nav>
           </div>
           <div className="foot4__bot">
