@@ -19,7 +19,7 @@ npm run setup     # prisma db push + seed (wipes and recreates the demo data)
 npm run dev       # http://localhost:43123
 ```
 
-System tools: `ffmpeg` (24 kHz mono WAV conversion, release video) and `espeak-ng` (mock audiobook voice and sample clips). Optional `MEDIA_FONT` points the video renderer at a TTF if the default font is missing.
+System tools: `ffmpeg` (mp3, release video, 24 kHz WAV for speech-to-text). On Windows, or anywhere without it, Book settings → AI model → Audio tools has a **Get ffmpeg** button (about 30 MB, saved under `data/models/runtime/tools`); `FFMPEG_PATH` points at your own copy. The audiobook voice is the built-in Windows voice (SAPI) on Windows, `say` on macOS, and `espeak-ng` on Linux. Optional `MEDIA_FONT` points the video renderer at a TTF if the default font is missing.
 
 ### Seeded data (`npm run db:seed`, also run on first `npm run dev`)
 
@@ -146,7 +146,7 @@ Spend is estimated from Meta's published standard rates (October 2026): transcri
 
 The studio chip names `muse-voice-transcribe` and `muse-spark`.
 
-Audiobook speech is pluggable. `TTS_PROVIDER=mock` (the default) runs espeak-ng and stores a real file. `TTS_PROVIDER=http` POSTs `{ "text" }` to `TTS_URL`. The video is assembled with ffmpeg: a red cover frame, the chapter titles, and the narration. SQLite and local disk are the default. Set `STORAGE_DRIVER=s3` plus the `S3_*` variables for object storage, and point `DATABASE_URL` at Postgres after switching the Prisma provider.
+Audiobook speech is pluggable. `TTS_PROVIDER=mock` (the default) uses the computer's own voice: espeak-ng, the Windows voice, or macOS `say`, and stores a real file. The whole book is spoken in the background after Publish, and Release → **Make again** speaks it again. `TTS_PROVIDER=http` POSTs `{ "text" }` to `TTS_URL`. The video is assembled with ffmpeg: a red cover frame, the chapter titles, and the narration. SQLite and local disk are the default. Set `STORAGE_DRIVER=s3` plus the `S3_*` variables for object storage, and point `DATABASE_URL` at Postgres after switching the Prisma provider.
 
 ## Environment
 
@@ -176,7 +176,8 @@ Copy `.env.example` to `.env`.
 | `AUTH_DEV_EXPOSE_LINKS` | Show the magic link on the sign-in page. Defaults on outside production |
 | `RESEND_API_KEY`, `EMAIL_FROM` | Optional email delivery |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional Google sign-in. Redirect URL: `{origin}/api/auth/google/callback` |
-| `TTS_PROVIDER`, `TTS_URL`, `TTS_API_KEY` | Audiobook voice. `mock` (espeak-ng, real file) or `http` |
+| `TTS_PROVIDER`, `TTS_URL`, `TTS_API_KEY` | Audiobook voice. `mock` (this computer's voice: Windows SAPI, macOS say, or espeak-ng) or `http` |
+| `FFMPEG_PATH` | Optional path to ffmpeg. Otherwise the downloaded copy, then `PATH` |
 | `AI_KEY_SECRET` | Secret (16+ chars) that encrypts stored AI keys. Unset = generated once into `data/ai-key-secret` |
 | `LOCAL_MODELS_DIR` | Where local models and the llama.cpp server are saved. Default `data/models` (Windows auto-picks a roomier drive when C: is nearly full) |
 | `LOCAL_MODEL_PORT` | Port for the local model server. Default `43180` |
