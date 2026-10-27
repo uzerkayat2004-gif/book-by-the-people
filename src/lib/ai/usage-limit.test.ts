@@ -88,3 +88,12 @@ describe("local streaming", () => {
     expect(out.usage.outputTokens).toBe(3);
   });
 });
+
+describe("limit shorthand", () => {
+  it("reads K, M and B", () => {
+    expect(parseUsageLimit("tokens", "1B")).toEqual({ kind: "tokens", value: 1e9 });
+    expect(parseUsageLimit("tokens", "250m")).toEqual({ kind: "tokens", value: 2.5e8 });
+    expect(parseUsageLimit("tokens", "1.5k")).toEqual({ kind: "tokens", value: 1500 });
+    expect(() => parseUsageLimit("tokens", "lots")).toThrow();
+  });
+});

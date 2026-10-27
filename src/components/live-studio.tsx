@@ -1308,7 +1308,8 @@ function SettingsTab({
                     {limitKind === "usd" ? <span>$</span> : null}
                     <input
                       className="s2-input"
-                      inputMode="decimal"
+                      inputMode={limitKind === "usd" ? "decimal" : "text"}
+                      placeholder={limitKind === "usd" ? "20" : "e.g. 1B"}
                       aria-label={limitKind === "usd" ? "Dollar limit" : "Token limit"}
                       value={limitValue}
                       onChange={(event) => setLimitValue(event.target.value)}

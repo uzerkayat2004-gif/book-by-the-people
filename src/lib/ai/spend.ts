@@ -39,10 +39,18 @@ export type UsageTotals = { usd: number; tokens: number };
 export const MAX_TOKEN_LIMIT = 1e15;
 
 /** Validates a limit from the settings form. Anything empty or zero-ish with kind none means no limit. */
+/** "1B", "250m", "1.5k", "$20", "1,000,000" → a number. NaN when unreadable. */
+function parseAmount(text: string): number {
+  const match = /^(\d+(?:\.\d+)?)([kmb])?$/i.exec(text.replace(/[,_\s$]/g, ""));
+  if (!match) return Number.NaN;
+  const scale = { k: 1e3, m: 1e6, b: 1e9 }[(match[2] ?? "").toLowerCase() as "k" | "m" | "b"] ?? 1;
+  return Number(match[1]) * scale;
+}
+
 export function parseUsageLimit(kind: string, value: unknown): UsageLimit {
   if (kind === "none") return { kind: "none", value: 0 };
   if (kind !== "usd" && kind !== "tokens") throw new Error("Pick no limit, dollars, or tokens.");
-  const number = typeof value === "string" ? Number(value.replace(/[,_\s$]/g, "")) : Number(value);
+  const number = typeof value === "string" ? parseAmount(value) : Number(value);
   if (!Number.isFinite(number) || number <= 0) throw new Error("Enter a limit above zero.");
   if (kind === "usd") {
     if (number > 1e7) throw new Error("That dollar limit is too large.");
