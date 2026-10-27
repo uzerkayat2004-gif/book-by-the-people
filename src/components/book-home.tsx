@@ -81,6 +81,7 @@ export function BookHome({
         />
       ) : (
         <Before
+          title={title}
           question={question}
           voiceCount={voiceCount}
           countries={countries}
@@ -123,7 +124,25 @@ export function BookHome({
   );
 }
 
+function heroLines(title?: string): [string, string] {
+  const clean = (title ?? "").trim().replace(/[.?!]+$/, "");
+  if (!clean || clean.toLowerCase() === "book by the people") return ["Book by", "the people."];
+  const words = clean.split(/\s+/);
+  if (words.length === 1) return [clean, "."];
+  let cut = 1;
+  let best = Infinity;
+  for (let index = 1; index < words.length; index += 1) {
+    const delta = Math.abs(words.slice(0, index).join(" ").length - words.slice(index).join(" ").length);
+    if (delta < best) {
+      best = delta;
+      cut = index;
+    }
+  }
+  return [words.slice(0, cut).join(" "), `${words.slice(cut).join(" ")}.`];
+}
+
 function Before({
+  title,
   question,
   voiceCount,
   countries,
@@ -135,6 +154,7 @@ function Before({
   closed,
   ticker,
 }: {
+  title?: string;
   question: string;
   voiceCount: number;
   countries: CountryRow[];
@@ -146,6 +166,7 @@ function Before({
   closed: boolean;
   ticker: string;
 }) {
+  const [lineA, lineB] = heroLines(title);
   return (
     <section className="wrap hero4">
       <div className="hero4__text">
@@ -159,10 +180,10 @@ function Before({
         </div>
         <h1 className="hero4__title">
           <span className="w">
-            <span style={{ ["--d" as string]: "80ms" }}>Book by</span>
+            <span style={{ ["--d" as string]: "80ms" }}>{lineA}</span>
           </span>{" "}
           <span className="w red">
-            <span style={{ ["--d" as string]: "160ms" }}>the people.</span>
+            <span style={{ ["--d" as string]: "160ms" }}>{lineB}</span>
           </span>
         </h1>
         <div className="topic in2">
@@ -258,9 +279,11 @@ function After({
             <span>
               <b>{voiceCount.toLocaleString("en-US")}</b>people
             </span>
-            <span>
-              <b>{countries}</b>countries
-            </span>
+            {countries > 0 ? (
+              <span>
+                <b>{countries}</b>countries
+              </span>
+            ) : null}
             <span>
               <b>{chapters.length}</b>chapters
             </span>

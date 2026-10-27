@@ -123,7 +123,12 @@ export function BookCover({
           <text x="63" y="482" fontFamily="Geist, sans-serif" fontSize="11.5" fill="#fff" fillOpacity=".88">
             {people > 0 ? (
               <>
-                by <tspan fontWeight="700">{people.toLocaleString("en-US")}</tspan> {people === 1 ? "person" : "people"} from <tspan fontWeight="700">{countries}</tspan> {countries === 1 ? "country" : "countries"}
+                by <tspan fontWeight="700">{people.toLocaleString("en-US")}</tspan> {people === 1 ? "person" : "people"}
+                {countries > 0 ? (
+                  <>
+                    {" "}from <tspan fontWeight="700">{countries}</tspan> {countries === 1 ? "country" : "countries"}
+                  </>
+                ) : null}
               </>
             ) : compact ? null : (
               "by the people · opens soon"
