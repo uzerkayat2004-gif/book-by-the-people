@@ -96,7 +96,7 @@
   .page.admin .live-grid .card .muted { font-size: 9.5px; }
   .page.admin .live-grid .setrow { padding: 8px 0; font-size: 9.5px; }
   .page.admin .relprev { padding-top: 20px; }
-  .page.admin .relprev .bk6 { width: 151px; margin: 0 auto; }
+  .page.admin .relprev .bk6 { width: 178px; margin: -6px auto 0; }
   .page.admin .spend { padding: 12px 14px; }
   .page.admin .modelchip { font-size: 9.5px; padding: 6px 9px; }
   .page.admin .modelchip small { font-size: 8.5px; }
@@ -306,3 +306,6 @@ img.logo__mark, .top img.logo__mark { width: 21px; height: 21px; border-radius: 
 .page.me .mebooks { display: grid; gap: 8px; margin-top: 10px; }
 .page.me .mebook { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: #121316; border: 1px solid rgba(255,255,255,.08); font-family: var(--sans); font-size: 12.5px; color: inherit; text-decoration: none; }
 .page.me .mebook small { color: var(--muted); font-size: 10.5px; }
+.page.admin .relprev .bk6 .bk6__svg { width: 100%; height: auto; display: block; }
+.page.admin .upl .muted .link { font: inherit; font-size: inherit; color: inherit; text-decoration: none; margin-left: 4px; }
+.page.admin .upl .muted .link:hover { color: #fff; text-decoration: underline; }

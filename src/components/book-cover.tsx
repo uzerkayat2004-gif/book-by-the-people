@@ -39,7 +39,7 @@ export function BookCover({
   const lines = custom ? (custom.length > 12 ? splitLines(custom) : [custom]) : ["BOOK BY", "THE PEOPLE"];
   const sub = splitLines(question);
   const longest = Math.max(...lines.map((line) => line.length));
-  const size = Math.min(50, 204 / (longest * 0.4));
+  const size = compact ? Math.min(50, 204 / (longest * 0.4)) : Math.min(56, 228 / (longest * 0.4));
   const texture = names.length ? names.join("  ·  ") : "voices";
   const nameLines = Array.from({ length: 13 }, (_, index) => texture.slice((index * 17) % Math.max(texture.length, 1)).padEnd(48, " · "));
   return (
@@ -115,7 +115,7 @@ export function BookCover({
             </text>
           ))}
           {sub.slice(0, 3).map((line, index) => (
-            <text key={line} x="63" y={304 + (lines.length - 1) * size * 0.86 + 38 + index * 25} fontFamily="Newsreader, serif" fontStyle="italic" fontSize="19.5" fill="#fff" fillOpacity=".9">
+            <text key={line} x="63" y={304 + (lines.length - 1) * size * 0.86 + 38 + index * 25} fontFamily="Newsreader, serif" fontStyle="italic" fontSize={compact ? 19.5 : 21} fill="#fff" fillOpacity=".9">
               {line}
             </text>
           ))}
