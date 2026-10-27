@@ -333,3 +333,17 @@ p.ownbook.wrap a { color: #f3f2ee; text-decoration: underline; text-underline-of
   .page.home4 .hero4 .cta6__open, .page.home4 .hero4 .cta6__live { font-size: 11px; }
   .page.home4 .hero4 .cta4 { min-height: 38px; font-size: 12.5px; }
 }
+
+/* Speak sign-in gate — left-aligned narrow column, Google pinned low (live 02-speak-signin-gate) */
+.page.speak.gate-live .narrow { width: min(100% - 24px, 412px); text-align: left; display: flex; flex-direction: column; min-height: calc(100vh - 70px); padding-top: 0; }
+.page.speak.gate-live .stepdots { margin: 0 0 10px; }
+.page.speak.gate-live h1 { font-size: 50px; line-height: .95; text-align: left; margin: 6px 0 10px; font-weight: 500; }
+.page.speak.gate-live .lead { font-size: 13px; text-align: left; margin: 0; max-width: 380px; }
+.page.speak.gate-live .grow { flex: 1; }
+.page.speak.gate-live .narrow .btn { min-height: 36px !important; height: 36px; font-size: 12px !important; padding: 0 14px; }
+.page.speak.gate-live .narrow .input { min-height: 36px; height: 36px; font-size: 12px; }
+.page.speak.gate-live .narrow { padding-bottom: 18px; }
+.page.speak.gate-live .narrow .gbtn { min-height: 36px; height: 36px; font-size: 12px; }
+.page.speak.gate-live .narrow .under { font-size: 10px; text-align: center; }
+.page.speak.gate-live .narrow .or { font-size: 10px; margin: 8px 0; }
+.page.speak.gate-live .narrow .field { font-size: 11px; }
