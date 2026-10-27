@@ -27,6 +27,7 @@ export async function POST(request: Request) {
     if (cfg.resendApiKey && cfg.emailFrom) {
       const response = await fetch("https://api.resend.com/emails", {
         method: "POST",
+        signal: AbortSignal.timeout(15_000),
         headers: {
           Authorization: `Bearer ${cfg.resendApiKey}`,
           "Content-Type": "application/json",
@@ -37,13 +38,13 @@ export async function POST(request: Request) {
           subject: "Your link into Book by the People",
           html: `<p>This link opens your studio. It expires in 30 minutes.</p><p><a href="${link}">${link}</a></p>`,
         }),
-      });
-      delivered = response.ok;
-      if (!response.ok && !cfg.exposeMagicLinks) {
+      }).catch(() => null);
+      delivered = Boolean(response?.ok);
+      if (!delivered && !cfg.exposeMagicLinks) {
         return jsonError("The sign-in email could not be sent.", 502);
       }
     } else if (!cfg.exposeMagicLinks) {
-      return jsonError("Email delivery is not configured.", 500);
+      return jsonError("Email sign-in is not set up on this site yet.", 503);
     }
     return NextResponse.json({
       ok: true,

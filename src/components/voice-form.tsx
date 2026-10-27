@@ -245,9 +245,9 @@ export function VoiceForm({
           <h1>Add your voice</h1>
           <p className="lead">Sign in with Google to add your voice. Only your name and country are shown.</p>
           <div className="grow" />
-          <button className="gbtn" type="button">
+          <a className="gbtn" href={`/sign-in?next=${encodeURIComponent(`/b/${slug}/voice`)}`}>
             <IconGoogle /> Continue with Google
-          </button>
+          </a>
           <div className="under">18+ · we never post for you</div>
         </div>
       </main>
