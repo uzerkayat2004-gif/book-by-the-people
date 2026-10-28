@@ -141,7 +141,8 @@ export async function completeJson(input: {
       return { content: out.content, provider: out.provider, model: out.model, usage: out.usage };
     } catch (error) {
       chainError = error;
-      if (cfg.aiMode !== "live" || !cfg.writerApiKey) throw error;
+      const bookKey = await bookAiKey(input.bookId).catch(() => "");
+      if (!(bookKey && bookKey !== cfg.metaApiKey) && (cfg.aiMode !== "live" || !cfg.writerApiKey)) throw error;
     }
   }
   const ownKey = await bookAiKey(input.bookId).catch(() => "");

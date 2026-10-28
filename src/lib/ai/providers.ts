@@ -6,6 +6,7 @@ import { chatJson, firstThatWorks, testTarget, transcribeWav, type CallTarget, t
 import { createProviderStore, type ProviderDb, type ResolvedProvider } from "./provider-store";
 import { isLocalType, pickChain, presetFor, shortLabel } from "./provider-types";
 import { ensureServer, LOCAL_PORT } from "./local-runtime";
+import { LOCAL_OFF_MESSAGE, localModelsOff } from "./local-gate";
 
 export const providerStore = createProviderStore(prisma.aiProvider as unknown as ProviderDb, {
   seal: sealKey,
@@ -42,17 +43,30 @@ export async function setFallback(userId: string, fallback: boolean): Promise<bo
 /** True when this book's AI calls go to a real model: the creator added one, or the server runs live. */
 export async function writerLive(bookId: string | null | undefined): Promise<boolean> {
   if (getConfig().aiMode === "live") return true;
+  if (await hasBookKey(bookId)) return true;
   return (await writerChain(bookId)).length > 0;
 }
 
 export async function transcriberLive(bookId: string | null | undefined): Promise<boolean> {
   if (getConfig().aiMode === "live") return true;
+  if (await hasBookKey(bookId)) return true;
   return (await transcriberChain(bookId)).length > 0;
+}
+
+/**
+ * A Meta key pasted in Book settings makes that one book live even when the server has no key
+ * (the hosted site runs this way: each creator brings their own key).
+ */
+export async function hasBookKey(bookId: string | null | undefined): Promise<boolean> {
+  if (!bookId) return false;
+  const book = await prisma.book.findUnique({ where: { id: bookId }, select: { aiKeyCipher: true } });
+  return Boolean(book?.aiKeyCipher);
 }
 
 /** Local providers start their runtime on first use (built-in llama.cpp) and always use the managed port. */
 export async function prepare(provider: ResolvedProvider): Promise<CallTarget & { transcribeModel?: string }> {
   if (provider.type === "local") {
+    if (localModelsOff()) throw new Error(LOCAL_OFF_MESSAGE);
     await ensureServer(provider.localModel || provider.model);
     return { ...provider, baseUrl: `http://127.0.0.1:${LOCAL_PORT}/v1` };
   }

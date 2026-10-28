@@ -414,13 +414,18 @@ const PHASE: Record<string, string> = {
 /** Meta open-weight models that run on this computer, plus the ones that need a server. */
 export function LocalModels({ onChange }: { onChange?: () => void }) {
   const [status, setStatus] = useState<LocalStatus | null>(null);
+  const [off, setOff] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const lastPhase = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const next = await call<LocalStatus>("/api/ai/local", "GET");
+      const next = await call<LocalStatus & { disabled?: boolean; message?: string }>("/api/ai/local", "GET");
+      if (next.disabled) {
+        setOff(next.message ?? "Local models are off on this server.");
+        return;
+      }
       setStatus(next);
       const phase = next.job?.phase ?? null;
       if (phase !== lastPhase.current && (phase === "done" || phase === "error")) onChange?.();
@@ -452,6 +457,7 @@ export function LocalModels({ onChange }: { onChange?: () => void }) {
     }
   }
 
+  if (off) return <div className="s3-local s3-local--loading">{off}</div>;
   if (!status) return <div className="s3-local s3-local--loading">{error ?? "Checking this computer…"}</div>;
   const job = status.job;
   const share = job && job.total > 0 ? Math.min(1, job.received / job.total) : 0;

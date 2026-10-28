@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireApiUser } from "@/lib/auth";
 import { assertSameOrigin, fromError, jsonError } from "@/lib/http";
 import { localAction, localStatus } from "@/lib/ai/local-service";
+import { LOCAL_OFF_MESSAGE, localModelsOff } from "@/lib/ai/local-gate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,6 +11,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const user = await requireApiUser();
+    if (localModelsOff()) return NextResponse.json({ disabled: true, message: LOCAL_OFF_MESSAGE });
     return NextResponse.json(await localStatus(user.id));
   } catch (error) {
     return fromError(error);
@@ -22,6 +24,7 @@ export async function POST(request: Request) {
   if (origin) return origin;
   try {
     const user = await requireApiUser();
+    if (localModelsOff()) return jsonError(LOCAL_OFF_MESSAGE, 400);
     const body = (await request.json().catch(() => ({}))) as { action?: string; modelId?: string; engine?: string };
     try {
       await localAction(user.id, body);
