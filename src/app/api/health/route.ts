@@ -15,11 +15,15 @@ export async function GET(request: Request) {
   const cfg = getConfig();
   const deep = new URL(request.url).searchParams.get("deep") === "1";
   let database = false;
+  let databaseError: string | undefined;
   try {
     await prisma.$queryRaw`SELECT 1`;
     database = true;
-  } catch {
+  } catch (err) {
     database = false;
+    // Only the error class and Prisma code: never the message, which can hold the host or user.
+    const e = err as { name?: string; errorCode?: string; code?: string };
+    databaseError = [e?.name, e?.errorCode ?? e?.code].filter(Boolean).join(" ") || "unknown";
   }
   const [ffmpeg, speech, storage] = await Promise.all([
     ffmpegBin().then(Boolean).catch(() => false),
@@ -31,6 +35,7 @@ export async function GET(request: Request) {
     {
       ok,
       database,
+      ...(databaseError ? { databaseError } : {}),
       databaseKind: (process.env.DATABASE_URL ?? "").startsWith("postgres") ? "postgres" : "sqlite",
       storage: storage ?? { driver: cfg.storageDriver },
       ffmpeg,
