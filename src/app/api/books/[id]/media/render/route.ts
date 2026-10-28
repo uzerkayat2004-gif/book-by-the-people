@@ -3,7 +3,9 @@ import { requireApiUser } from "@/lib/auth";
 import { parseDocument } from "@/lib/book/assemble";
 import { prisma } from "@/lib/db";
 import { assertSameOrigin, fromError, jsonError } from "@/lib/http";
-import { makeMediaInBackground } from "@/lib/services/books";
+import { makeMediaInBackground, runAfterResponse } from "@/lib/services/books";
+
+export const maxDuration = 300;
 
 /** Speak the book into the audiobook (and video when ffmpeg is there). Runs in the background and replaces uploads. */
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -18,7 +20,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const draft = draftId ? await prisma.bookDraft.findUnique({ where: { id: draftId } }) : null;
     const document = draft ? parseDocument(draft.contentJson) : null;
     if (!document) return jsonError("Make the book first.");
-    void makeMediaInBackground(book.id, document, true);
+    runAfterResponse(() => makeMediaInBackground(book.id, document, true));
     return NextResponse.json({ status: "running" });
   } catch (error) {
     return fromError(error);

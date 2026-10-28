@@ -1,9 +1,10 @@
 import { getConfig } from "./config";
 import { prisma } from "./db";
+import { canSendEmail, sendMail } from "./mailer";
 
 export async function notifyReleased(bookId: string): Promise<{ sent: number; skipped: string | null }> {
   const cfg = getConfig();
-  if (!cfg.resendApiKey || !cfg.emailFrom) return { sent: 0, skipped: "RESEND_API_KEY" };
+  if (!canSendEmail()) return { sent: 0, skipped: "email" };
   const book = await prisma.book.findUnique({
     where: { id: bookId },
     select: { title: true, slug: true, question: true },
@@ -20,21 +21,12 @@ export async function notifyReleased(bookId: string): Promise<{ sent: number; sk
   let sent = 0;
   for (const user of users) {
     // One bad address or a dropped connection does not stop the other emails.
-    const response = await fetch("https://api.resend.com/emails", {
-      signal: AbortSignal.timeout(15_000),
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${cfg.resendApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: cfg.emailFrom,
-        to: [user.email],
-        subject: `${book.title} is out`,
-        text: `A book you spoke in is out.\n\n${book.question}\n\nRead it: ${link}\n`,
-      }),
-    }).catch(() => null);
-    if (response?.ok) sent += 1;
+    const ok = await sendMail({
+      to: user.email,
+      subject: `${book.title} is out`,
+      text: `A book you spoke in is out.\n\n${book.question}\n\nRead it: ${link}\n`,
+    });
+    if (ok) sent += 1;
   }
   return { sent, skipped: null };
 }

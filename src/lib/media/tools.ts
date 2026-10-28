@@ -6,6 +6,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGunzip } from "node:zlib";
 import { modelsDir } from "../ai/local-runtime";
+import { wasmSpeakToWav } from "./js-audio";
 
 const exec = execFileAsync;
 
@@ -110,7 +111,7 @@ export function installFfmpeg(): Promise<string> {
   return installing;
 }
 
-export type SpeechEngine = "http" | "espeak-ng" | "espeak" | "windows" | "macos";
+export type SpeechEngine = "http" | "espeak-ng" | "espeak" | "windows" | "macos" | "builtin";
 
 export const SPEECH_NAMES: Record<SpeechEngine, string> = {
   http: "TTS server",
@@ -118,17 +119,22 @@ export const SPEECH_NAMES: Record<SpeechEngine, string> = {
   espeak: "eSpeak",
   windows: "Windows voice",
   macos: "macOS voice",
+  builtin: "Built-in voice (eSpeak NG, WebAssembly)",
 };
 
-/** The first speech engine that works here. Windows has one built in (SAPI). */
+/**
+ * The first speech engine that works here. Windows has one built in (SAPI). When nothing is installed
+ * (Vercel, a fresh laptop) the WebAssembly eSpeak NG that ships with the app is used, so there is always one.
+ */
 export async function speechEngine(): Promise<SpeechEngine | null> {
   const provider = (process.env.TTS_PROVIDER || "").toLowerCase();
   if (provider === "http" && process.env.TTS_URL) return "http";
+  if (provider === "builtin" || provider === "wasm" || process.env.VERCEL) return "builtin";
   if (await runs("espeak-ng", ["--version"])) return "espeak-ng";
   if (await runs("espeak", ["--version"])) return "espeak";
   if (process.platform === "win32" && (await runs("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "Add-Type -AssemblyName System.Speech"]))) return "windows";
   if (process.platform === "darwin" && existsSync("/usr/bin/say")) return "macos";
-  return null;
+  return "builtin";
 }
 
 export const NO_SPEECH = "No speech engine on this computer. Install eSpeak NG, or set TTS_PROVIDER=http with TTS_URL.";
@@ -148,6 +154,16 @@ const WINDOWS_SPEAK = [
 export async function speakToWav(text: string, options: { espeakVoice?: string } = {}): Promise<{ wav: Buffer; engine: SpeechEngine }> {
   const engine = await speechEngine();
   if (!engine) throw new Error(NO_SPEECH);
+  try {
+    return await speakWith(engine, text, options);
+  } catch (error) {
+    // A system voice that fails (a broken SAPI install, a missing voice) falls back to the built-in one.
+    if (engine === "http" || engine === "builtin") throw error;
+    return { wav: await wasmSpeakToWav(text, { voice: options.espeakVoice }), engine: "builtin" };
+  }
+}
+
+async function speakWith(engine: SpeechEngine, text: string, options: { espeakVoice?: string }): Promise<{ wav: Buffer; engine: SpeechEngine }> {
   if (engine === "http") {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (process.env.TTS_API_KEY) headers.Authorization = `Bearer ${process.env.TTS_API_KEY}`;
@@ -155,6 +171,7 @@ export async function speakToWav(text: string, options: { espeakVoice?: string }
     if (!response.ok) throw new Error(`The TTS server failed (HTTP ${response.status}).`);
     return { wav: Buffer.from(await response.arrayBuffer()), engine };
   }
+  if (engine === "builtin") return { wav: await wasmSpeakToWav(text, { voice: options.espeakVoice }), engine };
   const dir = await mkdtemp(path.join(tmpdir(), "bbtp-tts-"));
   const input = path.join(dir, "text.txt");
   const wav = path.join(dir, "speech.wav");

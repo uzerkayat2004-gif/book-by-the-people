@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { canAcceptVoice } from "@/lib/book/lifecycle";
 import { currentDocument, loadBookBySlug, pausedNow, voterChoice } from "@/lib/load-book";
 import { presentHome } from "@/lib/present-home";
+import { refreshStaleMedia } from "@/lib/services/books";
 import { openBooks } from "@/lib/public-books";
 
 export default async function BookPage({
@@ -31,6 +32,7 @@ export default async function BookPage({
   });
   const voiceHref = gate.ok ? `/b/${loaded.slug}/voice${query.invite ? `?invite=${query.invite}` : ""}` : null;
   const document = loaded.status === "PUBLISHED" ? await currentDocument(loaded.id, loaded.publishedDraftId) : null;
+  if (loaded.status === "PUBLISHED") await refreshStaleMedia(loaded.id).catch(() => undefined);
   const vote = await voterChoice(loaded.id);
   const model = presentHome({
     status: loaded.status,
@@ -57,7 +59,7 @@ export default async function BookPage({
       {...model}
       title={loaded.title}
       slug={loaded.slug}
-      media={{ audio: Boolean(loaded.audiobookKey), video: Boolean(loaded.videoKey) }}
+      media={{ audio: Boolean(loaded.audiobookKey), video: Boolean(loaded.videoKey), audioBytes: loaded.audiobookBytes, videoBytes: loaded.videoBytes }}
       openNow={openNow}
     />
   );

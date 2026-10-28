@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { drawtextFont, narrationScript } = await import("./render");
+const { drawtextFont, isUploadedKey, narrationScript } = await import("./render");
 const { ffmpegAsset } = await import("./tools");
 
 describe("media", () => {
@@ -17,21 +17,32 @@ describe("media", () => {
     expect(ffmpegAsset("win32", "ia32")).toBeNull();
   });
 
-  it("narrates the title, question, chapters and visible quotes only", () => {
+  it("narrates the whole book: preface, chapters, narrative and visible quotes", () => {
     const script = narrationScript({
       title: "Book",
       question: "Smarter or lazier?",
+      preface: "Two people answered",
       chapters: [
         {
           title: "One",
+          narrative: "People check drafts",
           quotes: [
-            { englishText: "I check the answer.", hidden: false },
-            { englishText: "Secret line", hidden: true },
+            { englishText: "I check the answer.", speakerName: "Asha", hidden: false },
+            { englishText: "Secret line", speakerName: "Ravi", hidden: true },
           ],
         },
+        { title: "Two", narrative: "Others skip them.", quotes: [] },
       ],
     } as never);
-    expect(script).toBe("Book. Smarter or lazier? One. I check the answer.");
+    expect(script).toBe(
+      "Book. Smarter or lazier? Two people answered. Chapter One. One. People check drafts. Asha said: I check the answer. Chapter Two. Two. Others skip them.",
+    );
     expect(script).not.toContain("Secret");
+  });
+
+  it("only treats the creator's own uploads as uploaded", () => {
+    expect(isUploadedKey("book-abc-audiobook-upload.mp3")).toBe(true);
+    expect(isUploadedKey("book-abc-audiobook.mp3")).toBe(false);
+    expect(isUploadedKey(null)).toBe(false);
   });
 });

@@ -1,5 +1,6 @@
 import { SignInForm } from "@/components/sign-in-form";
 import { getConfig } from "@/lib/config";
+import { canSendEmail } from "@/lib/mailer";
 
 export default async function SignInPage({
   searchParams,
@@ -36,6 +37,7 @@ export default async function SignInPage({
           nextPath={nextPath}
           error={error}
           google={Boolean(cfg.googleClientId && cfg.googleClientSecret)}
+          email={!(cfg.googleClientId && cfg.googleClientSecret) || canSendEmail() || cfg.exposeMagicLinks}
           demoEmail={cfg.aiMode === "mock" ? "demo@bookbythepeople.dev" : null}
         />
       </div>

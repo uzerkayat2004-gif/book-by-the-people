@@ -32,7 +32,7 @@ export async function GET(request: Request) {
       ok,
       database,
       databaseKind: (process.env.DATABASE_URL ?? "").startsWith("postgres") ? "postgres" : "sqlite",
-      storage: storage ?? { driver: cfg.storageDriver === "s3" ? "s3" : "local" },
+      storage: storage ?? { driver: cfg.storageDriver },
       ffmpeg,
       speech: speech ?? false,
       localModels: !localModelsOff(),

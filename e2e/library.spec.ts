@@ -49,7 +49,8 @@ test("reader of a released book plays the audiobook inline and offers downloads"
   await card.getByRole("link", { name: "Read" }).click();
   await expect(page).toHaveURL(/\/b\/smarter-or-lazier\/read/);
   await page.getByRole("button", { name: "Listen" }).click();
-  await expect(page.locator("audio.read-media__player")).toBeVisible();
+  await expect(page.getByTestId("audio-player")).toBeVisible();
+  await expect(page.locator("audio.read-media__player")).toHaveAttribute("src", /\/api\/media\/smarter-or-lazier\/audiobook/);
   await expect(page.getByRole("link", { name: /download audio/i })).toHaveAttribute("href", /\/api\/media\/smarter-or-lazier\/audiobook/);
 });
 

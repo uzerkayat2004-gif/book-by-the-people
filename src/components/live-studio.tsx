@@ -422,7 +422,7 @@ export function StudioDesk({
                 <p className="s4-note">
                   {media.emails
                     ? "Speakers get an email with the link when the book is out."
-                    : "Emails to speakers are off. Add RESEND_API_KEY and EMAIL_FROM to .env to turn them on."}
+                    : "Emails to speakers are off. Add SMTP_URL (a free Gmail app password works) or RESEND_API_KEY to .env to turn them on."}
                 </p>
                 {book.status === "PUBLISHED" ? (
                   <a className="s2-btn s2-btn--red s2-btn--big" href={`/b/${book.slug}/read`}>

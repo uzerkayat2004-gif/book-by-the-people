@@ -13,7 +13,7 @@ import type { Stage } from "@/lib/stage";
 
 export type HomePin = { name: string; lat: number; lng: number };
 export type HomeName = { name: string; countryCode: string | null; region?: string };
-export type HomeChapter = { title: string; promise: string; href: string };
+export type HomeChapter = { title: string; summary: string; quote: { text: string; name: string } | null; voices: number; href: string };
 export type HomePoll = { id: string; label: string; votes: number };
 export type HomeClip = { src: string; startMs: number; endMs: number; name: string; text: string };
 
@@ -46,7 +46,7 @@ export function BookHome({
 }: {
   title?: string;
   slug?: string;
-  media?: { audio: boolean; video: boolean };
+  media?: { audio: boolean; video: boolean; audioBytes?: number; videoBytes?: number };
   stage: Stage;
   question: string;
   voiceCount: number;
@@ -108,7 +108,9 @@ export function BookHome({
       )}
       {stage === "after" ? null : <NamesMarquee names={names} />}
       {stage === "after" ? null : <How releaseLabel={releaseLabel} />}
-      {stage === "after" && slug && media ? <BookMedia slug={slug} audio={media.audio} video={media.video} title={title ?? question} /> : null}
+      {stage === "after" && slug && media ? (
+        <BookMedia slug={slug} media={media} title={title ?? question} question={question} people={voiceCount} countries={countries.length} />
+      ) : null}
       <OpenNow books={openNow} heading={stage === "after" ? "Open now · add your voice" : "Also open now"} />
       <ReleasedShelf books={released} total={releasedTotal} />
       {bookId && poll.length ? <PollCard bookId={bookId} question={pollQuestion} options={poll} yourVote={yourVote} /> : null}
@@ -306,20 +308,36 @@ function After({
         </div>
       </section>
       <section className="wrap section rv in">
-        <div className="section__head">
+        <div className="shead5">
           <h2>Chapters</h2>
+          <span className="label">
+            {chapters.length} {chapters.length === 1 ? "chapter" : "chapters"} · {readMins} min read
+          </span>
         </div>
-        <div className="chlist4">
+        <ol className="toc5" data-testid="chapter-list">
           {chapters.map((chapter, index) => (
-            <Link className="ch4 rv in" key={chapter.href} href={chapter.href}>
-              <span className="ch4__n">{String(index + 1).padStart(2, "0")}</span>
-              <span className="ch4__t">
-                <b>{chapter.title}</b>
-                <small>{chapter.promise}</small>
-              </span>
-            </Link>
+            <li key={chapter.href}>
+              <Link className="toc5__row" href={chapter.href}>
+                <span className="toc5__n">{String(index + 1).padStart(2, "0")}</span>
+                <span className="toc5__body">
+                  <b className="toc5__t">{chapter.title}</b>
+                  {chapter.summary ? <span className="toc5__s">{chapter.summary}</span> : null}
+                  {chapter.quote ? (
+                    <span className="toc5__q">
+                      “{chapter.quote.text}”{chapter.quote.name ? <em> — {chapter.quote.name}</em> : null}
+                    </span>
+                  ) : null}
+                </span>
+                <span className="toc5__meta">
+                  <span>{chapter.voices ? `${chapter.voices} ${chapter.voices === 1 ? "voice" : "voices"}` : "Read"}</span>
+                  <span className="toc5__go" aria-hidden>
+                    →
+                  </span>
+                </span>
+              </Link>
+            </li>
           ))}
-        </div>
+        </ol>
       </section>
     </>
   );

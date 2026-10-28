@@ -22,7 +22,7 @@ export type AppConfig = {
   fallbackModel: string;
   spendCapUsd: number | null;
   prices: Prices;
-  storageDriver: "local" | "s3";
+  storageDriver: "local" | "s3" | "blob";
   localStorageDir: string;
   s3: {
     endpoint: string;
@@ -35,6 +35,7 @@ export type AppConfig = {
   googleClientId: string;
   googleClientSecret: string;
   resendApiKey: string;
+  smtpUrl: string;
   emailFrom: string;
 };
 
@@ -48,6 +49,13 @@ function num(name: string, fallback: number): number {
   if (raw === undefined || raw.trim() === "") return fallback;
   const value = Number(raw);
   return Number.isFinite(value) ? value : fallback;
+}
+
+/** STORAGE_DRIVER wins. Without it, a Vercel Blob token (added by Vercel when you connect a Blob store) picks Blob. */
+function storageDriver(): "local" | "s3" | "blob" {
+  const chosen = read("STORAGE_DRIVER").toLowerCase();
+  if (chosen === "s3" || chosen === "blob" || chosen === "local") return chosen;
+  return read("BLOB_READ_WRITE_TOKEN") ? "blob" : "local";
 }
 
 export function getConfig(): AppConfig {
@@ -102,7 +110,7 @@ export function getConfig(): AppConfig {
       cachedInputPerMtok: num("AI_PRICE_CACHED_INPUT_PER_MTOK", 0.15),
       outputPerMtok: num("AI_PRICE_OUTPUT_PER_MTOK", 4.25),
     },
-    storageDriver: read("STORAGE_DRIVER", "local") === "s3" ? "s3" : "local",
+    storageDriver: storageDriver(),
     localStorageDir: read("LOCAL_STORAGE_DIR", "./data/audio"),
     s3: {
       endpoint: read("S3_ENDPOINT"),
@@ -115,6 +123,7 @@ export function getConfig(): AppConfig {
     googleClientId: read("GOOGLE_CLIENT_ID"),
     googleClientSecret: read("GOOGLE_CLIENT_SECRET"),
     resendApiKey: read("RESEND_API_KEY"),
+    smtpUrl: read("SMTP_URL"),
     emailFrom: read("EMAIL_FROM"),
   };
 }

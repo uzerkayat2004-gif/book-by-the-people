@@ -3,7 +3,8 @@ import { randomBytes } from "node:crypto";
 import { applyEdits, parseDocument, visibleQuotes } from "../book/assemble";
 import { selectRollback, slugify } from "../book/lifecycle";
 import type { EditorEdits } from "../book/types";
-import { renderReleaseMedia } from "../media/render";
+import { after } from "next/server";
+import { mediaVersionKey, isUploadedKey, renderReleaseMedia } from "../media/render";
 import { notifyReleased } from "../notify";
 import { prisma } from "../db";
 import { AppError } from "../errors";
@@ -283,7 +284,7 @@ export async function publishBook(bookId: string, userId: string) {
   });
   // Speaking a whole book takes minutes on a laptop, so the audiobook and video are made
   // in the background. The Release tab shows "Making…" until the job is done.
-  void makeMediaInBackground(book.id, document!);
+  runAfterResponse(() => makeMediaInBackground(book.id, document!));
   try {
     await notifyReleased(book.id);
   } catch {
@@ -293,6 +294,41 @@ export async function publishBook(bookId: string, userId: string) {
 }
 
 const mediaRuns = new Set<string>();
+
+/**
+ * Runs work after the response is sent. On serverless hosts (Vercel) `after()` keeps the function alive
+ * until it finishes (up to the 300 s limit); locally it is the same as starting it in the background.
+ */
+export function runAfterResponse(work: () => Promise<unknown>) {
+  try {
+    after(() => work().catch(() => undefined));
+  } catch {
+    // Outside a request (scripts, tests): just start it.
+    void work().catch(() => undefined);
+  }
+}
+
+/**
+ * Books released before the narration covered the whole book (or seeded with a placeholder tone) are
+ * narrated again once, in the background, the first time someone opens them.
+ */
+export async function refreshStaleMedia(bookId: string) {
+  if (mediaRuns.has(bookId)) return;
+  const book = await prisma.book.findUnique({
+    where: { id: bookId },
+    select: { status: true, audiobookKey: true, publishedDraftId: true },
+  });
+  // Only the creator's own upload is left alone; older seeded or auto-made audio is narrated again.
+  if (!book || book.status !== "PUBLISHED" || isUploadedKey(book.audiobookKey) || !book.publishedDraftId) return;
+  const marker = await prisma.pipelineJob.findUnique({ where: { key: mediaVersionKey(bookId) } });
+  if (marker) return;
+  const running = await prisma.pipelineJob.findUnique({ where: { key: `${bookId}:make:media` } });
+  if (running?.status === "running" && Date.now() - running.updatedAt.getTime() < 10 * 60_000) return;
+  const draft = await prisma.bookDraft.findUnique({ where: { id: book.publishedDraftId } });
+  const document = draft ? parseDocument(draft.contentJson) : null;
+  if (!document) return;
+  runAfterResponse(() => makeMediaInBackground(bookId, document));
+}
 
 export async function makeMediaInBackground(bookId: string, document: NonNullable<ReturnType<typeof parseDocument>>, force = false) {
   if (mediaRuns.has(bookId)) return;

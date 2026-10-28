@@ -3,10 +3,12 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { BookDocument } from "../book/types";
-import { stripPeopleCounts } from "../book/checks";
+import { narrationScript } from "./script";
+import { mediaVersionKey } from "./version";
 import { wavDurationMs } from "../book/speech";
 import { prisma } from "../db";
 import { putAudio } from "../storage";
+import { wavToMp3 } from "./js-audio";
 import { SPEECH_NAMES, ffmpeg, ffmpegBin, speakToWav } from "./tools";
 
 const FONT_CANDIDATES = [
@@ -30,27 +32,16 @@ function fontOption(): string {
   return file ? `fontfile=${drawtextFont(file)}:` : "";
 }
 
-/** The narration reads every chapter title and visible quote. Capped near an hour of speech. */
-const MAX_SCRIPT = 50_000;
+export { narrationScript };
 
-export function narrationScript(document: BookDocument): string {
-  const parts: string[] = [];
-  for (const chapter of document.chapters) {
-    parts.push(chapter.title);
-    for (const quote of chapter.quotes) {
-      if (quote.hidden) continue;
-      const text = stripPeopleCounts(quote.englishText);
-      if (text) parts.push(text);
-    }
-  }
-  // Each piece ends with a full stop unless it already has one, so the voice pauses between them.
-  const sentence = (text: string) => (/[.!?…]["”’)]?$/u.test(text) ? text : `${text}.`);
-  const script = [document.title, document.question, ...parts]
-    .map((part) => (part ?? "").replace(/\s+/g, " ").trim())
-    .filter(Boolean)
-    .map(sentence)
-    .join(" ");
-  return script.slice(0, MAX_SCRIPT) || document.title;
+/** Files the creator uploaded are stored as book-<id>-<kind>-upload.<ext>; anything else was made here. */
+export const isUploadedKey = (key: string | null | undefined) => /-upload\.[a-z0-9]+$/i.test(key ?? "");
+
+export { MEDIA_VERSION, mediaVersionKey } from "./version";
+
+/** Video is a still cover under the narration. Hosts without ffmpeg (Vercel) skip it; MEDIA_VIDEO=off skips it anywhere. */
+export function videoWanted(): boolean {
+  return (process.env.MEDIA_VIDEO || "").toLowerCase() !== "off";
 }
 
 function escapeDrawtext(value: string): string {
@@ -132,12 +123,22 @@ export async function renderReleaseMedia(bookId: string, document: BookDocument,
       audio = wav;
     }
   }
+  if (audioExt === "wav") {
+    // No ffmpeg (Vercel, a fresh laptop): encode the mp3 in JavaScript. A WAV is ten times larger.
+    try {
+      audio = await wavToMp3(wav);
+      audioMime = "audio/mpeg";
+      audioExt = "mp3";
+    } catch {
+      audio = wav;
+    }
+  }
   const title = escapeDrawtext(document.title || "Book by the People");
   const chapters = escapeDrawtext(document.chapters.map((chapter) => chapter.title).join("  ·  ") || document.question);
   let video: Buffer | null = null;
   const ms = wavDurationMs(wav);
   const seconds = ms ? ms / 1000 : null;
-  if (hasFfmpeg) {
+  if (hasFfmpeg && videoWanted()) {
     try {
       video = await transcode(wav, videoArgs(title, chapters, true, seconds), "book.mp4");
     } catch {
@@ -148,15 +149,15 @@ export async function renderReleaseMedia(bookId: string, document: BookDocument,
         notes.push(`Video failed: ${error instanceof Error ? error.message.split("\n")[0].slice(0, 160) : "ffmpeg error"}`);
       }
     }
-  } else {
+  } else if (videoWanted() && !process.env.VERCEL) {
     notes.push("Video needs ffmpeg. Get it in Book settings → AI model → Audio tools.");
   }
 
   const current = await prisma.book.findUnique({ where: { id: bookId }, select: { audiobookName: true, videoName: true, audiobookKey: true, videoKey: true } });
-  const data: { audiobookKey?: string; audiobookBytes?: number; audiobookName?: string; videoKey?: string; videoBytes?: number; videoName?: string } = {};
+  const data: { audiobookKey?: string; audiobookBytes?: number; audiobookName?: string; videoKey?: string | null; videoBytes?: number; videoName?: string } = {};
   let wroteAudio = false;
   let wroteVideo = false;
-  if (options.force || !current?.audiobookName) {
+  if (options.force || !isUploadedKey(current?.audiobookKey)) {
     const audioKey = `book-${bookId}-audiobook.${audioExt}`;
     await putAudio(audioKey, audio, audioMime);
     data.audiobookKey = audioKey;
@@ -164,7 +165,7 @@ export async function renderReleaseMedia(bookId: string, document: BookDocument,
     data.audiobookName = "";
     wroteAudio = true;
   }
-  if (video && (options.force || !current?.videoName)) {
+  if (video && (options.force || !isUploadedKey(current?.videoKey))) {
     const videoKey = `book-${bookId}-video.mp4`;
     await putAudio(videoKey, video, "video/mp4");
     data.videoKey = videoKey;
@@ -172,12 +173,24 @@ export async function renderReleaseMedia(bookId: string, document: BookDocument,
     data.videoName = "";
     wroteVideo = true;
   }
+  if (!video && current?.videoKey && !isUploadedKey(current.videoKey)) {
+    // An old auto-made video no longer matches the new narration; drop it rather than show the wrong length.
+    data.videoKey = null;
+    data.videoBytes = 0;
+    data.videoName = "";
+  }
   await prisma.book.update({ where: { id: bookId }, data });
   const note = notes.join(" ") || null;
   await prisma.pipelineJob.upsert({
     where: { key: `${bookId}:make:media` },
     create: { bookId, step: "media", key: `${bookId}:make:media`, status: "done", lastError: note },
     update: { status: "done", lastError: note },
+  });
+  // Marks this book as narrated by the current script, so it is not redone on the next visit.
+  await prisma.pipelineJob.upsert({
+    where: { key: mediaVersionKey(bookId) },
+    create: { bookId, step: "media", key: mediaVersionKey(bookId), status: "done" },
+    update: { status: "done" },
   });
   return { audio: wroteAudio || Boolean(current?.audiobookKey), video: wroteVideo || Boolean(current?.videoKey), note, engine: SPEECH_NAMES[spoken.engine] };
 }

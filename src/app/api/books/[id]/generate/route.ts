@@ -3,7 +3,7 @@ import { requireApiUser } from "@/lib/auth";
 import { assertSameOrigin, fromError } from "@/lib/http";
 import { generateBook } from "@/lib/services/generate";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const origin = assertSameOrigin(request);

@@ -1,6 +1,7 @@
 import "server-only";
 import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { mkdir, readFile, rm, writeFile } from "@/lib/runtime-fs";
+import { createHmac } from "node:crypto";
 import path from "node:path";
 import { getConfig } from "./config";
 
@@ -33,7 +34,34 @@ function s3(): { client: S3Client; bucket: string } {
   return { client, bucket: cfg.bucket };
 }
 
+/**
+ * Vercel Blob (free on Hobby: 1 GB, 10 GB transfer a month). The store is public, so each file sits under a
+ * secret-derived folder nobody can guess from the book or voice id. Media links still go through this app.
+ */
+function blobPath(key: string): string {
+  const secret = process.env.BLOB_PATH_SECRET || process.env.AI_KEY_SECRET || process.env.BLOB_READ_WRITE_TOKEN || "bbtp";
+  const tag = createHmac("sha256", secret).update(safeKey(key)).digest("hex").slice(0, 24);
+  return `bbtp/${tag}/${safeKey(key)}`;
+}
+
+async function blobSdk() {
+  return import("@vercel/blob");
+}
+
+/** The direct Blob URL for a stored file, or null for local disk and S3. Big media redirects there. */
+export async function publicAudioUrl(key: string, download = false): Promise<string | null> {
+  if (getConfig().storageDriver !== "blob") return null;
+  const { head } = await blobSdk();
+  const info = await head(blobPath(key));
+  return download ? info.downloadUrl : info.url;
+}
+
 export async function putAudio(key: string, body: Buffer, mime: string): Promise<void> {
+  if (getConfig().storageDriver === "blob") {
+    const { put } = await blobSdk();
+    await put(blobPath(key), body, { access: "public", contentType: mime, addRandomSuffix: false, allowOverwrite: true });
+    return;
+  }
   if (getConfig().storageDriver === "s3") {
     const { client, bucket } = s3();
     await client.send(
@@ -50,6 +78,12 @@ export async function putAudio(key: string, body: Buffer, mime: string): Promise
 }
 
 export async function getAudio(key: string): Promise<Buffer> {
+  if (getConfig().storageDriver === "blob") {
+    const { get } = await blobSdk();
+    const result = await get(blobPath(key), { access: "public", useCache: false });
+    if (!result || result.statusCode !== 200) throw new Error("The audio object was not found.");
+    return Buffer.from(await new Response(result.stream).arrayBuffer());
+  }
   if (getConfig().storageDriver === "s3") {
     const { client, bucket } = s3();
     const result = await client.send(new GetObjectCommand({ Bucket: bucket, Key: safeKey(key) }));
@@ -61,6 +95,11 @@ export async function getAudio(key: string): Promise<Buffer> {
 }
 
 export async function deleteAudio(key: string): Promise<void> {
+  if (getConfig().storageDriver === "blob") {
+    const { del } = await blobSdk();
+    await del(blobPath(key));
+    return;
+  }
   if (getConfig().storageDriver === "s3") {
     const { client, bucket } = s3();
     await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: safeKey(key) }));
@@ -70,8 +109,8 @@ export async function deleteAudio(key: string): Promise<void> {
 }
 
 /** Writes, reads back and deletes a tiny object. Used by /api/health?deep=1. */
-export async function checkStorage(): Promise<{ ok: boolean; driver: "local" | "s3"; error?: string }> {
-  const driver = getConfig().storageDriver === "s3" ? "s3" : "local";
+export async function checkStorage(): Promise<{ ok: boolean; driver: "local" | "s3" | "blob"; error?: string }> {
+  const driver = getConfig().storageDriver;
   const key = `health-${Date.now().toString(36)}.txt`;
   try {
     await putAudio(key, Buffer.from("ok"), "text/plain");

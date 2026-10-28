@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { getAudio } from "@/lib/storage";
+import { getAudio, publicAudioUrl } from "@/lib/storage";
 import { getCurrentUser } from "@/lib/auth";
 
 export async function GET(request: Request, context: { params: Promise<{ slug: string; kind: string }> }) {
@@ -14,12 +14,18 @@ export async function GET(request: Request, context: { params: Promise<{ slug: s
   }
   const key = kind === "audiobook" ? book.audiobookKey : book.videoKey;
   if (!key) return new Response("Not found", { status: 404 });
+  const wantsDownload = new URL(request.url).searchParams.get("download") === "1";
+  if (book.status === "PUBLISHED") {
+    // On Vercel a function answer is capped at 4.5 MB, so released media is served straight from Blob storage.
+    const direct = await publicAudioUrl(key, wantsDownload).catch(() => null);
+    if (direct) return Response.redirect(direct, 302);
+  }
   const data = await getAudio(key);
   const video = kind === "video";
   const name =
     (video ? book.videoName : book.audiobookName) ||
     (video ? `${book.slug}.mp4` : key.endsWith(".mp3") ? `${book.slug}.mp3` : `${book.slug}.wav`);
-  const download = new URL(request.url).searchParams.get("download") === "1";
+  const download = wantsDownload;
   const type = video ? "video/mp4" : key.endsWith(".mp3") ? "audio/mpeg" : "audio/wav";
   const cache = book.status === "PUBLISHED" ? "public, max-age=300" : "private, no-store";
   // Players ask for byte ranges to seek; Safari will not play a video without them.

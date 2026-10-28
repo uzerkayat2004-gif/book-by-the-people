@@ -1,0 +1,81 @@
+/**
+ * Speech and mp3 without any installed program: eSpeak NG compiled to WebAssembly and a JavaScript
+ * mp3 encoder. This is what runs on serverless hosts (Vercel) and on a laptop with no speech engine,
+ * so every released book gets a real narrated audiobook.
+ */
+
+type EspeakModule = { FS: { writeFile(path: string, data: string): void; readFile(path: string): Uint8Array } };
+type EspeakFactory = (options: { arguments: string[]; preRun?: ((module: EspeakModule) => void)[]; print?: (text: string) => void; printErr?: (text: string) => void }) => Promise<EspeakModule>;
+
+/** Speaks text to a 22 kHz mono WAV with the built-in eSpeak NG. About an hour of speech takes a few seconds. */
+export async function wasmSpeakToWav(text: string, options: { voice?: string; speed?: number } = {}): Promise<Buffer> {
+  const loaded = (await import("espeak-ng")) as unknown as { default: EspeakFactory };
+  let input = text;
+  const engine = await loaded.default({
+    // The text goes in as a file: long text passed as an argument overflows the WebAssembly stack.
+    arguments: ["-v", options.voice || "en-us", "-s", String(options.speed ?? 152), "-w", "out.wav", "-f", "in.txt"],
+    preRun: [
+      (instance) => {
+        instance.FS.writeFile("in.txt", input);
+        input = "";
+      },
+    ],
+    print: () => undefined,
+    printErr: () => undefined,
+  });
+  const wav = Buffer.from(engine.FS.readFile("out.wav"));
+  if (wav.length < 100) throw new Error("The built-in voice made an empty file.");
+  return wav;
+}
+
+function pcmOf(wav: Buffer): { pcm: Int16Array; rate: number; channels: number } {
+  if (wav.toString("ascii", 0, 4) !== "RIFF") throw new Error("Not a WAV file.");
+  let offset = 12;
+  let rate = 22050;
+  let channels = 1;
+  let bits = 16;
+  while (offset + 8 <= wav.length) {
+    const id = wav.toString("ascii", offset, offset + 4);
+    let size = wav.readUInt32LE(offset + 4);
+    const start = offset + 8;
+    if (id === "fmt ") {
+      channels = wav.readUInt16LE(start + 2) || 1;
+      rate = wav.readUInt32LE(start + 4);
+      bits = wav.readUInt16LE(start + 14);
+    } else if (id === "data") {
+      // Some engines stream the WAV and leave the size at 0 or 0xFFFFFFFF.
+      if (!size || start + size > wav.length) size = wav.length - start;
+      if (bits !== 16) throw new Error("Only 16-bit WAV can be encoded here.");
+      const copy = Buffer.from(wav.subarray(start, start + size - (size % 2)));
+      return { pcm: new Int16Array(copy.buffer, copy.byteOffset, copy.length / 2), rate, channels };
+    }
+    offset = start + size + (size % 2);
+  }
+  throw new Error("The WAV file has no audio.");
+}
+
+/** WAV → mp3 (mono, 48 kbps for speech) in plain JavaScript. */
+export async function wavToMp3(wav: Buffer, kbps = 48): Promise<Buffer> {
+  const { Mp3Encoder } = await import("@breezystack/lamejs");
+  const { pcm, rate, channels } = pcmOf(wav);
+  // Mix stereo down to mono: speech does not need two channels.
+  let mono = pcm;
+  if (channels > 1) {
+    mono = new Int16Array(Math.floor(pcm.length / channels));
+    for (let i = 0; i < mono.length; i += 1) {
+      let sum = 0;
+      for (let c = 0; c < channels; c += 1) sum += pcm[i * channels + c];
+      mono[i] = Math.round(sum / channels);
+    }
+  }
+  const encoder = new Mp3Encoder(1, rate, kbps);
+  const parts: Buffer[] = [];
+  const block = 1152;
+  for (let i = 0; i < mono.length; i += block) {
+    const chunk = encoder.encodeBuffer(mono.subarray(i, i + block));
+    if (chunk.length) parts.push(Buffer.from(chunk));
+  }
+  const tail = encoder.flush();
+  if (tail.length) parts.push(Buffer.from(tail));
+  return Buffer.concat(parts);
+}

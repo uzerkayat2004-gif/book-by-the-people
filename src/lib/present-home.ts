@@ -1,6 +1,8 @@
 import { countryByCode, countryStats, flagEmoji } from "@/lib/countries";
 import type { BookDocument } from "@/lib/book/types";
 import { releaseLabel, stageFor, type Stage } from "@/lib/stage";
+import { stripPeopleCounts } from "@/lib/book/checks";
+import { chapterSummary, clip } from "@/lib/book/summary";
 
 type Voice = {
   contributorName: string;
@@ -50,11 +52,20 @@ export function presentHome(input: {
     ];
   });
   const names = ready.map((voice) => ({ name: voice.contributorName, countryCode: voice.countryCode, region: voice.region || "" }));
-  const chapters = (input.document?.chapters ?? []).map((chapter, index) => ({
-    title: chapter.title,
-    promise: chapter.theme || chapter.narrative.split(". ")[0] || "",
-    href: `/b/${input.slug}/read?c=${index + 1}`,
-  }));
+  const shown = new Set<string>();
+  const chapters = (input.document?.chapters ?? []).map((chapter, index) => {
+    const quotes = chapter.quotes.filter((quote) => !quote.hidden && quote.englishText.trim());
+    // Show a different line under each chapter when the book reuses a quote.
+    const first = quotes.find((quote) => !shown.has(quote.englishText.trim())) ?? quotes[0];
+    if (first) shown.add(first.englishText.trim());
+    return {
+      title: chapter.title,
+      summary: chapterSummary(chapter.title, chapter.theme, chapter.narrative),
+      quote: first ? { text: clip(stripPeopleCounts(first.englishText), 140), name: first.speakerName } : null,
+      voices: new Set(quotes.map((quote) => quote.voiceId)).size,
+      href: `/b/${input.slug}/read?c=${index + 1}`,
+    };
+  });
   const words = (input.document?.chapters ?? [])
     .map((chapter) => `${chapter.narrative} ${chapter.quotes.map((quote) => quote.englishText).join(" ")}`)
     .join(" ")

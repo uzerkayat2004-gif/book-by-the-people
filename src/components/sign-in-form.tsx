@@ -7,11 +7,14 @@ export function SignInForm({
   nextPath,
   error,
   google,
+  email: emailOn = true,
   demoEmail,
 }: {
   nextPath: string;
   error: string | null;
   google: boolean;
+  /** False when this site can't send sign-in emails; Google is then the only way in. */
+  email?: boolean;
   demoEmail: string | null;
 }) {
   const [email, setEmail] = useState(demoEmail ?? "");
@@ -50,19 +53,25 @@ export function SignInForm({
         </span>
       )}
       <div className="under">{google ? "18+ · we never post for you" : "Google sign-in is off here for now · use email"}</div>
-      <div className="or">or email</div>
-      <label className="field" htmlFor="email">
-        <span>Email</span>
-        <input id="email" className="input" type="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" />
-      </label>
-      {message ? <p className="err">{message}</p> : null}
-      <button className="btn btn--red btn--big btn--block" type="submit" disabled={busy}>
-        {busy ? "Sending…" : "Email me a link"}
-      </button>
-      {link ? (
-        <a className="btn btn--block" href={link} style={{ marginTop: 12 }}>
-          Open the magic link
-        </a>
+      {emailOn ? (
+        <>
+        <div className="or">or email</div>
+        <label className="field" htmlFor="email">
+          <span>Email</span>
+          <input id="email" className="input" type="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" />
+        </label>
+        {message ? <p className="err">{message}</p> : null}
+        <button className="btn btn--red btn--big btn--block" type="submit" disabled={busy}>
+          {busy ? "Sending…" : "Email me a link"}
+        </button>
+        {link ? (
+          <a className="btn btn--block" href={link} style={{ marginTop: 12 }}>
+            Open the magic link
+          </a>
+        ) : null}
+        </>
+      ) : message ? (
+        <p className="err">{message}</p>
       ) : null}
       {demoEmail ? (
         <button type="button" className="under" onClick={() => setEmail(demoEmail)} style={{ display: "block", width: "100%" }}>

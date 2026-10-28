@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { StudioDesk } from "@/components/live-studio";
 import { getCurrentUser } from "@/lib/auth";
 import { getConfig } from "@/lib/config";
+import { canSendEmail } from "@/lib/mailer";
 import { aiSummary, providerStore } from "@/lib/ai/providers";
 import { backupAge } from "@/lib/services/backups";
 import { canStoreKeys, keyLast4, openKey } from "@/lib/secret-box";
@@ -207,7 +208,7 @@ export default async function StudioBookPage({
           videoName: book.videoName || (book.videoKey ? `${book.slug}.mp4` : ""),
           status: mediaStatus,
           note: mediaJob?.lastError ?? null,
-          emails: Boolean(getConfig().resendApiKey && getConfig().emailFrom),
+          emails: canSendEmail(),
         }}
         settings={{
           language: book.language,

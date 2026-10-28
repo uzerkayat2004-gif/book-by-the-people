@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createMagicLink, safeNextPath } from "@/lib/auth";
 import { getConfig } from "@/lib/config";
+import { canSendEmail, sendMail } from "@/lib/mailer";
 import { assertSameOrigin, clientIp, fromError, jsonError, publicOrigin } from "@/lib/http";
 import { rateLimit } from "@/lib/rate-limit";
 
@@ -24,22 +25,13 @@ export async function POST(request: Request) {
     const link = `${publicOrigin(request)}/api/auth/verify?token=${token}&next=${encodeURIComponent(next)}`;
     const cfg = getConfig();
     let delivered = false;
-    if (cfg.resendApiKey && cfg.emailFrom) {
-      const response = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        signal: AbortSignal.timeout(15_000),
-        headers: {
-          Authorization: `Bearer ${cfg.resendApiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: cfg.emailFrom,
-          to: parsed.data.email,
-          subject: "Your link into Book by the People",
-          html: `<p>This link opens your studio. It expires in 30 minutes.</p><p><a href="${link}">${link}</a></p>`,
-        }),
-      }).catch(() => null);
-      delivered = Boolean(response?.ok);
+    if (canSendEmail()) {
+      delivered = await sendMail({
+        to: parsed.data.email,
+        subject: "Your link into Book by the People",
+        text: `This link opens your studio. It expires in 30 minutes.\n\n${link}\n`,
+        html: `<p>This link opens your studio. It expires in 30 minutes.</p><p><a href="${link}">${link}</a></p>`,
+      });
       if (!delivered && !cfg.exposeMagicLinks) {
         return jsonError("The sign-in email could not be sent.", 502);
       }

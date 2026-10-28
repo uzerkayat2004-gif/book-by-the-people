@@ -189,7 +189,7 @@ Copy `.env.example` to `.env`.
 
 ## Deploy
 
-See [DEPLOY.md](DEPLOY.md). Short version: run the `Dockerfile` (Next.js with eSpeak NG and ffmpeg) as one always-on service on Railway, Render or Fly, use Neon Postgres (a `postgres://` `DATABASE_URL` switches Prisma automatically), and use Cloudflare R2 for audio and video (`STORAGE_DRIVER=s3`). Set `AI_KEY_SECRET`, `APP_URL`, `SITE_ADMIN_EMAILS` and Resend or Google sign-in. Vercel is not a fit: media is made inside the server after release. `/api/health?deep=1` checks the database, storage, ffmpeg and the speech engine.
+See [DEPLOY.md](DEPLOY.md). Free setup (no card, no domain): **Vercel Hobby** for the app, **Neon** Postgres and **Vercel Blob** for files (both added from inside Vercel), **Google sign-in**, and optionally a Gmail app password (`SMTP_URL`) for emails. The audiobook is narrated with a built-in WebAssembly voice, so nothing needs installing; Vercel has no ffmpeg, so the film is skipped there. Paid alternative: the `Dockerfile` on Railway (about $5–8 a month) also makes the film. `/api/health?deep=1` checks the database, storage, ffmpeg and the speech engine.
 
 | Variable | What it does |
 | --- | --- |

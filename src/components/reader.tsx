@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { IconArrow, IconBack, IconList } from "@/components/icons";
+import { AudioPlayer, DownloadButton } from "@/components/media-player";
 import { QuotePlayer } from "@/components/quote-player";
+import { chapterSummary } from "@/lib/book/summary";
 import { countryByCode } from "@/lib/countries";
 import { languageByCode } from "@/lib/languages";
 import { stripPeopleCounts } from "@/lib/book/checks";
@@ -30,6 +32,7 @@ export function Reader({
   const index = Math.min(book.chapters.length, Math.max(1, chapter)) - 1;
   const current = book.chapters[index];
   const next = book.chapters[index + 1];
+  const bookTitle = book.title || book.question;
   const [size, setSize] = useState(1);
   const [player, setPlayer] = useState<null | "audio" | "video">(null);
   const [sheet, setSheet] = useState(false);
@@ -88,7 +91,7 @@ export function Reader({
               Chapter {index + 1} <span>·</span> {mins} min read
             </div>
             <h1 className="read3__title">{current.title}</h1>
-            <p className="read3__promise">{current.theme}</p>
+            {chapterSummary(current.title, current.theme, "") ? <p className="read3__promise">{chapterSummary(current.title, current.theme, "")}</p> : null}
           </header>
           {media.audio || media.video ? (
             <div className="read-media" data-testid="read-media">
@@ -102,21 +105,15 @@ export function Reader({
                   Watch
                 </button>
               ) : null}
-              {media.audio ? (
-                <a className="link" href={`/api/media/${slug}/audiobook?download=1`}>
-                  Download audio
-                </a>
-              ) : null}
-              {media.video ? (
-                <a className="link" href={`/api/media/${slug}/video?download=1`}>
-                  Download video
-                </a>
-              ) : null}
+              {media.audio ? <DownloadButton href={`/api/media/${slug}/audiobook?download=1`} label="Download audio" /> : null}
+              {media.video ? <DownloadButton href={`/api/media/${slug}/video?download=1`} label="Download video" /> : null}
               {player === "audio" ? (
-                <audio className="read-media__player" controls autoPlay preload="none" src={`/api/media/${slug}/audiobook`} aria-label="Audiobook" />
+                <div className="read-media__player-box">
+                  <AudioPlayer compact autoPlay src={`/api/media/${slug}/audiobook`} title={bookTitle} question={bookTitle} people={0} countries={0} />
+                </div>
               ) : null}
               {player === "video" ? (
-                <video className="read-media__player read-media__video" controls autoPlay playsInline preload="none" src={`/api/media/${slug}/video`} aria-label="Film" />
+                <video className="read-media__player read-media__video" controls autoPlay playsInline preload="metadata" src={`/api/media/${slug}/video`} aria-label="Film" />
               ) : null}
             </div>
           ) : null}

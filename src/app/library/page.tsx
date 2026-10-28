@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { OpenNow, ReleasedCard } from "@/components/shelf";
+import { OpenNow, ReleasedGrid } from "@/components/shelf";
 import { openBooks, releasedBooks } from "@/lib/public-books";
 
 export const dynamic = "force-dynamic";
@@ -20,10 +20,8 @@ export default async function LibraryPage() {
             : "Released books will live here. The first one is still taking voices."}
         </p>
         {books.length ? (
-          <div className="libgrid libgrid--page" data-testid="library-list">
-            {books.map((book) => (
-              <ReleasedCard key={book.id} book={book} wide />
-            ))}
+          <div className="library__list">
+            <ReleasedGrid books={books} wide testId="library-list" />
           </div>
         ) : (
           <div className="card bl lib-empty">

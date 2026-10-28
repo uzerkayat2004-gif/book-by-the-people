@@ -1,3 +1,4 @@
+export const maxDuration = 300;
 import { NextResponse } from "next/server";
 import { requireApiUser } from "@/lib/auth";
 import { assertSameOrigin, fromError } from "@/lib/http";

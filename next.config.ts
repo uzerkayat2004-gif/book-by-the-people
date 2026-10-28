@@ -19,6 +19,12 @@ const nextConfig: NextConfig = {
   },
   // data/ holds the database, recordings and downloaded models (several GB). The server reads it at run
   // time, so the build must not trace or copy it.
+  // The built-in voice (eSpeak NG in WebAssembly) loads its .wasm next to its own file, so it stays a
+  // plain node_modules package and its files ship with every server function (Vercel included).
+  serverExternalPackages: ["espeak-ng"],
+  outputFileTracingIncludes: {
+    "*": ["./node_modules/espeak-ng/dist/**/*"],
+  },
   outputFileTracingExcludes: {
     "*": ["./data/**/*", "./.tmp/**/*", "./test-results/**/*", "./playwright-report/**/*"],
   },

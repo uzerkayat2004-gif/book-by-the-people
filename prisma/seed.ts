@@ -5,7 +5,8 @@
  *   - Asha Menon (asha@bookbythepeople.dev): "On the record" (FAMOUS, published, real sourced quotes only)
  *     and "Notes to my younger self" (SOLO, collecting).
  *   - Rafael Costa (rafael@bookbythepeople.dev): "City at night" (OPEN, collecting, one voice needs review).
- * Voice clips are spoken locally with espeak-ng (or a tone if it is missing), so nothing needs an API key.
+ * Voice clips and the audiobook are spoken locally (system eSpeak NG, the Windows or macOS voice, or the
+ * built-in WebAssembly eSpeak NG), so nothing needs an API key or an installed program.
  * Refuses to run against production unless SEED_FORCE=1.
  */
 import "dotenv/config";
@@ -19,6 +20,9 @@ import { themeLabel } from "../src/lib/book/plan";
 import { wavDurationMs } from "../src/lib/book/speech";
 import type { SourceVoice } from "../src/lib/book/types";
 import { FAMOUS_RECORD } from "../src/lib/famous-quotes";
+import { wasmSpeakToWav, wavToMp3 } from "../src/lib/media/js-audio";
+import { narrationScript } from "../src/lib/media/script";
+import { mediaVersionKey } from "../src/lib/media/version";
 
 if (process.env.DATABASE_URL?.startsWith("file:./") || process.env.DATABASE_URL?.startsWith("file:../")) {
   process.env.DATABASE_URL = `file:${path.resolve(process.cwd(), process.env.DATABASE_URL.slice("file:".length))}`;
@@ -256,8 +260,8 @@ function toneWav(file: string, seconds = 4) {
   writeFileSync(file, Buffer.concat([header, data]));
 }
 
-/** Speaks with espeak-ng, then the Windows voice, then macOS say, then falls back to a tone. */
-function speak(file: string, voice: string, text: string, speed = 148) {
+/** Speaks with espeak-ng, then the Windows voice, then macOS say, then the built-in WebAssembly voice. */
+async function speak(file: string, voice: string, text: string, speed = 148) {
   try {
     run("espeak-ng", ["-v", voice, "-s", String(speed), "-w", file, text]);
     return;
@@ -287,7 +291,13 @@ function speak(file: string, voice: string, text: string, speed = 148) {
       return;
     } catch {}
   }
-  toneWav(file);
+  for (const v of [voice, "en-us"]) {
+    try {
+      writeFileSync(file, await wasmSpeakToWav(text, { voice: v, speed }));
+      return;
+    } catch {}
+  }
+  toneWav(file); // last resort only: the seed still finishes
 }
 
 function drawtext(text: string, size: number, y: number) {
@@ -296,29 +306,28 @@ function drawtext(text: string, size: number, y: number) {
   return `drawtext=${font ? `fontfile=${font}:` : ""}text='${safe}':fontsize=${size}:fontcolor=white:x=(w-text_w)/2:y=${y}`;
 }
 
-/** Narrate a script to mp3 and render a matching mp4 with ffmpeg. Returns stored keys and sizes. */
-function renderMedia(bookId: string, title: string, script: string, opts: { audioName?: string; videoName?: string } = {}) {
+/** Narrate the whole book to mp3 and, with ffmpeg, render a matching mp4. Returns stored keys and sizes. */
+async function renderMedia(bookId: string, title: string, script: string) {
   const work = path.join(tmpdir(), `bbtp-seed-${bookId}`);
   mkdirSync(work, { recursive: true });
   const wav = path.join(work, "speech.wav");
-  speak(wav, "en-us", script, 155);
+  await speak(wav, "en-us", script, 155);
+  const audioKey = `book-${bookId}-audiobook.mp3`;
   if (!HAS_FFMPEG) {
-    // No ffmpeg yet: keep the spoken WAV as the audiobook and skip the video. Release → Make again fills it in later.
-    const wavKey = `book-${bookId}-audiobook.wav`;
-    writeFileSync(path.join(audioDir, wavKey), readFileSync(wav));
+    // No ffmpeg: encode the mp3 in JavaScript and skip the video. Release → Make again adds it later.
+    writeFileSync(path.join(audioDir, audioKey), await wavToMp3(readFileSync(wav)));
     rmSync(work, { recursive: true, force: true });
     return {
-      audiobookKey: wavKey,
-      audiobookBytes: readFileSync(path.join(audioDir, wavKey)).length,
+      audiobookKey: audioKey,
+      audiobookBytes: readFileSync(path.join(audioDir, audioKey)).length,
       audiobookName: "",
       videoKey: null,
       videoBytes: 0,
       videoName: "",
     };
   }
-  const audioKey = `book-${bookId}-audiobook.mp3`;
   const videoKey = `book-${bookId}-video.mp4`;
-  run("ffmpeg", ["-y", "-i", wav, "-ac", "1", "-codec:a", "libmp3lame", "-b:a", "16k", path.join(audioDir, audioKey)]);
+  run("ffmpeg", ["-y", "-i", wav, "-ac", "1", "-codec:a", "libmp3lame", "-b:a", "48k", path.join(audioDir, audioKey)]);
   run("ffmpeg", [
     "-y",
     "-i",
@@ -356,11 +365,16 @@ function renderMedia(bookId: string, title: string, script: string, opts: { audi
   return {
     audiobookKey: audioKey,
     audiobookBytes: readFileSync(path.join(audioDir, audioKey)).length,
-    audiobookName: opts.audioName ?? "",
+    audiobookName: "",
     videoKey,
     videoBytes: readFileSync(path.join(audioDir, videoKey)).length,
-    videoName: opts.videoName ?? "",
+    videoName: "",
   };
+}
+
+/** Marks the media as made with the current narration, so the app does not narrate it again. */
+async function markMedia(bookId: string) {
+  await prisma.pipelineJob.create({ data: { bookId, step: "media", key: mediaVersionKey(bookId), status: "done" } });
 }
 
 async function addVoices(bookId: string, people: Person[], startAt: number) {
@@ -369,7 +383,7 @@ async function addVoices(bookId: string, people: Person[], startAt: number) {
     const key = `${person.id}.wav`;
     const file = path.join(audioDir, key);
     const spoken = `${person.startWord}. ${person.original}`;
-    speak(file, person.espeak, spoken);
+    await speak(file, person.espeak, spoken);
     const durationMs = wavDurationMs(readFileSync(file)) ?? 6000;
     const cut = Math.min(900, Math.round(durationMs * 0.18));
     const createdAt = startAt + index * 3_600_000;
@@ -436,14 +450,6 @@ async function publish(bookId: string, document: ReturnType<typeof assembleBook>
   await prisma.book.update({ where: { id: bookId }, data: { currentDraftId: draft.id, publishedDraftId: draft.id } });
 }
 
-function scriptOf(document: ReturnType<typeof assembleBook>, limit: number) {
-  const parts = [document.title];
-  for (const chapter of document.chapters) {
-    parts.push(chapter.title);
-    for (const quote of chapter.quotes) if (!quote.hidden && quote.englishText) parts.push(quote.englishText);
-  }
-  return parts.join(". ").slice(0, limit);
-}
 
 async function reset() {
   await prisma.book.deleteMany();
@@ -495,14 +501,9 @@ async function main() {
     model: "local-assembly",
   });
   await publish(one.id, oneDoc, "Sample book for demo mode. The clips are spoken by a local voice so the reader works without an API key.");
-  // Release media: the creator's uploaded files, named as they uploaded them.
-  await prisma.book.update({
-    where: { id: one.id },
-    data: renderMedia(one.id, "Is AI making you smarter or lazier?", scriptOf(oneDoc, 330), {
-      audioName: "t-rex-roar.mp3",
-      videoName: "flower.mp4",
-    }),
-  });
+  // Release media: the whole book, narrated.
+  await prisma.book.update({ where: { id: one.id }, data: await renderMedia(one.id, oneDoc.title, narrationScript(oneDoc)) });
+  await markMedia(one.id);
   // Backup history (count-only rows from before snapshots existed).
   const history: [number, number][] = [
     [2, 0],
@@ -623,7 +624,8 @@ async function main() {
     model: "sourced-only",
   });
   await publish(record.id, recordDoc, "Real quotations only, each with its source link and date. Nothing here was generated.");
-  await prisma.book.update({ where: { id: record.id }, data: renderMedia(record.id, record.title, scriptOf(recordDoc, 600)) });
+  await prisma.book.update({ where: { id: record.id }, data: await renderMedia(record.id, record.title, narrationScript(recordDoc)) });
+  await markMedia(record.id);
 
   // Notes to my younger self — SOLO, collecting.
   const solo = await prisma.book.create({

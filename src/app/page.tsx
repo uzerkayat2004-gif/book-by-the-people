@@ -3,6 +3,7 @@ import { BookHome } from "@/components/book-home";
 import { prisma } from "@/lib/db";
 import { currentDocument, voterChoice, pausedNow } from "@/lib/load-book";
 import { presentHome } from "@/lib/present-home";
+import { refreshStaleMedia } from "@/lib/services/books";
 import { homeBook, openBooks, releasedBooks, releasedWhere } from "@/lib/public-books";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +33,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   ]);
   const document =
     featured.status === "PUBLISHED" ? await currentDocument(featured.id, featured.publishedDraftId) : null;
+  if (featured.status === "PUBLISHED") await refreshStaleMedia(featured.id).catch(() => undefined);
   const vote = await voterChoice(featured.id);
   const paused = await pausedNow(featured.id);
   const model = presentHome({
@@ -58,7 +60,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
       {...model}
       title={featured.title}
       slug={featured.slug}
-      media={{ audio: Boolean(featured.audiobookKey), video: Boolean(featured.videoKey) }}
+      media={{ audio: Boolean(featured.audiobookKey), video: Boolean(featured.videoKey), audioBytes: featured.audiobookBytes, videoBytes: featured.videoBytes }}
       openNow={openNow}
       released={released}
       releasedTotal={releasedTotal}
