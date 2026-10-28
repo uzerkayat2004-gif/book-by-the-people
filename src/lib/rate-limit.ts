@@ -11,3 +11,8 @@ export function rateLimit(key: string, limit: number, windowMs: number): boolean
   hits.set(key, recent);
   return true;
 }
+
+/** Per-hour budget for a public form: strict in production, loose in dev and tests. */
+export function hourly(key: string, productionLimit: number): boolean {
+  return rateLimit(key, process.env.NODE_ENV === "production" ? productionLimit : 10_000, 60 * 60 * 1000);
+}

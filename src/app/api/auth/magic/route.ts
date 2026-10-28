@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createMagicLink, safeNextPath } from "@/lib/auth";
 import { getConfig } from "@/lib/config";
-import { assertSameOrigin, clientIp, fromError, jsonError } from "@/lib/http";
+import { assertSameOrigin, clientIp, fromError, jsonError, publicOrigin } from "@/lib/http";
 import { rateLimit } from "@/lib/rate-limit";
 
 const bodySchema = z.object({
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     if (!parsed.success) return jsonError("Enter a real email address.");
     const token = await createMagicLink(parsed.data.email);
     const next = safeNextPath(parsed.data.next);
-    const link = `${new URL(request.url).origin}/api/auth/verify?token=${token}&next=${encodeURIComponent(next)}`;
+    const link = `${publicOrigin(request)}/api/auth/verify?token=${token}&next=${encodeURIComponent(next)}`;
     const cfg = getConfig();
     let delivered = false;
     if (cfg.resendApiKey && cfg.emailFrom) {

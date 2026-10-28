@@ -10,8 +10,12 @@ function sqliteUrl(raw: string): string {
   return `file:${path.resolve(process.cwd(), raw.slice("file:".length))}`;
 }
 
+// Local dev: SQLite (prisma/schema.prisma). Hosted: a postgres:// DATABASE_URL picks the
+// Postgres copy that scripts/prisma-schema.mjs writes (npm run build does this first).
+const isPostgres = /^postgres(ql)?:\/\//.test(process.env.DATABASE_URL ?? "");
+
 export default defineConfig({
-  schema: "prisma/schema.prisma",
+  schema: isPostgres ? "prisma/postgres/schema.prisma" : "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
   },

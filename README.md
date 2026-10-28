@@ -189,7 +189,13 @@ Copy `.env.example` to `.env`.
 
 ## Deploy
 
-The app is a Next.js App Router project and can run on Vercel. Use Postgres there (SQLite on the server disk will not persist), set `STORAGE_DRIVER=s3` or another durable bucket, set `AUTH_DEV_EXPOSE_LINKS=false`, `AI_MODE=live`, `AI_KEY_SECRET`, and configure Resend or Google so creators can sign in. `ffmpeg` must exist in the transcription environment; Vercel's default runtime does not include it, so live transcription needs a host where `ffmpeg` is installed, or a conversion step in front of the route.
+See [DEPLOY.md](DEPLOY.md). Short version: run the `Dockerfile` (Next.js with eSpeak NG and ffmpeg) as one always-on service on Railway, Render or Fly, use Neon Postgres (a `postgres://` `DATABASE_URL` switches Prisma automatically), and use Cloudflare R2 for audio and video (`STORAGE_DRIVER=s3`). Set `AI_KEY_SECRET`, `APP_URL`, `SITE_ADMIN_EMAILS` and Resend or Google sign-in. Vercel is not a fit: media is made inside the server after release. `/api/health?deep=1` checks the database, storage, ffmpeg and the speech engine.
+
+| Variable | What it does |
+| --- | --- |
+| `SITE_ADMIN_EMAILS` | Comma-separated emails that may feature a book on the home page |
+| `LOCAL_MODELS` | `off` hides local model downloads (set in the Dockerfile) |
+| `DATA_DIR` | Optional persistent folder for the generated key secret when `AI_KEY_SECRET` is unset |
 
 ## Open questions about the Meta API
 

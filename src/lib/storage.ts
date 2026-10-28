@@ -68,3 +68,17 @@ export async function deleteAudio(key: string): Promise<void> {
   }
   await rm(await localPath(key), { force: true });
 }
+
+/** Writes, reads back and deletes a tiny object. Used by /api/health?deep=1. */
+export async function checkStorage(): Promise<{ ok: boolean; driver: "local" | "s3"; error?: string }> {
+  const driver = getConfig().storageDriver === "s3" ? "s3" : "local";
+  const key = `health-${Date.now().toString(36)}.txt`;
+  try {
+    await putAudio(key, Buffer.from("ok"), "text/plain");
+    const back = await getAudio(key);
+    await deleteAudio(key);
+    return back.toString() === "ok" ? { ok: true, driver } : { ok: false, driver, error: "read back a different value" };
+  } catch (error) {
+    return { ok: false, driver, error: error instanceof Error ? error.message.slice(0, 160) : "storage error" };
+  }
+}

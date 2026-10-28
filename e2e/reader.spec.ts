@@ -5,8 +5,8 @@ test("reader: plain prose, chapter nav, listen / watch / download for anyone", a
   await expect(page.locator(".read3__title")).toBeVisible();
   await expect(page.getByText(/Chapter 1/).first()).toBeVisible();
   await expect(page.getByText(/\d+ people said/i)).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Listen" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Watch" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Listen" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Watch" })).toBeVisible();
   // Signed out: media still downloads.
   const audio = await request.get("/api/media/smarter-or-lazier/audiobook?download=1");
   expect(audio.ok()).toBeTruthy();

@@ -29,3 +29,19 @@ export function fromError(error: unknown) {
   const message = error instanceof Error ? error.message : "Something went wrong.";
   return jsonError(message, 500);
 }
+
+/**
+ * The site's public address for links and redirects. Behind a host's proxy the request URL can be
+ * the internal http address, so production uses APP_URL when it is set.
+ */
+export function publicOrigin(request: Request): string {
+  const configured = process.env.APP_URL?.trim();
+  if (process.env.NODE_ENV === "production" && configured) {
+    try {
+      return new URL(configured).origin;
+    } catch {
+      // fall through to the request's own origin
+    }
+  }
+  return new URL(request.url).origin;
+}

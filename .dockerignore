@@ -1,0 +1,15 @@
+node_modules
+.next
+.tmp
+data
+test-results
+playwright-report
+coverage
+.git
+.env
+.env.*
+!.env.example
+*.db
+*.log
+src/generated
+prisma/postgres

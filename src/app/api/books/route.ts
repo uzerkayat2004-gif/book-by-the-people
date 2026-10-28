@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireApiUser } from "@/lib/auth";
 import { assertSameOrigin, fromError } from "@/lib/http";
+import { clientIp, jsonError } from "@/lib/http";
+import { hourly } from "@/lib/rate-limit";
 import { createBook, updateBookSettings } from "@/lib/services/books";
 
 const schema = z.object({
@@ -21,6 +23,9 @@ export async function POST(request: Request) {
   if (origin) return origin;
   try {
     const user = await requireApiUser();
+    if (!hourly(`book:${user.id}`, 20) || !hourly(`book-ip:${clientIp(request)}`, 40)) {
+      return jsonError("Too many new books in an hour. Try again later.", 429);
+    }
     const parsed = schema.parse(await request.json());
     const book = await createBook({
       userId: user.id,

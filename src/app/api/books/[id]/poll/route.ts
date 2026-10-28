@@ -4,6 +4,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { assertSameOrigin, fromError } from "@/lib/http";
+import { clientIp, jsonError } from "@/lib/http";
+import { hourly } from "@/lib/rate-limit";
 import { votePoll } from "@/lib/services/books";
 
 const schema = z.object({ optionId: z.string() });
@@ -12,6 +14,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const origin = assertSameOrigin(request);
   if (origin) return origin;
   try {
+    if (!hourly(`poll:${clientIp(request)}`, 60)) return jsonError("Too many votes from here. Try again later.", 429);
     const { id } = await context.params;
     const parsed = schema.parse(await request.json());
     const jar = await cookies();

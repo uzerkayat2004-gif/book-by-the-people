@@ -47,6 +47,9 @@ export function localSecret(file = localSecretPath()): string {
 export function activeSecret(): string {
   const env = process.env.AI_KEY_SECRET ?? "";
   if (env.length >= 16) return env;
+  // A hosted server's disk is usually wiped on redeploy, which would make every saved key
+  // unreadable. In production the secret must come from AI_KEY_SECRET (or an explicit DATA_DIR volume).
+  if (process.env.NODE_ENV === "production" && !process.env.DATA_DIR) return "";
   return localSecret();
 }
 

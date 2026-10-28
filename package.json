@@ -5,14 +5,16 @@
   "scripts": {
     "dev": "next dev -p 43123 --hostname 127.0.0.1",
     "predev": "tsx scripts/ensure-db.ts",
-    "build": "prisma generate && next build",
+    "build": "node scripts/prisma-schema.mjs && prisma generate && next build",
     "start": "next start -p 43123 --hostname 127.0.0.1",
     "lint": "eslint",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
     "setup": "prisma db push && tsx prisma/seed.ts",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "prisma:schema": "node scripts/prisma-schema.mjs",
+    "start:prod": "prisma db push --skip-generate && next start --hostname 0.0.0.0 -p ${PORT:-3000}"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

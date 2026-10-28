@@ -39,3 +39,23 @@ describe("local key secret", () => {
     expect(keyLast4("short")).toBe("");
   });
 });
+
+describe("production key secret", () => {
+  it("refuses to fall back to a generated file in production", async () => {
+    const env = process.env as Record<string, string | undefined>;
+    const before = { node: env.NODE_ENV, secret: env.AI_KEY_SECRET, dir: env.DATA_DIR };
+    try {
+      env.NODE_ENV = "production";
+      delete env.AI_KEY_SECRET;
+      delete env.DATA_DIR;
+      const { canStoreKeys } = await import("./secret-box");
+      expect(canStoreKeys()).toBe(false);
+      env.AI_KEY_SECRET = "a-long-enough-production-secret";
+      expect(canStoreKeys()).toBe(true);
+    } finally {
+      env.NODE_ENV = before.node;
+      if (before.secret === undefined) delete env.AI_KEY_SECRET; else env.AI_KEY_SECRET = before.secret;
+      if (before.dir === undefined) delete env.DATA_DIR; else env.DATA_DIR = before.dir;
+    }
+  });
+});

@@ -1,3 +1,4 @@
+import { publicOrigin } from "@/lib/http";
 import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getConfig } from "@/lib/config";
@@ -5,11 +6,12 @@ import { getConfig } from "@/lib/config";
 export async function GET(request: Request) {
   const cfg = getConfig();
   const url = new URL(request.url);
+  const origin = publicOrigin(request);
   if (!cfg.googleClientId || !cfg.googleClientSecret) {
-    return NextResponse.redirect(new URL("/sign-in?error=google", url.origin));
+    return NextResponse.redirect(new URL("/sign-in?error=google", origin));
   }
   const state = randomBytes(16).toString("hex");
-  const redirectUri = `${url.origin}/api/auth/google/callback`;
+  const redirectUri = `${origin}/api/auth/google/callback`;
   const auth = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   auth.searchParams.set("client_id", cfg.googleClientId);
   auth.searchParams.set("redirect_uri", redirectUri);
