@@ -1,5 +1,7 @@
 import { IconCheck } from "@/components/icons";
 
+export const metadata = { title: "Privacy · Book by the People" };
+
 export default function PrivacyPage() {
   return (
     <main className="page" data-nofoot="">
@@ -9,10 +11,7 @@ export default function PrivacyPage() {
         <ul className="trustlist">
           <li>
             <IconCheck />
-            <span>
-              Before Oct 26 only your name, country and state are public. Your
-              words stay sealed.
-            </span>
+            <span>Until a book is released, only your name, country and state are public. Your words stay sealed.</span>
           </li>
           <li>
             <IconCheck />
@@ -21,8 +20,19 @@ export default function PrivacyPage() {
           <li>
             <IconCheck />
             <span>
-              An AI service (Nebius) sorts the voices. It isn&apos;t used for
-              training.
+              Each book&apos;s creator brings their own AI key, usually Meta&apos;s models. Your voice goes to that AI
+              only to turn it into text and write the book. That provider&apos;s own privacy rules apply.
+            </span>
+          </li>
+          <li>
+            <IconCheck />
+            <span>AI keys are encrypted and never shown again, not even to the creator.</span>
+          </li>
+          <li>
+            <IconCheck />
+            <span>
+              The site runs on Vercel. Accounts, books and text are kept in a Neon database. Voice recordings and
+              book files are kept in Vercel Blob storage.
             </span>
           </li>
           <li>
