@@ -23,7 +23,7 @@ const nextConfig: NextConfig = {
   // plain node_modules package and its files ship with every server function (Vercel included).
   serverExternalPackages: ["espeak-ng"],
   outputFileTracingIncludes: {
-    "*": ["./node_modules/espeak-ng/dist/**/*"],
+    "*": ["./node_modules/espeak-ng/dist/**/*", "./src/generated/prisma/*.node"],
   },
   outputFileTracingExcludes: {
     "*": ["./data/**/*", "./.tmp/**/*", "./test-results/**/*", "./playwright-report/**/*"],

@@ -23,7 +23,17 @@ export async function GET(request: Request) {
     database = false;
     // Only the error class and Prisma code: never the message, which can hold the host or user.
     const e = err as { name?: string; errorCode?: string; code?: string };
-    databaseError = [e?.name, e?.errorCode ?? e?.code].filter(Boolean).join(" ") || "unknown";
+    const msg = String((err as Error)?.message ?? "");
+    const hint = /query engine|libquery|could not locate|shared library/i.test(msg)
+      ? "engine"
+      : /can't reach|timed out|ECONN|ENOTFOUND/i.test(msg)
+        ? "unreachable"
+        : /authentication|password/i.test(msg)
+          ? "auth"
+          : /url|connection string|parse|scheme/i.test(msg)
+            ? "url"
+            : "other";
+    databaseError = [e?.name, e?.errorCode ?? e?.code, hint].filter(Boolean).join(" ");
   }
   const [ffmpeg, speech, storage] = await Promise.all([
     ffmpegBin().then(Boolean).catch(() => false),
