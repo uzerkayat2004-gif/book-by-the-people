@@ -1,4 +1,5 @@
 import "server-only";
+import { canDeleteVoice } from "@/lib/privacy";
 import { randomBytes } from "node:crypto";
 import { transcribeVoice } from "../ai";
 import { convertToWavPcm } from "../audio/convert";
@@ -51,6 +52,8 @@ export async function issueChallenge(bookId: string, language: string, preferred
 export async function ingestRecording(input: {
   bookId: string;
   viewerId: string | null;
+  /** Hashed guest key of a signed-out contributor's browser, so they can find and delete their own voice. */
+  guestKey?: string;
   invite: string | null;
   challengeId: string;
   name: string;
@@ -157,6 +160,7 @@ export async function ingestRecording(input: {
       startWord: challenge.startWord,
       status: "FAILED",
       userId: input.viewerId,
+      guestKey: input.viewerId ? "" : (input.guestKey ?? ""),
       rejectReason: message,
     });
     await consumeChallenge(challenge.id);
@@ -198,6 +202,7 @@ export async function ingestRecording(input: {
     turns: heard.turns,
     startWordPassed: true,
     userId: input.viewerId,
+    guestKey: input.viewerId ? "" : (input.guestKey ?? ""),
   });
   await consumeChallenge(challenge.id);
   try {
@@ -387,9 +392,12 @@ export async function approveVoice(voiceId: string, userId: string) {
   });
 }
 
-export async function deleteVoice(voiceId: string, userId: string) {
-  const voice = await prisma.voice.findUnique({ include: { book: true }, where: { id: voiceId } });
-  if (!voice || voice.book.creatorId !== userId) throw new AppError("That voice is not in your studio.", 404);
+/** The book's owner, or the person who recorded the voice (signed in, or the same browser as a guest), may delete it. */
+export async function deleteVoice(voiceId: string, userId: string | null, guestKey: string | null = null) {
+  const voice = await prisma.voice.findUnique({ include: { book: { select: { creatorId: true } } }, where: { id: voiceId } });
+  if (!voice || !canDeleteVoice(voice, voice.book, userId ? { id: userId } : null, guestKey)) {
+    throw new AppError("That voice is not yours.", 404);
+  }
   if (voice.storageKey) await deleteAudio(voice.storageKey).catch(() => undefined);
   await prisma.voice.delete({ where: { id: voiceId } });
 }
@@ -414,6 +422,7 @@ async function storeVoice(input: {
   turns?: Turn[];
   startWordPassed?: boolean;
   userId?: string | null;
+  guestKey?: string;
 }) {
   const voiceId = `v_${randomBytes(8).toString("hex")}`;
   const storageKey = `${voiceId}${extensionFor(input.mimeType)}`;
@@ -442,6 +451,7 @@ async function storeVoice(input: {
       startWordPassed: input.startWordPassed ?? false,
       kind: "voice",
       userId: input.userId ?? "",
+      guestKey: input.guestKey ?? "",
     },
   });
 }

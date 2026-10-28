@@ -115,6 +115,7 @@ export async function updateBookSettings(input: {
   aiKey?: string;
   clearAiKey?: boolean;
   usageLimit?: { kind: string; value?: number | string | null };
+  unlisted?: boolean;
 }) {
   const book = await ownedBook(input.bookId, input.userId);
   const data: {
@@ -134,7 +135,15 @@ export async function updateBookSettings(input: {
     aiKeyCipher?: string;
     usageLimitKind?: string;
     usageLimitValue?: number;
+    unlisted?: boolean;
+    featured?: boolean;
   } = {};
+
+  // Unlisted = link only. It leaves /books, the Library and the home page (so it can't stay featured).
+  if (input.unlisted !== undefined) {
+    data.unlisted = input.unlisted;
+    if (input.unlisted) data.featured = false;
+  }
 
   if (input.usageLimit) {
     try {
@@ -363,6 +372,25 @@ export async function votePoll(bookId: string, optionId: string, voterKey: strin
     update: { optionId },
     create: { bookId, optionId, voterKey },
   });
+}
+
+/**
+ * Delete a book for good: its voices, drafts, media files and settings. The owner may delete their own book;
+ * the site admin may delete an abusive one. Neither path reads the book's content: only ids and file keys.
+ */
+export async function deleteBookForever(bookId: string, actor: { id: string; isAdmin: boolean }) {
+  const book = await prisma.book.findUnique({
+    where: { id: bookId },
+    select: { id: true, creatorId: true, audiobookKey: true, videoKey: true },
+  });
+  if (!book || (book.creatorId !== actor.id && !actor.isAdmin)) throw new AppError("Book not found.", 404);
+  const files = await prisma.voice.findMany({ where: { bookId: book.id, storageKey: { not: null } }, select: { storageKey: true } });
+  const keys = [book.audiobookKey, book.videoKey, ...files.map((file) => file.storageKey)].filter((key): key is string => Boolean(key));
+  const { deleteAudio } = await import("../storage");
+  await Promise.all(keys.map((key) => deleteAudio(key).catch(() => undefined)));
+  await prisma.aiUsage.deleteMany({ where: { bookId: book.id } });
+  await prisma.book.delete({ where: { id: book.id } });
+  return { id: book.id };
 }
 
 async function ownedBook(bookId: string, userId: string) {

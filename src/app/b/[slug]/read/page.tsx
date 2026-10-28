@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Reader } from "@/components/reader";
 import { getCurrentUser } from "@/lib/auth";
 import { currentDocument, loadBookBySlug } from "@/lib/load-book";
+import { readableDraftId } from "@/lib/privacy";
 
 export default async function ReadPage({
   params,
@@ -16,9 +17,9 @@ export default async function ReadPage({
   const loaded = await loadBookBySlug(slug);
   if (!loaded) notFound();
   const user = await getCurrentUser();
-  const preview = query.preview === "1" && user?.id === loaded.creatorId;
-  const draftId = preview ? loaded.currentDraftId : loaded.publishedDraftId;
-  if (!preview && loaded.status !== "PUBLISHED") {
+  // Only the owner may preview a draft; everyone else reads the published version, once there is one.
+  const draftId = readableDraftId(loaded, user ? { id: user.id } : null, query.preview === "1");
+  if (!draftId) {
     return (
       <main className="page speak">
         <div className="narrow">

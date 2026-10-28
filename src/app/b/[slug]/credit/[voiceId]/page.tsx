@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { ShareCard } from "@/components/share-card";
 import { headers } from "next/headers";
 import { visibleQuotes } from "@/lib/book/assemble";
-import { getCurrentUser } from "@/lib/auth";
+import { canSeeOwnVoice, isOwner, isReleasedBook } from "@/lib/privacy";
+import { getViewer } from "@/lib/viewer";
 import { countryByCode, flagEmoji } from "@/lib/countries";
 import { currentDocument, loadBookBySlug } from "@/lib/load-book";
 
@@ -24,13 +25,15 @@ export default async function CreditPage({
   const { slug, voiceId } = await params;
   const loaded = await loadBookBySlug(slug);
   if (!loaded) notFound();
-  const user = await getCurrentUser();
-  const published = loaded.status === "PUBLISHED" ? await currentDocument(loaded.id, loaded.publishedDraftId) : null;
-  const preview = user?.id === loaded.creatorId ? await currentDocument(loaded.id, loaded.currentDraftId) : null;
-  const document = published ?? preview;
-  const quote = document ? visibleQuotes(document).find((item) => item.voiceId === voiceId) : null;
+  const { viewer, guestKey } = await getViewer();
   const voice = loaded.voices.find((item) => item.id === voiceId);
   if (!voice || voice.hidden) notFound();
+  // Before release this card is only for the person who spoke (and the book's owner). Nobody else, not even the admin.
+  if (!isReleasedBook(loaded) && !canSeeOwnVoice(voice, loaded, viewer, guestKey)) notFound();
+  const published = isReleasedBook(loaded) ? await currentDocument(loaded.id, loaded.publishedDraftId) : null;
+  const preview = isOwner(loaded, viewer) ? await currentDocument(loaded.id, loaded.currentDraftId) : null;
+  const document = published ?? preview;
+  const quote = document ? visibleQuotes(document).find((item) => item.voiceId === voiceId) : null;
   if (!quote && loaded.status === "PUBLISHED") notFound();
   const headerList = await headers();
   const host = headerList.get("x-forwarded-host") ?? headerList.get("host") ?? "";
@@ -39,7 +42,7 @@ export default async function CreditPage({
   const pageUrl = `${origin}/b/${loaded.slug}/credit/${voice.id}`;
   const country = countryByCode(voice.countryCode);
   const place = [voice.region, country?.name].filter(Boolean).join(", ") || "the world";
-  const ready = loaded.voices.filter((item) => item.status === "READY" && !item.hidden);
+  const ready = isReleasedBook(loaded) ? loaded.voices.filter((item) => item.status === "READY" && !item.hidden) : [];
   const countries = new Set(ready.map((item) => item.countryCode).filter(Boolean)).size;
   const chapterIndex = document?.chapters.findIndex((chapter) => chapter.quotes.some((item) => item.voiceId === voice.id && !item.hidden)) ?? -1;
   const chapter = chapterIndex >= 0 && document ? document.chapters[chapterIndex] : null;

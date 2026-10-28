@@ -32,7 +32,11 @@ export function presentHome(input: {
   yourVote: string | null;
 }) {
   const stage: Stage = stageFor(input.status, input.stageOverride);
-  const ready = input.voices.filter((voice) => voice.status === "READY" && !voice.hidden);
+  const counted = input.voices.filter((voice) => voice.status === "READY" && !voice.hidden);
+  // Who spoke, and from where, is sealed until the book is released: before that the public page
+  // gets only the number of voices. (The published document is only ever loaded for released books.)
+  const reveal = input.status === "PUBLISHED" && Boolean(input.document);
+  const ready = reveal ? counted : [];
   const countries = countryStats(ready).map((country) => ({
     code: country.code,
     name: country.name,
@@ -86,7 +90,8 @@ export function presentHome(input: {
   return {
     stage,
     question: input.question,
-    voiceCount: ready.length,
+    voiceCount: counted.length,
+    sealed: !reveal,
     countries,
     pins,
     names,

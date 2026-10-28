@@ -13,3 +13,12 @@ export function siteAdmins(): string[] {
 export function isSiteAdmin(email: string | null | undefined): boolean {
   return adminAllowed(email, siteAdmins(), process.env.NODE_ENV === "production");
 }
+
+/**
+ * A real, named site admin (listed in SITE_ADMIN_EMAILS). Only they may feature other people's books,
+ * open /admin or delete an abusive book. The empty-list dev fallback above never grants these.
+ */
+export function isNamedAdmin(email: string | null | undefined): boolean {
+  const mail = (email ?? "").trim().toLowerCase();
+  return Boolean(mail) && siteAdmins().includes(mail);
+}

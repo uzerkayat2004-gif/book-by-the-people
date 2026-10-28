@@ -98,9 +98,14 @@ function TopBarInner({
         <div className="top__right">
           <Clock mode={mode} closesAt={closesAt} />
           {onStudio ? null : (
-            <Link className={`signin-link toplib${path.startsWith("/library") ? " on" : ""}`} href="/library">
-              Library
-            </Link>
+            <>
+              <Link className={`signin-link toplib${path === "/books" ? " on" : ""}`} href="/books">
+                Books
+              </Link>
+              <Link className={`signin-link toplib${path.startsWith("/library") ? " on" : ""}`} href="/library">
+                Library
+              </Link>
+            </>
           )}
           {user && !onStudio ? (
             <Link className="studio-pill" href="/studio">
@@ -169,7 +174,7 @@ export function SiteFooter({ question, voiceHref }: { question: string | null; v
               <div>
                 <Link href="/speak">Add your voice</Link>
                 <Link href="/library">Library</Link>
-                <Link href="/explore">Explore</Link>
+                <Link href="/books">Books</Link>
               </div>
               <div>
                 <button type="button" onClick={() => setSheet("about")}>

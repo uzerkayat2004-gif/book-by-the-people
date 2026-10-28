@@ -1,0 +1,59 @@
+/* Many books: share link, /books search and pages, sealed books, admin list, studio share bar. */
+
+/* Copy / share */
+.sharelink { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.sharelink__url { font-family: var(--mono, ui-monospace, monospace); font-size: 13px; color: #b9bcc4; background: #121317; border: 1px solid rgba(255,255,255,.08); border-radius: 999px; padding: 8px 14px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sharelink--big .btn { min-height: 44px; padding-inline: 20px; font-size: 15px; }
+
+/* Book page foot: share this one book, one small way out */
+.bookfoot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; padding-block: 34px 8px; border-top: 1px solid rgba(255,255,255,.07); margin-top: 28px; }
+.bookfoot__more { opacity: .85; }
+
+/* Owner name */
+.topic__by, .opencard__by, .bookhero4__by { font-style: normal; color: #8f929a; font-size: .86em; font-weight: 500; }
+.topic__by { margin-left: 10px; }
+.opencard__by { display: block; margin-top: 6px; font-size: 13px; }
+
+/* Sealed globe panel */
+.gpanel--sealed { display: flex; flex-direction: column; justify-content: center; gap: 16px; }
+.gpanel__seal { display: flex; gap: 10px; align-items: flex-start; margin: 0; color: #b9bcc4; font-size: 14.5px; line-height: 1.5; }
+.gpanel__seal svg { flex: none; width: 18px; height: 18px; color: var(--red-text, #ff6b63); margin-top: 2px; }
+
+/* Search + language */
+.findbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 22px 0 26px; }
+.findbar__q, .findbar__lang { min-height: 44px; border-radius: 999px; border: 1px solid rgba(255,255,255,.1); background: #121317; color: #f2f2f3; padding: 0 18px; font: inherit; font-size: 15px; }
+.findbar__q { flex: 1 1 260px; min-width: 0; }
+.findbar__lang { flex: 0 0 auto; padding-right: 12px; }
+.findbar__q:focus, .findbar__lang:focus { outline: none; border-color: rgba(229,56,59,.6); box-shadow: 0 0 0 3px rgba(229,56,59,.15); }
+.findbar .btn { min-height: 44px; }
+
+/* Pages */
+.pager { display: flex; align-items: center; justify-content: center; gap: 16px; margin: 30px 0 10px; }
+.pager__n { font-family: var(--mono, ui-monospace, monospace); font-size: 13px; color: #8f929a; letter-spacing: .04em; }
+.booksall__top, .library__top { padding-top: 8px; }
+
+/* Delete my voice */
+.delvoice { display: inline-flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 14px; color: #b9bcc4; }
+.delvoice__yes { color: var(--red-text, #ff6b63); }
+.delvoice__err { color: var(--red-text, #ff6b63); }
+
+/* Admin */
+.adminlist { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.adminrow { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px; border-radius: 16px; background: #131418; border: 1px solid rgba(255,255,255,.07); }
+.adminrow__main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.adminrow__t { color: #f2f2f3; font-weight: 600; text-decoration: none; }
+.adminrow__q { color: #b9bcc4; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.adminrow__meta { color: #8f929a; font-size: 13px; }
+.adminrow__meta em { color: var(--red-text, #ff6b63); font-style: normal; }
+.adminrow__err { color: var(--red-text, #ff6b63); font-size: 13px; }
+.adminrow__acts { display: flex; gap: 8px; flex: none; }
+.adminrow__del { background: #3a1214; color: #ff8a84; border: 1px solid rgba(229,56,59,.4); }
+@media (max-width: 720px) { .adminrow { flex-direction: column; align-items: stretch; } }
+
+/* Studio share bar */
+.s6-share { display: flex; align-items: center; flex-wrap: wrap; gap: 14px 22px; margin: 0 0 18px; padding: 16px 20px; border-radius: 18px; background: linear-gradient(90deg, rgba(229,56,59,.14), rgba(229,56,59,.03) 60%), #121317; border: 1px solid rgba(229,56,59,.28); }
+.s6-share__text { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1 1 220px; }
+.s6-share__k { font-family: var(--mono, ui-monospace, monospace); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: #8f929a; }
+.s6-share__url { color: #f2f2f3; font-weight: 600; font-size: 16px; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.s6-share__url:hover { color: var(--red-text, #ff6b63); }
+.s6-share__list { display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: #b9bcc4; }

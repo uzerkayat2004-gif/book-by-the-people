@@ -2,6 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { IconLock } from "@/components/icons";
 import { prisma } from "@/lib/db";
+import { canSeeOwnVoice } from "@/lib/privacy";
+import { getViewer } from "@/lib/viewer";
+import { DeleteMyVoice } from "@/components/delete-my-voice";
 import { releaseLabel } from "@/lib/stage";
 
 export default async function ThanksPage({
@@ -17,6 +20,9 @@ export default async function ThanksPage({
   if (!book || !id) notFound();
   const voice = await prisma.voice.findFirst({ where: { id, bookId: book.id } });
   if (!voice) notFound();
+  // Your own words are for you (and the book's owner) only.
+  const { viewer, guestKey } = await getViewer();
+  if (!canSeeOwnVoice(voice, book, viewer, guestKey)) notFound();
   const ready = voice.status === "READY";
   return (
     <main className="page speak">
@@ -35,6 +41,7 @@ export default async function ThanksPage({
           </p>
         </div>
         {voice.originalText ? <div className="transcript" style={{ marginTop: 18 }}>{voice.originalText}</div> : null}
+        <DeleteMyVoice voiceId={voice.id} after={`/b/${book.slug}`} />
         <div className="grow" />
         {ready ? (
           <Link className="btn btn--red btn--big btn--block" href={`/b/${book.slug}/credit/${voice.id}`}>

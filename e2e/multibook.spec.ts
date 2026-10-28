@@ -15,8 +15,8 @@ test("a creator runs several open books at once; each has its own voice page and
     made.push({ ...(await res.json()), title });
   }
 
-  // Both are public and take voices; each link goes to that book's own voice page.
-  await page.goto("/");
+  // Both are listed in Books and take voices; each link goes to that book's own voice page.
+  await page.goto(`/books?q=${stamp}`);
   const openNow = page.getByTestId("open-now");
   await expect(openNow).toBeVisible();
   for (const book of made) {
@@ -43,11 +43,34 @@ test("a creator runs several open books at once; each has its own voice page and
   await page.goto(`/studio/${made[1].slug}?tab=settings`);
   await expect(page.getByTestId("home-placement")).toBeVisible();
 
+  // The Studio shows the book's own link, copy + share, and an Unlisted switch.
+  await page.goto(`/studio/${made[0].slug}`);
+  const share = page.getByTestId("studio-share");
+  await expect(share).toContainText(`/b/${made[0].slug}`);
+  await expect(share.getByRole("button", { name: /copy book link/i })).toBeVisible();
+  const saved = page.waitForResponse((res) => res.url().endsWith(`/api/books/${made[0].id}`) && res.request().method() === "PATCH");
+  await share.getByRole("switch", { name: /show in books/i }).click();
+  expect((await saved).ok()).toBeTruthy();
+  await expect(share).toContainText(/unlisted/i);
+  await page.goto(`/books?q=${stamp}`);
+  await expect(page.getByTestId("open-card").filter({ hasText: made[0].title })).toHaveCount(0);
+  await expect(page.getByTestId("open-card").filter({ hasText: made[1].title })).toHaveCount(1);
+
+  // A visitor from the link sees just that book and one way to the others.
+  await page.goto(`/b/${made[0].slug}`);
+  await expect(page.getByTestId("book-foot").getByRole("link", { name: /see other books/i })).toHaveAttribute("href", "/books");
+  await expect(page.getByTestId("sealed-panel")).toBeVisible();
+
   // Someone else can't feature this creator's book.
   const other = await browser.newContext({ baseURL: BASE });
   const otherPage = await other.newPage();
   await signIn(otherPage, `intruder-${Date.now()}@example.com`);
   const denied = await otherPage.request.post(`/api/books/${made[1].id}/feature`, { headers: { origin: BASE }, data: { featured: true } });
   expect([403, 404]).toContain(denied.status());
+  // ...or delete it, or open its studio.
+  const noDelete = await otherPage.request.delete(`/api/books/${made[1].id}`, { headers: { origin: BASE } });
+  expect(noDelete.status()).toBe(404);
+  const studio = await otherPage.goto(`/studio/${made[1].slug}`);
+  expect(studio?.status()).toBe(404);
   await other.close();
 });

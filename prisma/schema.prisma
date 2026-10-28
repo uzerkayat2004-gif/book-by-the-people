@@ -84,6 +84,8 @@ model Book {
   creator              User             @relation(fields: [creatorId], references: [id])
   inviteToken          String           @unique
   featured             Boolean          @default(false)
+  /// Link-only: the book never shows in /books, the Library or on the home page.
+  unlisted             Boolean          @default(false)
   pollQuestion         String           @default("What should the next book ask?")
   bookNumber           Int              @default(1)
   aiPaused             Boolean          @default(false)
@@ -118,6 +120,12 @@ model Book {
   challenges           VoiceChallenge[]
   jobs                 PipelineJob[]
   backups              Backup[]
+
+  @@index([status, type, unlisted, createdAt])
+  @@index([status, unlisted, publishedAt])
+  @@index([language])
+  @@index([creatorId, createdAt])
+  @@index([featured])
 }
 
 model Voice {
@@ -152,9 +160,13 @@ model Voice {
   pipelineStep    String   @default("")
   checkJson       String   @default("{}")
   kind            String   @default("voice")
+  /// A guest contributor's private key (sha256 of their browser's bbtp_guest cookie), so they can see and delete their own voice.
+  guestKey        String   @default("")
   createdAt       DateTime @default(now())
 
   @@index([bookId, createdAt])
+  @@index([bookId, status, hidden])
+  @@index([userId])
 }
 
 model BookDraft {

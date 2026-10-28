@@ -133,6 +133,8 @@ export default async function StudioBookPage({
           closesAt: book.closesAt?.toISOString() ?? null,
           pollQuestion: book.pollQuestion,
           invitePath,
+          sharePath: book.type === "INVITED" ? `/b/${book.slug}?invite=${book.inviteToken}` : `/b/${book.slug}`,
+          unlisted: book.unlisted,
           generationError: book.generationError,
           log,
           paused,

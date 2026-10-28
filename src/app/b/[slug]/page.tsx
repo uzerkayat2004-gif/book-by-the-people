@@ -5,7 +5,23 @@ import { canAcceptVoice } from "@/lib/book/lifecycle";
 import { currentDocument, loadBookBySlug, pausedNow, voterChoice } from "@/lib/load-book";
 import { presentHome } from "@/lib/present-home";
 import { refreshStaleMedia } from "@/lib/services/books";
-import { openBooks } from "@/lib/public-books";
+import { ownerName } from "@/lib/public-books";
+import { isReleasedBook } from "@/lib/privacy";
+import { prisma } from "@/lib/db";
+import type { Metadata } from "next";
+
+/** Share previews show only the public card: title and question. Unlisted books ask search engines to stay away. */
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const book = await prisma.book.findUnique({ where: { slug }, select: { title: true, question: true, unlisted: true } });
+  if (!book) return { title: "Book not found" };
+  return {
+    title: book.title,
+    description: book.question,
+    openGraph: { title: book.title, description: book.question },
+    robots: book.unlisted ? { index: false, follow: false } : undefined,
+  };
+}
 
 export default async function BookPage({
   params,
@@ -31,7 +47,7 @@ export default async function BookPage({
     paused,
   });
   const voiceHref = gate.ok ? `/b/${loaded.slug}/voice${query.invite ? `?invite=${query.invite}` : ""}` : null;
-  const document = loaded.status === "PUBLISHED" ? await currentDocument(loaded.id, loaded.publishedDraftId) : null;
+  const document = isReleasedBook(loaded) ? await currentDocument(loaded.id, loaded.publishedDraftId) : null;
   if (loaded.status === "PUBLISHED") await refreshStaleMedia(loaded.id).catch(() => undefined);
   const vote = await voterChoice(loaded.id);
   const model = presentHome({
@@ -52,15 +68,14 @@ export default async function BookPage({
     bookId: loaded.id,
     yourVote: vote,
   });
-  // A released book's page also points to books still taking voices.
-  const openNow = loaded.status === "PUBLISHED" ? await openBooks(loaded.id, 3) : [];
   return (
     <BookHome
       {...model}
       title={loaded.title}
       slug={loaded.slug}
       media={{ audio: Boolean(loaded.audiobookKey), video: Boolean(loaded.videoKey), audioBytes: loaded.audiobookBytes, videoBytes: loaded.videoBytes }}
-      openNow={openNow}
+      mode="book"
+      owner={ownerName(loaded.creator)}
     />
   );
 }

@@ -22,14 +22,14 @@ test("a new creator makes a book and lands in its Studio", async ({ page }) => {
   await expect(page.getByRole("link", { name: /Commute/ })).toBeVisible();
   await expect(page.locator(".bcard", { hasText: "Is AI making you" })).toHaveCount(0);
 
-  // Invited books are not listed on Explore until released.
-  await page.goto("/explore");
+  // Invited books are never listed in Books.
+  await page.goto("/books");
   await expect(page.getByText("Commute")).toHaveCount(0);
 });
 
 test("create-book is reachable from home, My page and the Studio", async ({ page }) => {
   await signIn(page, `reach-${Date.now()}@example.com`);
-  for (const path of ["/me", "/studio", "/explore"]) {
+  for (const path of ["/me", "/studio", "/books"]) {
     await page.goto(path);
     await expect(page.locator('a[href="/books/new"]').first()).toBeVisible();
   }

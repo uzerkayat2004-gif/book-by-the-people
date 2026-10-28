@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { BookHome } from "@/components/book-home";
-import { prisma } from "@/lib/db";
 import { currentDocument, voterChoice, pausedNow } from "@/lib/load-book";
 import { presentHome } from "@/lib/present-home";
 import { refreshStaleMedia } from "@/lib/services/books";
-import { homeBook, openBooks, releasedBooks, releasedWhere } from "@/lib/public-books";
+import { homeBook, openBooks, ownerName } from "@/lib/public-books";
 
 export const dynamic = "force-dynamic";
 
+/** The home page: the featured book, then a short strip of other books being written (all of them live on /books). */
 export default async function HomePage({ searchParams }: { searchParams: Promise<{ stage?: string }> }) {
   const query = await searchParams;
   const featured = await homeBook();
@@ -26,14 +26,12 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     );
   }
 
-  const [openNow, released, releasedTotal] = await Promise.all([
+  const released = featured.status === "PUBLISHED" && Boolean(featured.publishedDraftId);
+  const [openNow, document] = await Promise.all([
     openBooks(featured.id, 6),
-    releasedBooks({ exceptId: featured.id, take: 4 }),
-    prisma.book.count({ where: { ...releasedWhere, id: { not: featured.id } } }),
+    released ? currentDocument(featured.id, featured.publishedDraftId) : Promise.resolve(null),
   ]);
-  const document =
-    featured.status === "PUBLISHED" ? await currentDocument(featured.id, featured.publishedDraftId) : null;
-  if (featured.status === "PUBLISHED") await refreshStaleMedia(featured.id).catch(() => undefined);
+  if (released) await refreshStaleMedia(featured.id).catch(() => undefined);
   const vote = await voterChoice(featured.id);
   const paused = await pausedNow(featured.id);
   const model = presentHome({
@@ -58,12 +56,12 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   return (
     <BookHome
       {...model}
+      mode="home"
+      owner={ownerName(featured.creator)}
       title={featured.title}
       slug={featured.slug}
       media={{ audio: Boolean(featured.audiobookKey), video: Boolean(featured.videoKey), audioBytes: featured.audiobookBytes, videoBytes: featured.videoBytes }}
       openNow={openNow}
-      released={released}
-      releasedTotal={releasedTotal}
     />
   );
 }

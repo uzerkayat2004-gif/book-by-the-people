@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { DeleteMyVoice } from "@/components/delete-my-voice";
 import { EditProfile } from "@/components/edit-profile";
 import { getCurrentUser } from "@/lib/auth";
 import { countryByCode, flagEmoji } from "@/lib/countries";
@@ -65,7 +66,8 @@ export default async function MePage() {
             spoken.map((voice) => (
               <p key={voice.id} style={{ margin: "0 0 8px" }}>
                 <Link href={`/b/${voice.book.slug}`}>{voice.book.title}</Link>
-                <span className="muted"> · {voice.status}</span>
+                <span className="muted"> · {voice.status === "READY" ? "sealed" : voice.status.toLowerCase()} · </span>
+                <DeleteMyVoice voiceId={voice.id} compact />
               </p>
             ))
           )}

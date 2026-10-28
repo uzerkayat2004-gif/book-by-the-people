@@ -7,7 +7,8 @@ import { IconBook, IconMic, IconShield } from "@/components/icons";
 import { NamesMarquee } from "@/components/names-marquee";
 import { PollCard } from "@/components/poll-card";
 import { ReadActions } from "@/components/read-actions";
-import { BookMedia, OpenNow, ReleasedShelf, type ShelfOpen, type ShelfReleased } from "@/components/shelf";
+import { BookMedia, OpenNow, type ShelfOpen } from "@/components/shelf";
+import { ShareLink } from "@/components/share-link";
 import { countryByCode } from "@/lib/countries";
 import type { Stage } from "@/lib/stage";
 
@@ -41,8 +42,9 @@ export function BookHome({
   slug,
   media,
   openNow = [],
-  released = [],
-  releasedTotal = 0,
+  sealed = false,
+  owner,
+  mode = "book",
 }: {
   title?: string;
   slug?: string;
@@ -66,15 +68,24 @@ export function BookHome({
   bookId: string | null;
   yourVote: string | null;
   clips: HomeClip[];
-  /** Other books taking voices right now (home page). */
+  /** Home page only: a short strip of other books taking voices. */
   openNow?: ShelfOpen[];
-  /** Released books (home page), newest first, and how many there are in all. */
-  released?: ShelfReleased[];
-  releasedTotal?: number;
+  /** Before release the public page shows only counts: no names, no places. */
+  sealed?: boolean;
+  /** The owner's public name. */
+  owner?: string;
+  /** "book" is a book's own page (just this book); "home" adds the strip of other books. */
+  mode?: "home" | "book";
 }) {
   const latest = names[names.length - 1];
   const place = latest?.countryCode ? (countryByCode(latest.countryCode)?.name ?? "the world") : "the world";
-  const ticker = latest ? `${latest.name} from ${place} just spoke` : "Be the first voice";
+  const ticker = sealed
+    ? voiceCount
+      ? "Every voice stays sealed until release"
+      : "Be the first voice"
+    : latest
+      ? `${latest.name} from ${place} just spoke`
+      : "Be the first voice";
   return (
     <main className={stage === "after" ? "page" : "page home4"}>
       {stage === "after" ? (
@@ -90,6 +101,7 @@ export function BookHome({
           readMins={readMins}
           listenMins={listenMins}
           clips={clips}
+          owner={owner}
         />
       ) : (
         <Before
@@ -104,23 +116,33 @@ export function BookHome({
           voiceHref={voiceHref}
           closed={stage === "closed"}
           ticker={ticker}
+          sealed={sealed}
+          owner={owner}
         />
       )}
-      {stage === "after" ? null : <NamesMarquee names={names} />}
+      {stage === "after" || sealed ? null : <NamesMarquee names={names} />}
       {stage === "after" ? null : <How releaseLabel={releaseLabel} />}
       {stage === "after" && slug && media ? (
         <BookMedia slug={slug} media={media} title={title ?? question} question={question} people={voiceCount} countries={countries.length} />
       ) : null}
-      <OpenNow books={openNow} heading={stage === "after" ? "Open now · add your voice" : "Also open now"} />
-      <ReleasedShelf books={released} total={releasedTotal} />
+      {mode === "home" ? <OpenNow books={openNow} heading="More books being written" /> : null}
       {bookId && poll.length ? <PollCard bookId={bookId} question={pollQuestion} options={poll} yourVote={yourVote} /> : null}
-      <p className="ownbook wrap">
-        <Link href="/books/new">Start your own book</Link>
-        {" · "}
-        <Link href="/library">Library</Link>
-        {" · "}
-        <Link href="/explore">Explore</Link>
-      </p>
+      {mode === "book" && slug ? (
+        <section className="wrap bookfoot" data-testid="book-foot">
+          <ShareLink path={`/b/${slug}`} title={title ?? question} />
+          <Link className="btn btn--ghost btn--sm bookfoot__more" href="/books">
+            See other books <span aria-hidden>→</span>
+          </Link>
+        </section>
+      ) : (
+        <p className="ownbook wrap">
+          <Link href="/books/new">Start your own book</Link>
+          {" · "}
+          <Link href="/books">All books</Link>
+          {" · "}
+          <Link href="/library">Library</Link>
+        </p>
+      )}
       {stage === "after" ? null : (
         <section className="wrap section rv in">
           <div className="cta-band">
@@ -172,7 +194,11 @@ function Before({
   voiceHref,
   closed,
   ticker,
+  sealed,
+  owner,
 }: {
+  sealed?: boolean;
+  owner?: string;
   title?: string;
   question: string;
   voiceCount: number;
@@ -205,7 +231,8 @@ function Before({
         </h1>
         <div className="topic in2">
           <div className="topic__label">
-            <span>Book 1</span> The question
+            <span>The question</span>
+            {owner ? <em className="topic__by">by {owner}</em> : null}
           </div>
           <p className="topic__q">{question}</p>
         </div>
@@ -250,7 +277,20 @@ function Before({
         <div className="globebox" id="globe">
           <GlobeView pins={pins} />
         </div>
-        <CountryPanel countries={countries} voiceCount={voiceCount} />
+        {sealed ? (
+          <div className="gpanel gpanel--sealed" data-testid="sealed-panel">
+            <div className="gpanel__stats">
+              <span>
+                <b>{voiceCount.toLocaleString("en-US")}</b>voices
+              </span>
+            </div>
+            <p className="gpanel__seal">
+              <IconShield /> Names, places and words stay sealed until the book is released.
+            </p>
+          </div>
+        ) : (
+          <CountryPanel countries={countries} voiceCount={voiceCount} />
+        )}
       </div>
     </section>
   );
@@ -268,7 +308,9 @@ function After({
   readMins,
   listenMins,
   clips,
+  owner,
 }: {
+  owner?: string;
   question: string;
   voiceCount: number;
   countries: number;
@@ -289,7 +331,10 @@ function After({
           <BookCover title={title} question={question} people={voiceCount} countries={countries} names={names} />
         </div>
         <div className="bookhero4__side">
-          <div className="label red in1">Out now · {date}</div>
+          <div className="label red in1">
+            Out now · {date}
+            {owner ? <span className="bookhero4__by"> · by {owner}</span> : null}
+          </div>
           <h2 className="bookhero4__h in2">The book is here.</h2>
           <ReadActions href={readHref} question={question} chapters={chapters.length} readMins={readMins} listenMins={listenMins} clips={clips} />
           <div className="bstats in5">

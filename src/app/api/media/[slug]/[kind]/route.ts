@@ -1,21 +1,25 @@
 import { prisma } from "@/lib/db";
 import { getAudio, publicAudioUrl } from "@/lib/storage";
 import { getCurrentUser } from "@/lib/auth";
+import { canGetMedia, isReleasedBook } from "@/lib/privacy";
 
 export async function GET(request: Request, context: { params: Promise<{ slug: string; kind: string }> }) {
   const { slug, kind } = await context.params;
   if (kind !== "audiobook" && kind !== "video") return new Response("Not found", { status: 404 });
   const book = await prisma.book.findUnique({ where: { slug } });
   if (!book) return new Response("Not found", { status: 404 });
-  if (book.status !== "PUBLISHED") {
-    // Before release only the creator can preview the files.
+  // Before release only the book's owner can play or download the files (never other users or the admin).
+  const released = isReleasedBook(book);
+  if (!released) {
     const user = await getCurrentUser();
-    if (!user || user.id !== book.creatorId) return new Response("Not found", { status: 404 });
+    if (!canGetMedia(book, user ? { id: user.id } : null)) {
+      return new Response("Not found", { status: 404, headers: { "Cache-Control": "private, no-store" } });
+    }
   }
   const key = kind === "audiobook" ? book.audiobookKey : book.videoKey;
   if (!key) return new Response("Not found", { status: 404 });
   const wantsDownload = new URL(request.url).searchParams.get("download") === "1";
-  if (book.status === "PUBLISHED") {
+  if (released) {
     // On Vercel a function answer is capped at 4.5 MB, so released media is served straight from Blob storage.
     const direct = await publicAudioUrl(key, wantsDownload).catch(() => null);
     if (direct) return Response.redirect(direct, 302);
@@ -27,7 +31,7 @@ export async function GET(request: Request, context: { params: Promise<{ slug: s
     (video ? `${book.slug}.mp4` : key.endsWith(".mp3") ? `${book.slug}.mp3` : `${book.slug}.wav`);
   const download = wantsDownload;
   const type = video ? "video/mp4" : key.endsWith(".mp3") ? "audio/mpeg" : "audio/wav";
-  const cache = book.status === "PUBLISHED" ? "public, max-age=300" : "private, no-store";
+  const cache = released ? "public, max-age=300" : "private, no-store";
   // Players ask for byte ranges to seek; Safari will not play a video without them.
   const match = /bytes=(\d*)-(\d*)/.exec(request.headers.get("range") ?? "");
   if (match && !download && (match[1] || match[2])) {

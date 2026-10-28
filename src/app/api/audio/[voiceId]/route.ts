@@ -1,18 +1,31 @@
-import { getCurrentUser } from "@/lib/auth";
+import { visibleQuotes } from "@/lib/book/assemble";
+import { currentDocument } from "@/lib/load-book";
 import { prisma } from "@/lib/db";
+import { canHearVoice, isReleasedBook } from "@/lib/privacy";
 import { getAudio } from "@/lib/storage";
+import { getViewer } from "@/lib/viewer";
 
+/**
+ * One recording. Before release only the book's owner and the person who recorded it can play it.
+ * After release anyone can, but only if the published book quotes it. Everything else is a plain 404.
+ */
 export async function GET(request: Request, context: { params: Promise<{ voiceId: string }> }) {
   const { voiceId } = await context.params;
   const voice = await prisma.voice.findUnique({
     where: { id: voiceId },
-    include: { book: { select: { creatorId: true, status: true, publishedDraftId: true } } },
+    include: { book: { select: { id: true, creatorId: true, status: true, publishedDraftId: true } } },
   });
   if (!voice?.storageKey) return new Response("Not found", { status: 404 });
-  const user = await getCurrentUser();
-  const creator = user?.id === voice.book.creatorId;
-  const hiddenFromPublic = voice.hidden || voice.status === "REJECTED" || voice.status === "FAILED" || voice.status === "PROCESSING";
-  if (hiddenFromPublic && !creator) return new Response("Not found", { status: 404 });
+  const { viewer, guestKey } = await getViewer();
+  let usedInRelease = false;
+  if (isReleasedBook(voice.book)) {
+    const document = await currentDocument(voice.book.id, voice.book.publishedDraftId);
+    usedInRelease = Boolean(document && visibleQuotes(document).some((quote) => quote.voiceId === voice.id));
+  }
+  if (!canHearVoice({ voice, book: voice.book, viewer, guestKey, usedInRelease })) {
+    return new Response("Not found", { status: 404, headers: { "Cache-Control": "private, no-store" } });
+  }
+  const cache = usedInRelease ? "public, max-age=3600" : "private, no-store";
 
   const data = await getAudio(voice.storageKey);
   const mime = voice.mimeType || "audio/wav";
@@ -31,7 +44,7 @@ export async function GET(request: Request, context: { params: Promise<{ voiceId
             "Content-Length": String(chunk.length),
             "Content-Range": `bytes ${start}-${end}/${data.length}`,
             "Accept-Ranges": "bytes",
-            "Cache-Control": "private, max-age=3600",
+            "Cache-Control": cache,
           },
         });
       }
@@ -42,7 +55,7 @@ export async function GET(request: Request, context: { params: Promise<{ voiceId
       "Content-Type": mime,
       "Content-Length": String(data.length),
       "Accept-Ranges": "bytes",
-      "Cache-Control": "private, max-age=3600",
+      "Cache-Control": cache,
     },
   });
 }

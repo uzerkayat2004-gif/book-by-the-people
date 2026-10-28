@@ -11,6 +11,8 @@ export type ShelfOpen = {
   closesLabel: string | null;
   voices: number;
   countries: number;
+  owner?: string;
+  language?: string;
 };
 
 export type ShelfReleased = {
@@ -50,11 +52,11 @@ function ShelfHead({ id, title, link }: { id: string; title: string; link?: { hr
 }
 
 /** "Also open now": other books taking voices. Each has its own add-voice page. */
-export function OpenNow({ books, heading = "Also open now" }: { books: ShelfOpen[]; heading?: string }) {
+export function OpenNow({ books, heading = "Also open now", allLink = true }: { books: ShelfOpen[]; heading?: string; allLink?: boolean }) {
   if (books.length === 0) return null;
   return (
     <section className="wrap section shelf rv in" aria-labelledby="open-now" data-testid="open-now">
-      <ShelfHead id="open-now" title={heading} link={{ href: "/explore", label: "Explore" }} />
+      <ShelfHead id="open-now" title={heading} link={allLink ? { href: "/books", label: "All books" } : undefined} />
       <div className={gridClass("opengrid", books.length)}>
         {books.map((book) => (
           <article className="opencard" key={book.id} data-testid="open-card">
@@ -66,6 +68,7 @@ export function OpenNow({ books, heading = "Also open now" }: { books: ShelfOpen
               </span>
               <b className="opencard__t">{book.title}</b>
               <span className="opencard__q">{book.question}</span>
+              {book.owner ? <span className="opencard__by">by {book.owner}</span> : null}
             </Link>
             <div className="opencard__foot">
               <span className="opencard__count">

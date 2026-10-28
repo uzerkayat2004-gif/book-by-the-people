@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BookCover } from "@/components/book-cover";
+import { ShareLink } from "@/components/share-link";
 import { AiModels, AudioTools, LocalModels } from "@/components/studio/ai-models";
 import { isLocalType, modelChoices, modelLabel, type ProviderView } from "@/lib/ai/provider-types";
 import { releaseLabel } from "@/lib/stage";
@@ -154,6 +155,10 @@ export function StudioDesk({
     closesAt: string | null;
     pollQuestion: string;
     invitePath: string;
+    /** The book's own page to share (invited books carry their invite). */
+    sharePath?: string;
+    /** Link only: kept out of /books, the Library and the home page. */
+    unlisted?: boolean;
     generationError: string | null;
     log: string[];
     paused: boolean;
@@ -306,6 +311,14 @@ export function StudioDesk({
         <h2 className="sr">
           {book.title} · {book.type} · {book.status}
         </h2>
+        <ShareBar
+          bookId={book.id}
+          path={book.sharePath ?? `/b/${book.slug}`}
+          title={book.title}
+          unlisted={Boolean(book.unlisted)}
+          invited={book.type === "INVITED"}
+          onDone={refresh}
+        />
         {usage.reached ? (
           <div className="s3-stop" role="status">
             <i aria-hidden />
@@ -1830,6 +1843,60 @@ function HomePlacement({
         </div>
       ) : null}
       {note ? <p className="s2-warn">{note}</p> : null}
+    </section>
+  );
+}
+
+/** Top of every book's studio: its own link, copy and share, and whether it is listed in /books. */
+function ShareBar({
+  bookId,
+  path,
+  title,
+  unlisted,
+  invited,
+  onDone,
+}: {
+  bookId: string;
+  path: string;
+  title: string;
+  unlisted: boolean;
+  invited: boolean;
+  onDone: () => void;
+}) {
+  const [value, setValue] = useState(unlisted);
+  const [note, setNote] = useState<string | null>(null);
+  async function toggle() {
+    const next = !value;
+    setValue(next);
+    setNote(null);
+    const response = await fetch(`/api/books/${bookId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ unlisted: next }),
+    });
+    if (!response.ok) {
+      setValue(!next);
+      setNote("That did not save.");
+      return;
+    }
+    onDone();
+  }
+  return (
+    <section className="s6-share" data-testid="studio-share">
+      <div className="s6-share__text">
+        <span className="s6-share__k">Your book&apos;s link</span>
+        <a className="s6-share__url" href={path} target="_blank" rel="noreferrer">
+          {path.split("?")[0]}
+        </a>
+      </div>
+      <ShareLink path={path} title={title} big />
+      <div className="s6-share__list">
+        <button className={`s2-switch${value ? "" : " on"}`} type="button" role="switch" aria-checked={!value} aria-label="Show in Books" onClick={() => void toggle()}>
+          <i />
+        </button>
+        <span>{invited ? "Invite only · never listed" : value ? "Unlisted · link only" : "Listed in Books"}</span>
+        {note ? <em className="s2-warn">{note}</em> : null}
+      </div>
     </section>
   );
 }

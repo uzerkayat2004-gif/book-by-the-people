@@ -29,7 +29,8 @@ test("Library lists released books only and opens each one", async ({ page }) =>
   await expect(cards.first()).toContainText(/Released [A-Z][a-z]{2} \d{1,2}, \d{4}/);
   await expect(cards.first().getByRole("link", { name: "Read" })).toHaveAttribute("href", /^\/b\/[^/]+\/read$/);
 
-  // Open books sit below with their own add-voice page; invited ones do not.
+  // Open books live on /books with their own add-voice page; invited ones do not.
+  await page.goto(`/books?q=${stamp}`);
   const openNow = page.getByTestId("open-now");
   await expect(openNow).toContainText(`Open ${stamp}`);
   await expect(openNow).not.toContainText(`Private ${stamp}`);
@@ -37,7 +38,7 @@ test("Library lists released books only and opens each one", async ({ page }) =>
   expect(await page.locator(`a[href="/b/${openBook.slug}/voice"]`).count()).toBeGreaterThan(0);
 
   // No private studio address (studio-<hash>) shows on public pages.
-  for (const path of ["/", "/library"]) {
+  for (const path of ["/", "/library", "/books"]) {
     await page.goto(path);
     expect(await page.content()).not.toMatch(/studio-[0-9a-f]{8,}/);
   }
@@ -54,10 +55,13 @@ test("reader of a released book plays the audiobook inline and offers downloads"
   await expect(page.getByRole("link", { name: /download audio/i })).toHaveAttribute("href", /\/api\/media\/smarter-or-lazier\/audiobook/);
 });
 
-test("home shows the Library in the top bar and a released-books shelf", async ({ page }) => {
+test("home shows Books and Library in the top bar and a strip of more books", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator("a.toplib")).toHaveAttribute("href", "/library");
-  const shelf = page.getByTestId("released-shelf");
-  await expect(shelf).toBeVisible();
-  await expect(shelf.getByRole("link", { name: /library/i })).toHaveAttribute("href", "/library");
+  await expect(page.locator("a.toplib").first()).toBeAttached();
+  await expect(page.locator('a.toplib[href="/library"]').first()).toBeAttached();
+  await expect(page.locator('a.toplib[href="/books"]').first()).toBeAttached();
+  const strip = page.getByTestId("open-now");
+  await expect(strip).toContainText(/more books being written/i);
+  expect(await strip.getByTestId("open-card").count()).toBeLessThanOrEqual(6);
+  await expect(strip.getByRole("link", { name: /all books/i })).toHaveAttribute("href", "/books");
 });

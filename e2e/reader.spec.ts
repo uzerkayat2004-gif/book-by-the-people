@@ -25,7 +25,8 @@ test("famous book shows real sources and dates, and no voice play button", async
 for (const [name, path, text] of [
   ["home", "/", /add your voice|the book is here|book by/i],
   ["book page", "/b/city-at-night", /city/i],
-  ["explore", "/explore", /explore/i],
+  ["books", "/books", /books being written|being written/i],
+  ["explore redirects to books", "/explore", /books being written|being written/i],
   ["404", "/no-such-page", /not found/i],
 ] as const) {
   test(`page renders: ${name}`, async ({ page }) => {

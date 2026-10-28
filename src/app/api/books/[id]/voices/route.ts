@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { assertSameOrigin, clientIp, fromError, jsonError } from "@/lib/http";
 import { rateLimit } from "@/lib/rate-limit";
 import { ingestRecording } from "@/lib/services/voices";
+import { guestKeyForWrite } from "@/lib/viewer";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const origin = assertSameOrigin(request);
@@ -20,6 +21,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const voice = await ingestRecording({
       bookId: id,
       viewerId: user?.id ?? null,
+      // A guest gets a private browser key so they alone (and the owner) can see or delete this voice later.
+      guestKey: user ? "" : await guestKeyForWrite(),
       invite: String(form.get("invite") ?? "") || null,
       challengeId: String(form.get("challengeId") ?? ""),
       name: String(form.get("name") ?? ""),
