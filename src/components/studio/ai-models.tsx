@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PROVIDER_PRESETS, presetFor, roleIncludes, shortLabel, type ProviderRole, type ProviderType, type ProviderView } from "@/lib/ai/provider-types";
 import { formatBytes, SERVER_MODELS, type LocalStatus } from "@/lib/ai/local-catalog";
+import { OwnPcModels } from "@/components/ai/own-pc-models";
 
 async function call<T>(url: string, method: string, body?: unknown): Promise<T> {
   const response = await fetch(url, {
@@ -34,15 +35,23 @@ export function AiModels({
   initialFallback = false,
   mockServer,
   onChange,
+  openNew = 0,
 }: {
   initial: ProviderView[];
   initialFallback?: boolean;
   mockServer: boolean;
   onChange?: () => void;
+  /** Bump to open the "Add model" sheet (the "Add a key" button on a book with no key). */
+  openNew?: number;
 }) {
   const [providers, setProviders] = useState(initial);
   const [fallback, setFallback] = useState(initialFallback);
   const [editing, setEditing] = useState<ProviderView | "new" | null>(null);
+  const [seenOpen, setSeenOpen] = useState(openNew);
+  if (openNew !== seenOpen) {
+    setSeenOpen(openNew);
+    setEditing("new");
+  }
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -90,8 +99,8 @@ export function AiModels({
       <div className="s3-picker" role="radiogroup" aria-label="Model">
         {writers.length === 0 ? (
           <div className="s3-pick s3-pick--empty">
-            <b>{mockServer ? "Demo mode" : "Server default"}</b>
-            <span>Add a model or download one below.</span>
+            <b>{mockServer ? "No AI key yet" : "Server default"}</b>
+            <span>Add your key, or download a local model below.</span>
           </div>
         ) : (
           writers.map((row) => {
@@ -438,12 +447,13 @@ export function LocalModels({ onChange }: { onChange?: () => void }) {
   const active = status?.job && !["done", "error", "cancelled"].includes(status.job.phase);
   useEffect(() => {
     const first = window.setTimeout(() => void load(), 0);
+    if (off) return () => window.clearTimeout(first);
     const timer = window.setInterval(() => void load(), active ? 700 : 8000);
     return () => {
       window.clearTimeout(first);
       window.clearInterval(timer);
     };
-  }, [load, active]);
+  }, [load, active, off]);
 
   async function act(body: Record<string, string>) {
     setBusy(true);
@@ -457,7 +467,17 @@ export function LocalModels({ onChange }: { onChange?: () => void }) {
     }
   }
 
-  if (off) return <div className="s3-local s3-local--loading">{off}</div>;
+  if (off) {
+    return (
+      <div className="s3-local s3-local--pc">
+        <p className="s3-pcnote">
+          <b>Run on your own PC</b>
+          <span>This hosted site can&apos;t run models itself. Download one free and run it on your computer.</span>
+        </p>
+        <OwnPcModels />
+      </div>
+    );
+  }
   if (!status) return <div className="s3-local s3-local--loading">{error ?? "Checking this computer…"}</div>;
   const job = status.job;
   const share = job && job.total > 0 ? Math.min(1, job.received / job.total) : 0;

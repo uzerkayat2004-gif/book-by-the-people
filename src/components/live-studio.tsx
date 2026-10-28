@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BookCover } from "@/components/book-cover";
 import { AiModels, AudioTools, LocalModels } from "@/components/studio/ai-models";
-import type { ProviderView } from "@/lib/ai/provider-types";
+import { isLocalType, modelChoices, type ProviderView } from "@/lib/ai/provider-types";
 import { releaseLabel } from "@/lib/stage";
 import { SPEAK_LANGUAGES } from "@/lib/speak-languages";
 
@@ -24,6 +24,10 @@ type StudioSettings = {
   /** Last 4 characters of the saved book key, never the key itself. */
   aiKeyLast4?: string;
   canStoreKeys: boolean;
+  /** This book has an AI to run on (its own key, a saved model, or the server's key). */
+  aiReady: boolean;
+  /** Which saved model this book runs on. providerId "" = the first in the creator's list. */
+  bookModel: { providerId: string; model: string; options: { id: string; label: string; type: string; model: string; detail: string }[] };
   /** Home page placement. canFeature is true for the site owner. */
   home?: { onHome: boolean; featured: boolean; canFeature: boolean; eligible: boolean };
   /** No model of any kind is set up: the AI runs in demo mode. */
@@ -1097,6 +1101,11 @@ function SettingsTab({
   const [limit, setLimit] = useState(String(settings.voiceLimitPerDay));
   const [seconds, setSeconds] = useState(String(settings.maxVoiceSeconds));
   const [aiKey, setAiKey] = useState("");
+  const [addKey, setAddKey] = useState(0);
+  const [bookProvider, setBookProvider] = useState(settings.bookModel.providerId);
+  const [bookModelId, setBookModelId] = useState(settings.bookModel.model);
+  const bookPicked = settings.bookModel.options.find((item) => item.id === bookProvider) ?? null;
+  const dirtyModel = bookProvider !== settings.bookModel.providerId || (bookPicked !== null && (bookModelId || bookPicked.model) !== (settings.bookModel.model || bookPicked.model));
   const [limitKind, setLimitKind] = useState<Usage["kind"]>(usage.kind);
   const [limitValue, setLimitValue] = useState(usage.kind === "none" ? "" : String(usage.value));
   const dirtyLimit = limitKind !== usage.kind || (limitKind !== "none" && limitValue !== String(usage.value));
@@ -1170,6 +1179,22 @@ function SettingsTab({
         </div>
       </div>
       {message ? <p className="s2-alert">{message}</p> : null}
+      {!settings.aiReady ? (
+        <div className="s2-nokey" role="alert">
+          <span className="s2-nokey__dot" aria-hidden />
+          <div>
+            <b>This book has no AI key yet</b>
+            <span>Add one so the AI can hear voices and write the book.</span>
+          </div>
+          <a
+            className="s2-btn s2-btn--sm s2-btn--red"
+            href="#s-ai"
+            onClick={() => setAddKey((tick) => tick + 1)}
+          >
+            Add a key
+          </a>
+        </div>
+      ) : null}
       <div className="s2-settings">
         <nav className="s2-side" aria-label="Settings sections">
           {nav.map(([id, label]) => (
@@ -1341,7 +1366,50 @@ function SettingsTab({
           <section className="s2-card" id="s-limit">
             <div className="s2-card__head">
               <h3>AI for this book</h3>
+              {settings.aiReady ? null : <span className="s2-chip s2-chip--warn">No key yet</span>}
             </div>
+            {settings.bookModel.options.length > 0 ? (
+              <div className="s2-setrow s2-bookmodel">
+                <div>
+                  <b>Model</b>
+                  <span>Runs this book</span>
+                </div>
+                <div className="s2-bookmodel__pick">
+                  <select
+                    className="s2-input"
+                    aria-label="Model for this book"
+                    value={bookProvider}
+                    onChange={(event) => {
+                      setBookProvider(event.target.value);
+                      setBookModelId("");
+                    }}
+                  >
+                    <option value="">First in your list</option>
+                    {settings.bookModel.options.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.label}
+                        {item.detail ? ` · ${item.detail}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {bookPicked && modelChoices(bookPicked.type, bookPicked.model).length > 1 && !isLocalType(bookPicked.type) ? (
+                    <select
+                      className="s2-input s2-mono"
+                      aria-label="Model id"
+                      value={bookModelId || bookPicked.model}
+                      onChange={(event) => setBookModelId(event.target.value)}
+                    >
+                      {modelChoices(bookPicked.type, bookModelId || bookPicked.model).map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : null}
+                  {saveButton(dirtyModel, () => void save({ aiProviderId: bookProvider, aiModel: bookModelId }))}
+                </div>
+              </div>
+            ) : null}
             <div className="s2-setrow">
               <div>
                 <b>AI</b>
@@ -1470,9 +1538,9 @@ function SettingsTab({
               <h3>AI model</h3>
               <span className="s2-chip">all your books</span>
             </div>
-            <AiModels initial={providers} initialFallback={Boolean(ai.fallback)} mockServer={settings.mockServer} onChange={onDone} />
+            <AiModels initial={providers} initialFallback={Boolean(ai.fallback)} mockServer={settings.mockServer} onChange={onDone} openNew={addKey} />
             <div className="s2-sub">
-              <h4>Meta models on this computer</h4>
+              <h4>Free Meta models</h4>
               <LocalModels onChange={onDone} />
             </div>
             <div className="s2-sub">

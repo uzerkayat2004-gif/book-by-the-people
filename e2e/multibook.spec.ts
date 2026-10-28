@@ -9,7 +9,7 @@ test("a creator runs several open books at once; each has its own voice page and
   for (const title of [`First ${stamp}`, `Second ${stamp}`]) {
     const res = await page.request.post("/api/books", {
       headers: { origin: BASE },
-      data: { title, question: `${title}: what changed for you?`, type: "OPEN", closesAt: null },
+      data: { title, question: `${title}: what changed for you?`, type: "OPEN", closesAt: null, ai: { source: "demo" } },
     });
     expect(res.ok()).toBeTruthy();
     made.push({ ...(await res.json()), title });

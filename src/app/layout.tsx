@@ -17,6 +17,7 @@ import "@/styles/studio2.css";
 import "@/styles/studio3.css";
 import "@/styles/studio4.css";
 import "@/styles/library.css";
+import "@/styles/aisrc.css";
 
 export const dynamic = "force-dynamic";
 

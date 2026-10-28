@@ -95,6 +95,9 @@ model Book {
   maxVoiceSeconds      Int              @default(600)
   language             String           @default("en")
   aiKeyCipher          String           @default("")
+  /// The creator's saved AI model this book runs on ("" = their first model). aiModel overrides its model id.
+  aiProviderId         String           @default("")
+  aiModel              String           @default("")
   audiobookName        String           @default("")
   videoName            String           @default("")
   audiobookKey         String?

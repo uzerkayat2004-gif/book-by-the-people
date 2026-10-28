@@ -16,7 +16,7 @@ test("Studio: voices in, make the book, release audiobook + video, read it", asy
   const api = page.request;
   const created = await api.post("/api/books", {
     headers: { origin: BASE },
-    data: { title: "Night shift notes", question: "What keeps you awake on a night shift?", type: "OPEN", coverVibe: "ember", closesAt: null },
+    data: { title: "Night shift notes", question: "What keeps you awake on a night shift?", type: "OPEN", coverVibe: "ember", closesAt: null, ai: { source: "demo" } },
   });
   expect(created.ok()).toBeTruthy();
   const book = await created.json();

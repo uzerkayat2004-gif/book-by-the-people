@@ -207,3 +207,32 @@ export function pickChain<T>(chain: T[], fallback: boolean): T[] {
 export function shortLabel(label: string): string {
   return label.replace(/\s*·\s*this computer$/i, "");
 }
+
+/**
+ * Puts the book's chosen model first. A model override applies to writing only;
+ * speech keeps the provider's own transcription model.
+ */
+export function preferBook<T extends { id: string; type: string; model: string; role: string }>(
+  chain: T[],
+  providerId: string,
+  model: string,
+  want: "writer" | "transcription",
+): T[] {
+  if (!providerId) return chain;
+  const index = chain.findIndex((item) => item.id === providerId);
+  if (index < 0) return chain;
+  const picked = chain[index];
+  const override = want === "writer" && model.trim() && !isLocalType(picked.type) && picked.role !== "transcription";
+  const first = override ? { ...picked, model: model.trim() } : picked;
+  return [first, ...chain.slice(0, index), ...chain.slice(index + 1)];
+}
+
+/** Model ids to offer for a provider: the preset's list (newest first), with the saved one kept. */
+export function modelChoices(type: string, current = ""): string[] {
+  const list = [...presetFor(type).models];
+  if (current && !list.includes(current)) list.unshift(current);
+  return list;
+}
+
+/** Provider types offered when pasting a new key, Meta first. */
+export const NEW_KEY_TYPES: ProviderType[] = ["meta", "openrouter", "together", "fireworks", "groq", "openai", "gemini", "anthropic", "custom"];

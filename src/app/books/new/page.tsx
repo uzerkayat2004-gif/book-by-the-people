@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { CreateBookForm } from "@/components/create-book-form";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { aiOptions } from "@/lib/ai/book-ai";
 
 export default async function NewBookPage() {
   const user = await getCurrentUser();
@@ -20,13 +21,15 @@ export default async function NewBookPage() {
       }
     }
   }
+  const ai = await aiOptions(user.id);
+  const first = books.length === 0;
   return (
     <main className="page admin newbookpage">
       <div className="wrap admin4">
         <p className="label">Studio · new book</p>
-        <h1>New book</h1>
-        <p className="lead">One question. Pick who can answer it and when it comes out.</p>
-        <CreateBookForm suggestion={suggestion} />
+        <h1>{first ? "Your first book" : "New book"}</h1>
+        <p className="lead">One question. Pick who can answer it, when it comes out, and the AI that writes it.</p>
+        <CreateBookForm suggestion={suggestion} ai={ai} />
       </div>
     </main>
   );

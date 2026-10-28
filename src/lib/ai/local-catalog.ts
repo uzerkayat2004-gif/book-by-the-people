@@ -142,3 +142,8 @@ export function formatBytes(bytes: number): string {
   if (bytes >= 1e6) return `${Math.round(bytes / 1e6)} MB`;
   return `${Math.max(1, Math.round(bytes / 1e3))} KB`;
 }
+
+/** Direct download of the model file (GGUF) from Hugging Face. */
+export function downloadUrl(model: Pick<LocalModel, "repo" | "file">): string {
+  return `https://huggingface.co/${model.repo}/resolve/main/${encodeURIComponent(model.file)}?download=true`;
+}

@@ -3,6 +3,7 @@ import { requireApiUser } from "@/lib/auth";
 import { assertSameOrigin, fromError, jsonError } from "@/lib/http";
 import { localAction, localStatus } from "@/lib/ai/local-service";
 import { LOCAL_OFF_MESSAGE, localModelsOff } from "@/lib/ai/local-gate";
+import { LOCAL_MODELS } from "@/lib/ai/local-catalog";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const user = await requireApiUser();
-    if (localModelsOff()) return NextResponse.json({ disabled: true, message: LOCAL_OFF_MESSAGE });
+    if (localModelsOff()) return NextResponse.json({ disabled: true, message: LOCAL_OFF_MESSAGE, models: LOCAL_MODELS });
     return NextResponse.json(await localStatus(user.id));
   } catch (error) {
     return fromError(error);

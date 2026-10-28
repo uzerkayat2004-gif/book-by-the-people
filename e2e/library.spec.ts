@@ -7,12 +7,12 @@ test("Library lists released books only and opens each one", async ({ page }) =>
   const stamp = Date.now().toString(36);
   const invited = await page.request.post("/api/books", {
     headers: { origin: BASE },
-    data: { title: `Private ${stamp}`, question: "Who is at the table?", type: "INVITED", closesAt: null },
+    data: { title: `Private ${stamp}`, question: "Who is at the table?", type: "INVITED", closesAt: null, ai: { source: "demo" } },
   });
   expect(invited.ok()).toBeTruthy();
   const open = await page.request.post("/api/books", {
     headers: { origin: BASE },
-    data: { title: `Open ${stamp}`, question: "What did you learn this week?", type: "OPEN", closesAt: null },
+    data: { title: `Open ${stamp}`, question: "What did you learn this week?", type: "OPEN", closesAt: null, ai: { source: "demo" } },
   });
   expect(open.ok()).toBeTruthy();
   const openBook = await open.json();

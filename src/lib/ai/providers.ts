@@ -4,7 +4,7 @@ import { getConfig } from "../config";
 import { keyLast4, openKey, sealKey } from "../secret-box";
 import { chatJson, firstThatWorks, testTarget, transcribeWav, type CallTarget, type ChatOut, type HeardOut } from "./provider-client";
 import { createProviderStore, type ProviderDb, type ResolvedProvider } from "./provider-store";
-import { isLocalType, pickChain, presetFor, shortLabel } from "./provider-types";
+import { isLocalType, pickChain, preferBook, presetFor, shortLabel } from "./provider-types";
 import { ensureServer, LOCAL_PORT } from "./local-runtime";
 import { LOCAL_OFF_MESSAGE, localModelsOff } from "./local-gate";
 
@@ -14,20 +14,32 @@ export const providerStore = createProviderStore(prisma.aiProvider as unknown as
   last4: keyLast4,
 });
 
-async function creatorOf(bookId: string | null | undefined): Promise<{ id: string; fallback: boolean } | null> {
+async function creatorOf(
+  bookId: string | null | undefined,
+): Promise<{ id: string; fallback: boolean; providerId: string; model: string } | null> {
   if (!bookId) return null;
-  const book = await prisma.book.findUnique({ where: { id: bookId }, select: { creator: { select: { id: true, aiFallback: true } } } });
-  return book?.creator ? { id: book.creator.id, fallback: book.creator.aiFallback } : null;
+  const book = await prisma.book.findUnique({
+    where: { id: bookId },
+    select: { aiProviderId: true, aiModel: true, creator: { select: { id: true, aiFallback: true } } },
+  });
+  return book?.creator
+    ? { id: book.creator.id, fallback: book.creator.aiFallback, providerId: book.aiProviderId, model: book.aiModel }
+    : null;
 }
 
+/** The creator's models in order, with the book's own pick first. */
 export async function writerChain(bookId: string | null | undefined): Promise<ResolvedProvider[]> {
   const user = await creatorOf(bookId);
-  return user ? pickChain(await providerStore.chain(user.id, "writer"), user.fallback) : [];
+  if (!user) return [];
+  const chain = preferBook(await providerStore.chain(user.id, "writer"), user.providerId, user.model, "writer");
+  return pickChain(chain, user.fallback);
 }
 
 export async function transcriberChain(bookId: string | null | undefined): Promise<ResolvedProvider[]> {
   const user = await creatorOf(bookId);
-  return user ? pickChain(await providerStore.chain(user.id, "transcription"), user.fallback) : [];
+  if (!user) return [];
+  const chain = preferBook(await providerStore.chain(user.id, "transcription"), user.providerId, "", "transcription");
+  return pickChain(chain, user.fallback);
 }
 
 export async function getFallback(userId: string): Promise<boolean> {

@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BookCover } from "@/components/book-cover";
 import { SPEAK_LANGUAGES } from "@/lib/speak-languages";
+import { AiSourcePicker, type AiPick } from "@/components/ai/ai-source-picker";
+import type { AiOptions } from "@/lib/ai/book-source";
 
 const MODES = [
   { id: "SOLO", title: "Solo", copy: "Only you speak, over days or years. A memoir in your own voice." },
@@ -28,7 +30,7 @@ function inDays(days: number) {
   };
 }
 
-export function CreateBookForm({ suggestion = "" }: { suggestion?: string }) {
+export function CreateBookForm({ suggestion = "", ai }: { suggestion?: string; ai: AiOptions }) {
   const router = useRouter();
   const start = useMemo(() => inDays(7), []);
   const [question, setQuestion] = useState(suggestion);
@@ -38,12 +40,24 @@ export function CreateBookForm({ suggestion = "" }: { suggestion?: string }) {
   const [date, setDate] = useState(start.date);
   const [time, setTime] = useState(start.time);
   const [limit, setLimit] = useState(3);
-  const [aiKey, setAiKey] = useState("");
+  const [aiPick, setAiPick] = useState<AiPick>({ choice: null, problem: null });
+  const [aiError, setAiError] = useState<string | null>(null);
+  const onAi = useCallback((pick: AiPick) => {
+    setAiPick(pick);
+    if (pick.choice) setAiError(null);
+  }, []);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!aiPick.choice) {
+      setError(null);
+      setAiError(aiPick.problem ?? "Add your AI key, or pick a saved model.");
+      document.getElementById("aisrc-title")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      document.getElementById("aiKey")?.focus({ preventScroll: true });
+      return;
+    }
     setBusy(true);
     setError(null);
     const closesAt = date ? new Date(`${date}T${time || "18:00"}`).toISOString() : null;
@@ -58,7 +72,7 @@ export function CreateBookForm({ suggestion = "" }: { suggestion?: string }) {
         closesAt,
         language,
         voiceLimitPerDay: limit,
-        aiKey: aiKey.trim() || undefined,
+        ai: aiPick.choice,
       }),
     });
     const data = (await response.json().catch(() => ({}))) as { slug?: string; error?: string };
@@ -200,31 +214,13 @@ export function CreateBookForm({ suggestion = "" }: { suggestion?: string }) {
           <p className="hint">Voices close at this moment and the book is written. People can speak in any of 30 languages.</p>
         </section>
 
-        <section className="setcard">
-          <div className="setcard__head">
-            <h2>
-              <span className="nb">4</span> Your AI key <em className="opt">optional</em>
-            </h2>
-          </div>
-          <label className="field" htmlFor="aiKey">
-            <span>
-              Meta AI key <em>— encrypted on the server, never shown again</em>
-            </span>
-            <input
-              id="aiKey"
-              className="input"
-              type="password"
-              autoComplete="off"
-              spellCheck={false}
-              placeholder="Paste a key, or add it later in Book settings"
-              value={aiKey}
-              onChange={(event) => setAiKey(event.target.value)}
-            />
-          </label>
-          <p className="hint">The app is free. AI runs on your own model, with an optional usage limit per book.</p>
-        </section>
+        <AiSourcePicker options={ai} onChange={onAi} alert={aiError} />
 
-        {error ? <p className="err">{error}</p> : null}
+        {error ? (
+          <p className="err" role="alert">
+            {error}
+          </p>
+        ) : null}
         <button className="btn btn--red btn--big btn--block" type="submit" disabled={busy}>
           {busy ? "Creating…" : "Create the book"}
         </button>

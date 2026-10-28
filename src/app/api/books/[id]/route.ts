@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireApiUser } from "@/lib/auth";
 import { assertSameOrigin, fromError } from "@/lib/http";
+import { setBookModel } from "@/lib/ai/book-ai";
 import { updateBookSettings } from "@/lib/services/books";
 
 const schema = z.object({
@@ -20,6 +21,9 @@ const schema = z.object({
   maxVoiceSeconds: z.number().int().optional(),
   aiKey: z.string().max(400).optional(),
   clearAiKey: z.boolean().optional(),
+  /** Which saved model this book runs on ("" = the first in the creator's list). */
+  aiProviderId: z.string().max(40).optional(),
+  aiModel: z.string().max(200).optional(),
   usageLimit: z.object({ kind: z.enum(["none", "usd", "tokens"]), value: z.union([z.number(), z.string().max(40)]).nullable().optional() }).optional(),
 });
 
@@ -29,8 +33,9 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   try {
     const user = await requireApiUser();
     const { id } = await context.params;
-    const parsed = schema.parse(await request.json());
+    const { aiProviderId, aiModel, ...parsed } = schema.parse(await request.json());
     const book = await updateBookSettings({ bookId: id, userId: user.id, ...parsed });
+    if (aiProviderId !== undefined) await setBookModel(user.id, book.id, aiProviderId, aiModel ?? "");
     return NextResponse.json({ id: book.id, status: book.status });
   } catch (error) {
     return fromError(error);

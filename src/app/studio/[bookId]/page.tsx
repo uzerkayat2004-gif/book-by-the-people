@@ -3,7 +3,10 @@ import { StudioDesk } from "@/components/live-studio";
 import { getCurrentUser } from "@/lib/auth";
 import { getConfig } from "@/lib/config";
 import { canSendEmail } from "@/lib/mailer";
-import { aiSummary, providerStore } from "@/lib/ai/providers";
+import { aiSummary, providerStore, writerChain, writerLive } from "@/lib/ai/providers";
+import { usableProvider } from "@/lib/ai/book-source";
+import { localModelsOff } from "@/lib/ai/local-gate";
+import { shortLabel } from "@/lib/ai/provider-types";
 import { backupAge } from "@/lib/services/backups";
 import { canStoreKeys, keyLast4, openKey } from "@/lib/secret-box";
 import { canLeadHome, homeBookLite } from "@/lib/public-books";
@@ -57,9 +60,17 @@ export default async function StudioBookPage({
   // A key pasted in Book settings runs this book on Meta even when the server has no key.
   const keyLabel = `${getConfig().writerModel} (book key${aiKeyLast4 ? ` ••••${aiKeyLast4}` : ""})`;
   const hearLabel = `${getConfig().transcribeModel} (book key)`;
-  const ai = hasAiKey
+  const choice = (await prisma.book.findUnique({ where: { id: book.id }, select: { aiProviderId: true, aiModel: true } })) ?? { aiProviderId: "", aiModel: "" };
+  const [chain, aiReady] = await Promise.all([writerChain(book.id), writerLive(book.id)]);
+  const bookWriter = chain[0] ? `${shortLabel(chain[0].label)} · ${chain[0].model}` : null;
+  const base = hasAiKey
     ? { ...summary, writer: summary.writer ?? keyLabel, hearer: summary.hearer ?? hearLabel }
     : summary;
+  const ai = bookWriter ? { ...base, writer: bookWriter } : base;
+  const localOn = !localModelsOff();
+  const bookModels = providers
+    .filter((view) => usableProvider(view, localOn))
+    .map((view) => ({ id: view.id, label: shortLabel(view.label), type: view.type, model: view.model, detail: view.hasKey ? `••••${view.keyLast4}` : "" }));
   const mediaJob = await prisma.pipelineJob.findUnique({ where: { key: `${book.id}:make:media` } });
   const mediaStatus = mediaState(mediaJob);
   let log: string[] = [];
@@ -217,6 +228,8 @@ export default async function StudioBookPage({
           hasAiKey,
           aiKeyLast4,
           canStoreKeys: canStoreKeys(),
+          aiReady,
+          bookModel: { providerId: choice.aiProviderId, model: choice.aiModel, options: bookModels },
           home: {
             onHome,
             featured: book.featured,

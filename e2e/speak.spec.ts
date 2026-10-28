@@ -17,7 +17,7 @@ test("a voice without its start word is not saved; one with it is", async ({ req
   await signInRequest(request, `skip-${Date.now()}@example.com`);
   const created = await request.post("/api/books", {
     headers: { origin: BASE },
-    data: { title: "Gate check", question: "Will the start word hold the door?", type: "OPEN", coverVibe: "ember", closesAt: null },
+    data: { title: "Gate check", question: "Will the start word hold the door?", type: "OPEN", coverVibe: "ember", closesAt: null, ai: { source: "demo" } },
   });
   expect(created.ok()).toBeTruthy();
   const book = await created.json();

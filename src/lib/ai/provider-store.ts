@@ -66,6 +66,26 @@ function checkKey(key: string) {
   if (key.length < 8 || /\s/.test(key)) throw new AppError("That doesn't look like an API key.");
 }
 
+/** Checks a new model's fields without saving anything. Throws a short AppError. */
+export function checkProviderInput(raw: unknown) {
+  const input = inputSchema.parse(raw);
+  const type = input.type ?? "";
+  if (!isProviderType(type)) throw new AppError("Pick a provider type.");
+  const preset = presetFor(type);
+  const role = input.role ?? "writer";
+  if (roleIncludes(role, "transcription") && !canTranscribe(type)) {
+    throw new AppError(`${preset.name} can't transcribe voices here. Pick "Writer".`);
+  }
+  if (type === "custom" && !(input.baseUrl ?? "").trim()) throw new AppError("Add the base URL.");
+  const baseUrl = cleanBaseUrl(input.baseUrl || preset.baseUrl);
+  const model = (input.model || preset.model).trim();
+  if (!model) throw new AppError("Add a model name.");
+  const key = (input.apiKey ?? "").trim();
+  if (key) checkKey(key);
+  else if (preset.keyRequired) throw new AppError(`Paste your ${preset.name.split(" ·")[0]} key.`);
+  return { input, type, preset, role, baseUrl, model, key };
+}
+
 export function canTranscribe(type: string): boolean {
   return Boolean(presetFor(type).transcribeModel) || type === "custom";
 }
@@ -106,20 +126,7 @@ export function createProviderStore(db: ProviderDb, sealer: Sealer) {
   }
 
   async function create(userId: string, raw: unknown): Promise<ProviderView> {
-    const input = inputSchema.parse(raw);
-    const type = input.type ?? "";
-    if (!isProviderType(type)) throw new AppError("Pick a provider type.");
-    const preset = presetFor(type);
-    const role = input.role ?? "writer";
-    if (roleIncludes(role, "transcription") && !canTranscribe(type)) {
-      throw new AppError(`${preset.name} can't transcribe voices here. Pick "Writer".`);
-    }
-    const baseUrl = cleanBaseUrl(input.baseUrl || preset.baseUrl);
-    const model = (input.model || preset.model).trim();
-    if (!model) throw new AppError("Add a model name.");
-    const key = (input.apiKey ?? "").trim();
-    if (key) checkKey(key);
-    else if (preset.keyRequired) throw new AppError(`${preset.name} needs an API key.`);
+    const { input, type, preset, role, baseUrl, model, key } = checkProviderInput(raw);
     const existing = await db.findMany({ where: { userId }, orderBy: ORDER });
     const priority = existing.reduce((max, row) => Math.max(max, row.priority), -1) + 1;
     const row = await db.create({
