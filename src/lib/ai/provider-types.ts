@@ -44,7 +44,8 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     keyRequired: true,
     api: "openai",
     hint: "Muse Spark writes; Muse Voice Transcribe hears.",
-    models: ["muse-spark-1.3", "muse-spark-1.3-contributor", "muse-wonder-1.0", "muse-spark-1.2", "muse-spark-1.2-contributor", "muse-spark-1.1"],
+    // Newest first (dev.meta.ai/docs/models, checked Oct 28 2026). muse-spark-1.1 is retired from the picks; "Other model…" still takes it.
+    models: ["muse-wonder-1.0", "muse-spark-1.3", "muse-spark-1.3-contributor", "muse-spark-1.2", "muse-spark-1.2-contributor"],
   },
   {
     type: "openai",
@@ -88,7 +89,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     keyRequired: true,
     api: "openai",
     hint: "One key: Muse Spark Open, Llama 4 and more.",
-    models: ["meta/muse-spark-open", "meta/muse-spark-1.3", "meta/muse-glimmer-30b", "meta-llama/llama-4-maverick", "meta-llama/llama-4-scout"],
+    models: ["meta/muse-spark-open", "meta/muse-wonder", "meta/muse-spark-1.3", "meta/muse-glimmer-30b", "meta-llama/llama-4-maverick", "meta-llama/llama-4-scout"],
   },
   {
     type: "groq",
@@ -228,6 +229,22 @@ export function preferBook<T extends { id: string; type: string; model: string; 
 }
 
 /** Model ids to offer for a provider: the preset's list (newest first), with the saved one kept. */
+/** A few plain words next to a model id in the pickers. */
+const MODEL_NOTES: Record<string, string> = {
+  "muse-wonder-1.0": "newest, most capable, costs more",
+  "muse-spark-1.3": "recommended",
+  "muse-spark-1.3-contributor": "cheaper, may train Meta models",
+  "muse-spark-1.2": "previous",
+  "muse-spark-1.2-contributor": "previous, cheaper, may train Meta models",
+  "meta/muse-spark-open": "open weights",
+  "meta/muse-wonder": "newest, most capable",
+};
+
+export function modelLabel(id: string): string {
+  const note = MODEL_NOTES[id];
+  return note ? `${id} · ${note}` : id;
+}
+
 export function modelChoices(type: string, current = ""): string[] {
   const list = [...presetFor(type).models];
   if (current && !list.includes(current)) list.unshift(current);

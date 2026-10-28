@@ -71,7 +71,8 @@ test("the AI step is required, and a saved key turns into a model picker", async
   const saved = page.getByRole("radiogroup", { name: "Saved AI" });
   await expect(saved.getByRole("radio", { name: /Meta · Muse Spark/ })).toHaveAttribute("aria-checked", "true");
   await expect(saved).toContainText("••••2345");
-  await expect(step.getByLabel("Model").locator("option").first()).toHaveText("muse-spark-1.3");
+  await expect(step.getByLabel("Model").locator("option").first()).toHaveText(/^muse-wonder-1\.0/);
+  await expect(step.getByLabel("Model")).toHaveValue("muse-spark-1.3");
   await expect(page.locator("#aiKey")).toHaveCount(0);
   await step.getByRole("button", { name: "+ Use a new key" }).click();
   await expect(page.locator("#aiKey")).toBeVisible();

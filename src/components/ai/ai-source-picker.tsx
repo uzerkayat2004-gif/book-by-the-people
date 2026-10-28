@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { AiChoice, AiOptions } from "@/lib/ai/book-source";
-import { NEW_KEY_TYPES, modelChoices, presetFor, type ProviderType } from "@/lib/ai/provider-types";
+import { NEW_KEY_TYPES, modelChoices, modelLabel, presetFor, type ProviderType } from "@/lib/ai/provider-types";
 import { OwnPcModels } from "./own-pc-models";
 
 const SHORT: Record<string, string> = {
@@ -134,7 +134,7 @@ export function AiSourcePicker({
                     >
                       {list.map((name) => (
                         <option key={name} value={name}>
-                          {name}
+                          {modelLabel(name)}
                         </option>
                       ))}
                     </select>
@@ -216,7 +216,7 @@ export function AiSourcePicker({
                 >
                   {choices.map((name) => (
                     <option key={name} value={name}>
-                      {name}
+                      {modelLabel(name)}
                     </option>
                   ))}
                   <option value={OTHER}>Other model…</option>

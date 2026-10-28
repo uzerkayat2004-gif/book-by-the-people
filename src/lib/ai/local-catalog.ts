@@ -99,7 +99,7 @@ export const SERVER_MODELS: ServerModel[] = [
     name: "Muse Spark Open",
     size: "816B (42B active)",
     needs: "300 GB+ even at 2-bit",
-    hosts: "OpenRouter, Together, Fireworks",
+    hosts: "OpenRouter, Together, Fireworks, Groq",
   },
   {
     name: "Llama 4 Scout",

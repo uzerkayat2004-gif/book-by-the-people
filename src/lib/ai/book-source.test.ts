@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { NO_AI_SOURCE, parseAiChoice, usableProvider, type AiOptions } from "./book-source";
-import { modelChoices, preferBook, type ProviderView } from "./provider-types";
+import { modelChoices, modelLabel, preferBook, type ProviderView } from "./provider-types";
 
 const options: AiOptions = {
   saved: [
@@ -97,7 +97,10 @@ describe("preferBook", () => {
 
 describe("modelChoices", () => {
   it("lists Meta's newest model first and keeps a custom one", () => {
-    expect(modelChoices("meta")[0]).toBe("muse-spark-1.3");
+    expect(modelChoices("meta")[0]).toBe("muse-wonder-1.0");
+    expect(modelChoices("meta")).not.toContain("muse-spark-1.1");
+    expect(modelChoices("meta", "muse-spark-1.1")[0]).toBe("muse-spark-1.1");
+    expect(modelLabel("muse-spark-1.3")).toBe("muse-spark-1.3 · recommended");
     expect(modelChoices("meta", "my-model")[0]).toBe("my-model");
   });
 });

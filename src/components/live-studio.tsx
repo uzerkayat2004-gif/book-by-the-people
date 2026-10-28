@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BookCover } from "@/components/book-cover";
 import { AiModels, AudioTools, LocalModels } from "@/components/studio/ai-models";
-import { isLocalType, modelChoices, type ProviderView } from "@/lib/ai/provider-types";
+import { isLocalType, modelChoices, modelLabel, type ProviderView } from "@/lib/ai/provider-types";
 import { releaseLabel } from "@/lib/stage";
 import { SPEAK_LANGUAGES } from "@/lib/speak-languages";
 
@@ -1401,7 +1401,7 @@ function SettingsTab({
                     >
                       {modelChoices(bookPicked.type, bookModelId || bookPicked.model).map((name) => (
                         <option key={name} value={name}>
-                          {name}
+                          {modelLabel(name)}
                         </option>
                       ))}
                     </select>
