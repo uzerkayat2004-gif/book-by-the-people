@@ -34,5 +34,12 @@ export default async function ReadPage({
   const document = await currentDocument(loaded.id, draftId);
   if (!document) notFound();
   const chapter = Number(query.c || "1");
-  return <Reader slug={loaded.slug} book={document} chapter={Number.isFinite(chapter) ? chapter : 1} />;
+  return (
+    <Reader
+      slug={loaded.slug}
+      book={document}
+      chapter={Number.isFinite(chapter) ? chapter : 1}
+      media={{ audio: Boolean(loaded.audiobookKey), video: Boolean(loaded.videoKey) }}
+    />
+  );
 }

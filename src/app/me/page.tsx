@@ -4,6 +4,7 @@ import { EditProfile } from "@/components/edit-profile";
 import { getCurrentUser } from "@/lib/auth";
 import { countryByCode, flagEmoji } from "@/lib/countries";
 import { prisma } from "@/lib/db";
+import { homeBookLite } from "@/lib/public-books";
 import { voicesLeftToday } from "@/lib/services/pipeline";
 import { releaseLabel } from "@/lib/stage";
 
@@ -15,7 +16,7 @@ function initials(name: string) {
 export default async function MePage() {
   const user = await getCurrentUser();
   if (!user) redirect("/sign-in?next=/me");
-  const book = await prisma.book.findFirst({ where: { featured: true }, select: { id: true, slug: true, closesAt: true } });
+  const book = await homeBookLite();
   const mine = await prisma.book.findMany({ where: { creatorId: user.id }, orderBy: { updatedAt: "desc" }, select: { id: true, slug: true, title: true, status: true } });
   const spoken = await prisma.voice.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: 8, include: { book: { select: { title: true, slug: true } } } });
   const left = book ? await voicesLeftToday(book.id, user.id) : 3;

@@ -34,7 +34,7 @@ export function PollCard({
       <div className="card poll" id="poll">
         <span className="label red">Next book</span>
         <div className="section__head">
-          <h2>Vote for book 2</h2>
+          <h2>Vote for the next book</h2>
         </div>
         {counts.map((option) => (
           <div key={option.id}>

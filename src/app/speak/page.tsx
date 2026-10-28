@@ -2,17 +2,14 @@ import { SignInForm } from "@/components/sign-in-form";
 import { VoiceForm } from "@/components/voice-form";
 import { getCurrentUser } from "@/lib/auth";
 import { getConfig } from "@/lib/config";
-import { prisma } from "@/lib/db";
+import { voiceBookLite } from "@/lib/public-books";
 import { voicesLeftToday } from "@/lib/services/pipeline";
 import { releaseLabel } from "@/lib/stage";
 
 export default async function SpeakPage({ searchParams }: { searchParams: Promise<{ word?: string }> }) {
   const query = await searchParams;
   const user = await getCurrentUser();
-  const book = await prisma.book.findFirst({
-    where: { featured: true },
-    select: { id: true, slug: true, question: true, closesAt: true },
-  });
+  const book = await voiceBookLite();
   const cfg = getConfig();
   if (!user || !book) {
     return (

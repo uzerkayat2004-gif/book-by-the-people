@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { canAcceptVoice } from "@/lib/book/lifecycle";
 import { currentDocument, loadBookBySlug, pausedNow, voterChoice } from "@/lib/load-book";
 import { presentHome } from "@/lib/present-home";
+import { openBooks } from "@/lib/public-books";
 
 export default async function BookPage({
   params,
@@ -49,5 +50,15 @@ export default async function BookPage({
     bookId: loaded.id,
     yourVote: vote,
   });
-  return <BookHome {...model} title={loaded.title} />;
+  // A released book's page also points to books still taking voices.
+  const openNow = loaded.status === "PUBLISHED" ? await openBooks(loaded.id, 3) : [];
+  return (
+    <BookHome
+      {...model}
+      title={loaded.title}
+      slug={loaded.slug}
+      media={{ audio: Boolean(loaded.audiobookKey), video: Boolean(loaded.videoKey) }}
+      openNow={openNow}
+    />
+  );
 }

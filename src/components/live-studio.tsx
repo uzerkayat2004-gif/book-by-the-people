@@ -8,12 +8,24 @@ import type { ProviderView } from "@/lib/ai/provider-types";
 import { releaseLabel } from "@/lib/stage";
 import { SPEAK_LANGUAGES } from "@/lib/speak-languages";
 
+const STATUS_SHORT: Record<string, string> = {
+  COLLECTING: "Open",
+  CLOSED: "Closed",
+  GENERATING: "Writing",
+  REVIEW: "Review",
+  PUBLISHED: "Released",
+};
+
 type StudioSettings = {
   language: string;
   voiceLimitPerDay: number;
   maxVoiceSeconds: number;
   hasAiKey: boolean;
+  /** Last 4 characters of the saved book key, never the key itself. */
+  aiKeyLast4?: string;
   canStoreKeys: boolean;
+  /** Home page placement. canFeature is true for the site owner. */
+  home?: { onHome: boolean; featured: boolean; canFeature: boolean; eligible: boolean };
   /** No model of any kind is set up: the AI runs in demo mode. */
   mockMode: boolean;
   /** The server itself has no AI key (AI_MODE=mock). */
@@ -150,7 +162,7 @@ export function StudioDesk({
   usage: Usage;
   chapters: string[];
   themes: { label: string; count: number }[];
-  books?: { id: string; slug: string; title: string }[];
+  books?: { id: string; slug: string; title: string; status?: string }[];
   backups?: { id: string; label: string; voices: number; note: string; restorable: boolean }[];
   settings: StudioSettings;
   media: { audioHref: string | null; videoHref: string | null; audioBytes: number; videoBytes: number; audioName: string; videoName: string; status: string; note: string | null; emails?: boolean };
@@ -240,6 +252,7 @@ export function StudioDesk({
   };
 
   const writerLine = <b>{ai.writer ?? "Demo mode"}</b>;
+  const openCount = books.filter((item) => item.status === "COLLECTING").length;
   const toLimit = () => {
     go("settings");
     window.setTimeout(() => document.getElementById("s-limit")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
@@ -271,10 +284,13 @@ export function StudioDesk({
               </svg>
             </summary>
             <div className="s2-books__pop" role="menu">
-              <small>Your books</small>
+              <small>
+                Your books{openCount > 1 ? ` · ${openCount} open now` : ""}
+              </small>
               {books.map((item) => (
                 <a key={item.id} role="menuitem" href={`/studio/${item.slug}?tab=${tab}`} className={item.id === book.id ? "on" : ""}>
-                  {item.title}
+                  <span className="s5-bk__t">{item.title}</span>
+                  {item.status ? <em className={`s5-bk__s s5-bk__s--${item.status.toLowerCase()}`}>{STATUS_SHORT[item.status] ?? item.status}</em> : null}
                 </a>
               ))}
               <a role="menuitem" className="s2-books__new" href="/books/new">
@@ -1130,6 +1146,7 @@ function SettingsTab({
   const nav: [string, string][] = [
     ["s-question", "Question"],
     ["s-release", "Release time"],
+    ...(settings.home ? ([["s-home", "Home page"]] as [string, string][]) : []),
     ["s-voices", "Voices"],
     ["s-poll", "Next book poll"],
     ...(book.type === "INVITED" ? ([["s-invite", "Invite link"]] as [string, string][]) : []),
@@ -1211,6 +1228,8 @@ function SettingsTab({
               Shows as <b>{shown}</b>. Voices close at the same time.{passed ? <span className="s2-warn"> That time has passed.</span> : null}
             </p>
           </section>
+
+          {settings.home ? <HomePlacement bookId={book.id} home={settings.home} onDone={onDone} /> : null}
 
           <section className="s2-card" id="s-voices">
             <div className="s2-card__head">
@@ -1413,7 +1432,7 @@ function SettingsTab({
               <summary>Book-only Meta key {settings.hasAiKey ? "· saved" : ""}</summary>
               {settings.hasAiKey ? (
                 <div className="s2-setrow">
-                  <b>Key saved ••••</b>
+                  <b>Key saved ••••{settings.aiKeyLast4 ?? ""}</b>
                   <button className="s2-btn s2-btn--sm s2-btn--ghost" type="button" onClick={() => void save({ clearAiKey: true })}>
                     Remove
                   </button>
@@ -1689,4 +1708,60 @@ function fromIst(date: string, time: string) {
   const [year, month, day] = date.split("-").map(Number);
   const [hour, minute] = time.split(":").map(Number);
   return new Date(Date.UTC(year, month - 1, day, hour, minute) - 5.5 * 60 * 60 * 1000).toISOString();
+}
+
+/** Where this book shows on the public site. The site owner can put it at the top of the home page. */
+function HomePlacement({
+  bookId,
+  home,
+  onDone,
+}: {
+  bookId: string;
+  home: { onHome: boolean; featured: boolean; canFeature: boolean; eligible: boolean };
+  onDone: () => void;
+}) {
+  const [working, setWorking] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  async function feature(featured: boolean) {
+    setWorking(true);
+    const response = await fetch(`/api/books/${bookId}/feature`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ featured }),
+    });
+    const data = (await response.json().catch(() => ({}))) as { error?: string };
+    setWorking(false);
+    setNote(response.ok ? null : (data.error ?? "That did not work."));
+    if (response.ok) onDone();
+  }
+  const line = home.onHome
+    ? home.featured
+      ? "This book leads the home page. Other open books show below it, and released books stay in the Library."
+      : "This book is on the home page right now because it is the newest open book."
+    : home.eligible
+      ? "This book shows under “Also open now” on the home page, or in the Library once released."
+      : "Invited and solo books stay off the public pages until they are released.";
+  return (
+    <section className="s2-card" id="s-home" data-testid="home-placement">
+      <div className="s2-card__head">
+        <h3>Home page</h3>
+        {home.onHome ? <span className="s2-chip">on the home page</span> : null}
+      </div>
+      <p className="s2-fine">{line}</p>
+      {home.canFeature && home.eligible ? (
+        <div className="s2-setrow">
+          {home.featured ? (
+            <button className="s2-btn s2-btn--sm s2-btn--ghost" type="button" disabled={working} onClick={() => void feature(false)}>
+              Stop featuring
+            </button>
+          ) : (
+            <button className="s2-btn s2-btn--sm" type="button" disabled={working} onClick={() => void feature(true)}>
+              Feature on the home page
+            </button>
+          )}
+        </div>
+      ) : null}
+      {note ? <p className="s2-warn">{note}</p> : null}
+    </section>
+  );
 }

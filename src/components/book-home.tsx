@@ -7,6 +7,7 @@ import { IconBook, IconMic, IconShield } from "@/components/icons";
 import { NamesMarquee } from "@/components/names-marquee";
 import { PollCard } from "@/components/poll-card";
 import { ReadActions } from "@/components/read-actions";
+import { BookMedia, OpenNow, ReleasedShelf, type ShelfOpen, type ShelfReleased } from "@/components/shelf";
 import { countryByCode } from "@/lib/countries";
 import type { Stage } from "@/lib/stage";
 
@@ -37,8 +38,15 @@ export function BookHome({
   yourVote,
   clips,
   title,
+  slug,
+  media,
+  openNow = [],
+  released = [],
+  releasedTotal = 0,
 }: {
   title?: string;
+  slug?: string;
+  media?: { audio: boolean; video: boolean };
   stage: Stage;
   question: string;
   voiceCount: number;
@@ -58,7 +66,11 @@ export function BookHome({
   bookId: string | null;
   yourVote: string | null;
   clips: HomeClip[];
-  others?: { href: string; title: string; meta: string }[];
+  /** Other books taking voices right now (home page). */
+  openNow?: ShelfOpen[];
+  /** Released books (home page), newest first, and how many there are in all. */
+  released?: ShelfReleased[];
+  releasedTotal?: number;
 }) {
   const latest = names[names.length - 1];
   const place = latest?.countryCode ? (countryByCode(latest.countryCode)?.name ?? "the world") : "the world";
@@ -96,9 +108,14 @@ export function BookHome({
       )}
       {stage === "after" ? null : <NamesMarquee names={names} />}
       {stage === "after" ? null : <How releaseLabel={releaseLabel} />}
+      {stage === "after" && slug && media ? <BookMedia slug={slug} audio={media.audio} video={media.video} title={title ?? question} /> : null}
+      <OpenNow books={openNow} heading={stage === "after" ? "Open now · add your voice" : "Also open now"} />
+      <ReleasedShelf books={released} total={releasedTotal} />
       {bookId && poll.length ? <PollCard bookId={bookId} question={pollQuestion} options={poll} yourVote={yourVote} /> : null}
       <p className="ownbook wrap">
         <Link href="/books/new">Start your own book</Link>
+        {" · "}
+        <Link href="/library">Library</Link>
         {" · "}
         <Link href="/explore">Explore</Link>
       </p>

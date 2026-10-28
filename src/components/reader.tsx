@@ -19,15 +19,19 @@ export function Reader({
   slug,
   book,
   chapter,
+  media = { audio: true, video: true },
 }: {
   slug: string;
   book: BookDocument;
   chapter: number;
+  /** Which finished files this book has. Buttons show only for files that exist. */
+  media?: { audio: boolean; video: boolean };
 }) {
   const index = Math.min(book.chapters.length, Math.max(1, chapter)) - 1;
   const current = book.chapters[index];
   const next = book.chapters[index + 1];
   const [size, setSize] = useState(1);
+  const [player, setPlayer] = useState<null | "audio" | "video">(null);
   const [sheet, setSheet] = useState(false);
   const [openOriginal, setOpenOriginal] = useState<string | null>(null);
   useEffect(() => {
@@ -86,20 +90,36 @@ export function Reader({
             <h1 className="read3__title">{current.title}</h1>
             <p className="read3__promise">{current.theme}</p>
           </header>
-          <div className="read-media">
-            <a className="btn btn--sm" href={`/api/media/${slug}/audiobook`}>
-              Listen
-            </a>
-            <a className="btn btn--sm" href={`/api/media/${slug}/video`}>
-              Watch
-            </a>
-            <a className="link" href={`/api/media/${slug}/audiobook?download=1`}>
-              Download audio
-            </a>
-            <a className="link" href={`/api/media/${slug}/video?download=1`}>
-              Download video
-            </a>
-          </div>
+          {media.audio || media.video ? (
+            <div className="read-media" data-testid="read-media">
+              {media.audio ? (
+                <button className={`btn btn--sm${player === "audio" ? " on" : ""}`} type="button" onClick={() => setPlayer(player === "audio" ? null : "audio")}>
+                  Listen
+                </button>
+              ) : null}
+              {media.video ? (
+                <button className={`btn btn--sm${player === "video" ? " on" : ""}`} type="button" onClick={() => setPlayer(player === "video" ? null : "video")}>
+                  Watch
+                </button>
+              ) : null}
+              {media.audio ? (
+                <a className="link" href={`/api/media/${slug}/audiobook?download=1`}>
+                  Download audio
+                </a>
+              ) : null}
+              {media.video ? (
+                <a className="link" href={`/api/media/${slug}/video?download=1`}>
+                  Download video
+                </a>
+              ) : null}
+              {player === "audio" ? (
+                <audio className="read-media__player" controls autoPlay preload="none" src={`/api/media/${slug}/audiobook`} aria-label="Audiobook" />
+              ) : null}
+              {player === "video" ? (
+                <video className="read-media__player read-media__video" controls autoPlay playsInline preload="none" src={`/api/media/${slug}/video`} aria-label="Film" />
+              ) : null}
+            </div>
+          ) : null}
           <div className="read3__body" style={{ ["--rs" as string]: `${SIZES[size][1]}px` }}>
             {body.map((paragraph, paragraphIndex) => (
               <p className={paragraphIndex === 0 ? "first" : ""} key={paragraphIndex}>

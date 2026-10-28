@@ -12,7 +12,7 @@ export default async function StudioPage() {
       <div className="exwrap">
         <p className="label">{user.email}</p>
         <h1 className="explore__h">Studio</h1>
-        <p className="lead">Your books. Each one has its own settings, AI, make and release tabs.</p>
+        <p className="lead">Your books. Several can take voices at once. Each has its own settings, AI, make and release tabs.</p>
         <div className="bgrid">
           <NewBookCard />
           {books.map((book) => (

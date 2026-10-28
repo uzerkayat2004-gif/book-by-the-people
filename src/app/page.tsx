@@ -3,26 +3,13 @@ import { BookHome } from "@/components/book-home";
 import { prisma } from "@/lib/db";
 import { currentDocument, voterChoice, pausedNow } from "@/lib/load-book";
 import { presentHome } from "@/lib/present-home";
+import { homeBook, openBooks, releasedBooks, releasedWhere } from "@/lib/public-books";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage({ searchParams }: { searchParams: Promise<{ stage?: string }> }) {
   const query = await searchParams;
-  const featured =
-    (await prisma.book.findFirst({
-      where: { featured: true },
-      include: {
-        voices: { orderBy: { createdAt: "asc" } },
-        pollOptions: { orderBy: { position: "asc" }, include: { _count: { select: { votes: true } } } },
-      },
-    })) ??
-    (await prisma.book.findFirst({
-      include: {
-        voices: { orderBy: { createdAt: "asc" } },
-        pollOptions: { orderBy: { position: "asc" }, include: { _count: { select: { votes: true } } } },
-      },
-      orderBy: { createdAt: "desc" },
-    }));
+  const featured = await homeBook();
 
   if (!featured) {
     return (
@@ -38,12 +25,11 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     );
   }
 
-  const others = await prisma.book.findMany({
-    where: { id: { not: featured.id }, status: "PUBLISHED" },
-    orderBy: { publishedAt: "desc" },
-    take: 6,
-    include: { _count: { select: { voices: { where: { status: "READY", hidden: false } } } } },
-  });
+  const [openNow, released, releasedTotal] = await Promise.all([
+    openBooks(featured.id, 6),
+    releasedBooks({ exceptId: featured.id, take: 4 }),
+    prisma.book.count({ where: { ...releasedWhere, id: { not: featured.id } } }),
+  ]);
   const document =
     featured.status === "PUBLISHED" ? await currentDocument(featured.id, featured.publishedDraftId) : null;
   const vote = await voterChoice(featured.id);
@@ -57,10 +43,12 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     voices: featured.voices,
     slug: featured.slug,
     paused,
-    voiceHref: `/b/${featured.slug}/voice`,
+    voiceHref: featured.type === "OPEN" ? `/b/${featured.slug}/voice` : null,
     document,
     pollQuestion: featured.pollQuestion,
-    poll: featured.pollOptions.map((option) => ({ id: option.id, label: option.label, votes: option._count.votes })),
+    poll: featured.showPoll
+      ? featured.pollOptions.map((option) => ({ id: option.id, label: option.label, votes: option._count.votes }))
+      : [],
     bookId: featured.id,
     yourVote: vote,
   });
@@ -68,11 +56,12 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   return (
     <BookHome
       {...model}
-      others={others.map((book) => ({
-        href: `/b/${book.slug}`,
-        title: book.title,
-        meta: `${book.type} · ${book._count.voices} voices`,
-      }))}
+      title={featured.title}
+      slug={featured.slug}
+      media={{ audio: Boolean(featured.audiobookKey), video: Boolean(featured.videoKey) }}
+      openNow={openNow}
+      released={released}
+      releasedTotal={releasedTotal}
     />
   );
 }

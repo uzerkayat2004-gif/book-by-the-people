@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Motion, SiteFooter, TopBar } from "@/components/site-chrome";
 import { getCurrentUser } from "@/lib/auth";
-import { prisma } from "@/lib/db";
+import { homeBookLite } from "@/lib/public-books";
 import "./globals.css";
 import "@/styles/fonts.css";
 import "@/styles/proto/styles.css";
@@ -16,6 +16,7 @@ import "@/styles/studio-fit.css";
 import "@/styles/studio2.css";
 import "@/styles/studio3.css";
 import "@/styles/studio4.css";
+import "@/styles/library.css";
 
 export const dynamic = "force-dynamic";
 
@@ -30,10 +31,7 @@ export const metadata: Metadata = {
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
-  const featured = await prisma.book.findFirst({
-    where: { featured: true },
-    select: { slug: true, status: true, question: true, closesAt: true },
-  });
+  const featured = await homeBookLite();
   const voiceHref = "/speak";
   return (
     <html lang="en" suppressHydrationWarning>

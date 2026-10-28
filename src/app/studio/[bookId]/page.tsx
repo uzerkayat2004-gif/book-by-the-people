@@ -4,7 +4,9 @@ import { getCurrentUser } from "@/lib/auth";
 import { getConfig } from "@/lib/config";
 import { aiSummary, providerStore } from "@/lib/ai/providers";
 import { backupAge } from "@/lib/services/backups";
-import { canStoreKeys } from "@/lib/secret-box";
+import { canStoreKeys, keyLast4, openKey } from "@/lib/secret-box";
+import { canLeadHome, homeBookLite } from "@/lib/public-books";
+import { isSiteAdmin } from "@/lib/site-admin";
 import { prisma } from "@/lib/db";
 import { planChapters } from "@/lib/book/plan";
 import type { SourceVoice } from "@/lib/book/types";
@@ -37,12 +39,26 @@ export default async function StudioBookPage({
   const mine = await prisma.book.findMany({
     where: { creatorId: user.id },
     orderBy: { createdAt: "asc" },
-    select: { id: true, slug: true, title: true },
+    select: { id: true, slug: true, title: true, status: true },
   });
   const [usage, limit] = await Promise.all([bookUsage(book.id), bookLimit(book.id)]);
-  const hasAiKey = Boolean((await prisma.book.findUnique({ where: { id: book.id }, select: { aiKeyCipher: true } }))?.aiKeyCipher);
+  const sealed = (await prisma.book.findUnique({ where: { id: book.id }, select: { aiKeyCipher: true } }))?.aiKeyCipher ?? "";
+  const hasAiKey = Boolean(sealed);
+  let aiKeyLast4 = "";
+  try {
+    aiKeyLast4 = sealed ? keyLast4(openKey(sealed)) : "";
+  } catch {
+    aiKeyLast4 = "";
+  }
+  const onHome = (await homeBookLite())?.id === book.id;
   const paused = await spendPaused(book.id);
-  const [providers, ai] = await Promise.all([providerStore.list(user.id), aiSummary(user.id)]);
+  const [providers, summary] = await Promise.all([providerStore.list(user.id), aiSummary(user.id)]);
+  // A key pasted in Book settings runs this book on Meta even when the server has no key.
+  const keyLabel = `${getConfig().writerModel} (book key${aiKeyLast4 ? ` ••••${aiKeyLast4}` : ""})`;
+  const hearLabel = `${getConfig().transcribeModel} (book key)`;
+  const ai = hasAiKey
+    ? { ...summary, writer: summary.writer ?? keyLabel, hearer: summary.hearer ?? hearLabel }
+    : summary;
   const mediaJob = await prisma.pipelineJob.findUnique({ where: { key: `${book.id}:make:media` } });
   const mediaStatus = mediaState(mediaJob);
   let log: string[] = [];
@@ -198,7 +214,14 @@ export default async function StudioBookPage({
           voiceLimitPerDay: book.voiceLimitPerDay,
           maxVoiceSeconds: book.maxVoiceSeconds,
           hasAiKey,
+          aiKeyLast4,
           canStoreKeys: canStoreKeys(),
+          home: {
+            onHome,
+            featured: book.featured,
+            canFeature: isSiteAdmin(user.email),
+            eligible: canLeadHome(book),
+          },
           mockMode: !ai.writer,
           mockServer: getConfig().aiMode === "mock",
         }}

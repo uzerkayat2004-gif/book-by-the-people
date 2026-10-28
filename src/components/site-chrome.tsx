@@ -97,6 +97,11 @@ function TopBarInner({
         </Link>
         <div className="top__right">
           <Clock mode={mode} closesAt={closesAt} />
+          {onStudio ? null : (
+            <Link className={`signin-link toplib${path.startsWith("/library") ? " on" : ""}`} href="/library">
+              Library
+            </Link>
+          )}
           {user && !onStudio ? (
             <Link className="studio-pill" href="/studio">
               <IconShield />
@@ -163,6 +168,8 @@ export function SiteFooter({ question, voiceHref }: { question: string | null; v
             <nav className="foot4__links" aria-label="Footer">
               <div>
                 <Link href="/speak">Add your voice</Link>
+                <Link href="/library">Library</Link>
+                <Link href="/explore">Explore</Link>
               </div>
               <div>
                 <button type="button" onClick={() => setSheet("about")}>
