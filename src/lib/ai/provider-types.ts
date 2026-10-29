@@ -67,7 +67,8 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     keyRequired: true,
     api: "openai",
     hint: "Uses Gemini's OpenAI-compatible endpoint.",
-    models: ["gemini-3.8-flash"],
+    // Text models from ai.google.dev/gemini-api/docs/models, checked 29 Oct 2026. Stable first, then preview.
+    models: ["gemini-3.8-flash", "gemini-4-argon", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.1-pro-preview"],
   },
   {
     type: "anthropic",

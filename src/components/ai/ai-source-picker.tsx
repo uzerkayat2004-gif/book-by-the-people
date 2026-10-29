@@ -86,7 +86,7 @@ export function AiSourcePicker({
       body: JSON.stringify({ type, apiKey: apiKey.trim() || undefined, model: model.trim(), baseUrl: baseUrl.trim() || undefined }),
     }).catch(() => null);
     const data = (await response?.json().catch(() => ({}))) as { ok?: boolean; message?: string; error?: string };
-    if (response?.ok && data.ok) setTest({ state: "ok", text: "Key works." });
+    if (response?.ok && data.ok) setTest({ state: "ok", text: data.message ?? "Key works." });
     else setTest({ state: "bad", text: data.error ?? data.message ?? "The test did not finish." });
   }
 

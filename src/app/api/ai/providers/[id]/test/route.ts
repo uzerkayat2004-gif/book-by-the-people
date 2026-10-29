@@ -4,6 +4,7 @@ import { assertSameOrigin, fromError } from "@/lib/http";
 import { providerStore, testProvider } from "@/lib/ai/providers";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 /** Sends one minimal real request to the model and stores the result. */
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {

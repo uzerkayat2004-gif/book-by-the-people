@@ -32,7 +32,9 @@ function timeoutFor(type: ProviderType, ms?: number) {
 async function readError(response: Response): Promise<string> {
   const text = await response.text().catch(() => "");
   try {
-    const data = JSON.parse(text) as { error?: { message?: string } | string; message?: string };
+    const parsed = JSON.parse(text) as unknown;
+    // Gemini wraps its error in a one-item array.
+    const data = (Array.isArray(parsed) ? parsed[0] : parsed) as { error?: { message?: string } | string; message?: string };
     const message = typeof data.error === "string" ? data.error : data.error?.message ?? data.message;
     if (message) return message.slice(0, 400);
   } catch {
@@ -292,34 +294,153 @@ export function silentWav(ms = 500): Buffer {
   return buffer;
 }
 
-/** A minimal real request. Writers answer a tiny JSON prompt; transcription-only models hear half a second of silence. */
+/** How long a key test may take in total. Long enough for a cold start plus a slow provider, short enough to feel quick. */
+export const TEST_TIMEOUT_MS = 20_000;
+
+function isTimeout(error: unknown) {
+  return error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+}
+
+const KEY_WORDS = /api[ _-]?key|unauthori[sz]ed|authenticat|invalid[_ ]?(x-)?(api[_ ]?)?key|permission|credential/i;
+const MODEL_WORDS = /model.{0,40}(not found|not exist|does not exist|unknown|not supported|unavailable|invalid)|(unknown|invalid|no such) model|model_not_found/i;
+
+/** Turns any test failure into one short, plain sentence: key, model, credit, timeout, network or server. */
+export function explainTestError(target: CallTarget, error: unknown): string {
+  const who = target.label;
+  if (isTimeout(error)) return `${who}: no answer in ${TEST_TIMEOUT_MS / 1000} s. The service may be busy. Try again in a minute.`;
+  if (error instanceof ProviderError) {
+    const { status } = error;
+    const text = error.message;
+    if (status === 401 || status === 403 || (status === 400 && KEY_WORDS.test(text) && !MODEL_WORDS.test(text))) {
+      return `${who}: key rejected. Check you pasted the whole key and that it is your ${who} key.`;
+    }
+    if (status === 404 || MODEL_WORDS.test(text)) return `${who}: model "${target.model}" not found. Pick another model from the list.`;
+    if (status === 402 || /credit|billing|quota|insufficient/i.test(text)) return `${who}: the key works but the account has no credit or quota left.`;
+    if (status === 429) return `${who}: too many requests right now. Wait a minute and test again.`;
+    if (status >= 500) return `${who}: the service had a problem (HTTP ${status}). Try again later.`;
+    return text;
+  }
+  if (error instanceof TypeError || (error instanceof Error && /fetch failed|ENOTFOUND|ECONNREFUSED|ECONNRESET|certificate/i.test(error.message))) {
+    let host = target.baseUrl;
+    try {
+      host = new URL(target.baseUrl).host;
+    } catch {
+      // keep the raw text
+    }
+    return `${who}: could not reach ${host}. Check the base URL.`;
+  }
+  return error instanceof Error ? error.message : "Test failed.";
+}
+
+function maskKey(text: string, key: string) {
+  return key ? text.split(key).join("••••") : text;
+}
+
+/** The cheapest call that proves the key: a models list (OpenRouter's list is public, so it has /key). */
+function keyCheckUrl(target: CallTarget) {
+  if (target.type === "openrouter") return `${target.baseUrl}/key`;
+  if (presetFor(target.type).api === "anthropic") return `${target.baseUrl}/models?limit=1`;
+  return `${target.baseUrl}/models`;
+}
+
+function authHeaders(target: CallTarget): Record<string, string> {
+  if (presetFor(target.type).api === "anthropic") return { "x-api-key": target.apiKey, "anthropic-version": "2023-06-01" };
+  const headers = openAiHeaders(target);
+  delete headers["Content-Type"];
+  return headers;
+}
+
+/** The smallest possible reply: a couple of tokens, no JSON mode, as little thinking as the model allows. */
+async function tinyReply(target: CallTarget, signal: AbortSignal, fetcher: Fetch) {
+  if (presetFor(target.type).api === "anthropic") {
+    const response = await fetcher(`${target.baseUrl}/messages`, {
+      method: "POST",
+      signal,
+      headers: { "Content-Type": "application/json", ...authHeaders(target) },
+      body: JSON.stringify({ model: target.model, max_tokens: 1, messages: [{ role: "user", content: "Say OK." }] }),
+    });
+    if (!response.ok) throw new ProviderError(target.label, response.status, await readError(response));
+    return;
+  }
+  const strictRole = target.type === "meta" || target.type === "openai";
+  let tokenField = strictRole ? "max_completion_tokens" : "max_tokens";
+  // Gemini 3 thinks hard by default; "minimal" keeps a health check to about a second.
+  let effort: string | null = target.type === "gemini" ? "minimal" : null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const body: Record<string, unknown> = { model: target.model, messages: [{ role: "user", content: "Say OK." }], [tokenField]: 16 };
+    if (effort) body.reasoning_effort = effort;
+    const response = await fetcher(`${target.baseUrl}/chat/completions`, { method: "POST", signal, headers: openAiHeaders(target), body: JSON.stringify(body) });
+    if (response.ok) {
+      await response.body?.cancel().catch(() => undefined);
+      return;
+    }
+    const error = new ProviderError(target.label, response.status, await readError(response));
+    if (response.status !== 400 && response.status !== 422) throw error;
+    if (effort && /reasoning|thinking/i.test(error.message)) effort = null;
+    else if (/max_completion_tokens|max_tokens/i.test(error.message)) tokenField = tokenField === "max_tokens" ? "max_completion_tokens" : "max_tokens";
+    else throw error;
+  }
+  throw new ProviderError(target.label, 400, "refused the test request.");
+}
+
+/**
+ * A quick real check of a writer key, at most TEST_TIMEOUT_MS:
+ * 1. list models (or OpenRouter's /key), which fails fast on a bad key;
+ * 2. a two-token reply from the chosen model, which fails fast on a wrong model.
+ * Transcription-only models hear half a second of silence. Local models keep the long, full JSON test.
+ */
 export async function testTarget(
   target: CallTarget,
   role: "writer" | "transcription" | "both",
   fetcher: Fetch = fetch,
 ): Promise<{ ok: boolean; message: string; ms: number }> {
   const started = Date.now();
+  const took = () => {
+    const ms = Date.now() - started;
+    return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
+  };
+  const local = target.type === "local" || target.type === "ollama";
   try {
     if (role === "transcription") {
       await transcribeWav(target, { wav: silentWav(), languageName: "English", languageCode: "en", keywords: [] }, fetcher);
-      return { ok: true, message: `Speech-to-text answered in ${Date.now() - started} ms.`, ms: Date.now() - started };
+      return { ok: true, message: `Speech-to-text answered in ${took()}.`, ms: Date.now() - started };
     }
-    const out = await chatJson(
-      target,
-      {
-        system: 'You are a health check. Reply with {"ok":true}.',
-        user: "ping",
-        schemaName: "ping",
-        schema: { type: "object", additionalProperties: false, required: ["ok"], properties: { ok: { type: "boolean" } } },
-        maxTokens: target.type === "local" || target.type === "ollama" ? 1500 : 400,
-        timeoutMs: target.type === "local" || target.type === "ollama" ? 180_000 : 45_000,
-      },
-      fetcher,
-    );
-    const ms = Date.now() - started;
-    return { ok: true, message: `${out.model} answered in ${ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`}.`, ms };
+    if (local) {
+      const out = await chatJson(
+        target,
+        {
+          system: 'You are a health check. Reply with {"ok":true}.',
+          user: "ping",
+          schemaName: "ping",
+          schema: { type: "object", additionalProperties: false, required: ["ok"], properties: { ok: { type: "boolean" } } },
+          maxTokens: 1500,
+          timeoutMs: 180_000,
+        },
+        fetcher,
+      );
+      return { ok: true, message: `${out.model} answered in ${took()}.`, ms: Date.now() - started };
+    }
+    const signal = AbortSignal.timeout(TEST_TIMEOUT_MS);
+    const keyCheck = await fetcher(keyCheckUrl(target), { method: "GET", signal, headers: authHeaders(target) });
+    const keyStatus = keyCheck.status;
+    if (!keyCheck.ok) {
+      const detail = await readError(keyCheck);
+      // Some hosts have no models list (404/405); then the reply below is the test. Key errors stop here.
+      if (keyStatus === 401 || keyStatus === 403 || (keyStatus === 400 && KEY_WORDS.test(detail))) throw new ProviderError(target.label, keyStatus, detail);
+    } else {
+      await keyCheck.body?.cancel().catch(() => undefined);
+    }
+    try {
+      await tinyReply(target, signal, fetcher);
+    } catch (error) {
+      if (isTimeout(error) && keyCheck.ok) {
+        return { ok: true, message: `Key works. ${target.model} was slow to answer the quick test; books may take longer.`, ms: Date.now() - started };
+      }
+      throw error;
+    }
+    return { ok: true, message: `Key works. ${target.model} answered in ${took()}.`, ms: Date.now() - started };
   } catch (error) {
-    const message = error instanceof Error ? (error.name === "TimeoutError" ? `${target.label}: no answer in time.` : error.message) : "Test failed.";
-    return { ok: false, message: message.replace(target.apiKey || "\u0000", "••••"), ms: Date.now() - started };
+    const message = local && isTimeout(error) ? `${target.label}: no answer in time.` : explainTestError(target, error);
+    return { ok: false, message: maskKey(message, target.apiKey), ms: Date.now() - started };
   }
 }
