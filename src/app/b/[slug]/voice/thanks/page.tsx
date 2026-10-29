@@ -36,7 +36,7 @@ export default async function ThanksPage({
             {ready
               ? book.status === "PUBLISHED"
                 ? "You're in. The recording is stored with your name."
-                : `Opens ${releaseLabel(book.closesAt)}.`
+                : `Voices close ${releaseLabel(book.closesAt)}. Yours stays sealed until the book is released.`
               : voice.rejectReason || "The recording is kept, and it will not be used in the book."}
           </p>
         </div>

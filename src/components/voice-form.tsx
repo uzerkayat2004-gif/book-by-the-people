@@ -386,7 +386,7 @@ export function VoiceForm({
               <IconLock />
             </div>
             <h1>Sealed.</h1>
-            <p className="lead">Opens {opens}.</p>
+            <p className="lead">Voices close {opens}. Yours stays sealed until the book is released.</p>
           </div>
           <div className="grow" />
           <Link className="btn btn--red btn--big btn--block" href={`/b/${slug}`}>

@@ -15,7 +15,10 @@ function parts(ms: number) {
 const pad = (value: number) => String(value).padStart(2, "0");
 
 export function Countdown({ closesAt, frozen }: { closesAt: string | null; frozen?: boolean }) {
-  const [left, setLeft] = useState({ d: 0, h: 0, m: 0, s: 0 });
+  // Start from the real time left (also on the server), so the first paint is never all zeros.
+  const [left, setLeft] = useState(() =>
+    frozen || !closesAt ? { d: 0, h: 0, m: 0, s: 0 } : parts(new Date(closesAt).getTime() - Date.now()),
+  );
   useEffect(() => {
     if (frozen || !closesAt) return;
     const tick = () => setLeft(parts(new Date(closesAt).getTime() - Date.now()));
@@ -33,10 +36,10 @@ export function Countdown({ closesAt, frozen }: { closesAt: string | null; froze
     ["s", "sec", left.s],
   ] as const;
   return (
-    <div className="cd" aria-label="The book opens in" role="timer">
+    <div className="cd" aria-label={frozen ? "Voices are closed" : "Voices close in"} role="timer">
       {cells.map(([key, label, value]) => (
         <div className="cd__b" key={key}>
-          <b data-cd={key}>{pad(value)}</b>
+          <b data-cd={key} suppressHydrationWarning>{pad(value)}</b>
           <small>{label}</small>
         </div>
       ))}

@@ -244,7 +244,7 @@ function Before({
             </div>
           ) : (
             <div className="cta6__open">
-              Opens <b>{releaseLabel}</b>
+              Closes <b>{releaseLabel}</b>
             </div>
           )}
           {paused ? (
