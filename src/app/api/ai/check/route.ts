@@ -30,7 +30,7 @@ export async function POST(request: Request) {
         return jsonError("On this hosted site the model must have a public https:// address.", 400);
       }
     }
-    const result = await testTarget({ label: presetFor(type).name.replace(/^Google /, ""), type, baseUrl, model, apiKey: key }, "writer");
+    const result = await testTarget({ label: presetFor(type).name.replace(/^Google /, "").replace(/\s*·.*$|-compatible$/g, ""), type, baseUrl, model, apiKey: key }, "writer");
     return NextResponse.json({ ok: result.ok, message: result.ok ? result.message : result.message.slice(0, 240) });
   } catch (error) {
     return fromError(error);
