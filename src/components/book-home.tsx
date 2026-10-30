@@ -88,7 +88,7 @@ export function BookHome({
       ? `${latest.name} from ${place} just spoke`
       : "Be the first voice";
   return (
-    <main className={stage === "after" ? "page" : "page home4"}>
+    <main className={stage === "after" ? "page bookflow" : "page home4 bookflow"}>
       {stage === "after" ? (
         <After
           title={title}
