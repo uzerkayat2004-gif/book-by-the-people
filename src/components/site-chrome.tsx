@@ -251,13 +251,13 @@ export function SiteFooter({ question, voiceHref }: { question: string | null; v
             <li>
               <IconCheck />
               <span>
-                <b>A real person?</b> Words are spoken or typed on the page. No uploads, no pasting.
+                <b>A real person?</b> AI reads every voice for real, on-topic words. No file uploads.
               </span>
             </li>
             <li>
               <IconCheck />
               <span>
-                <b>Not copy-paste?</b> The same words from many accounts count once.
+                <b>No spam copies?</b> The same words from many accounts count once.
               </span>
             </li>
             <li>

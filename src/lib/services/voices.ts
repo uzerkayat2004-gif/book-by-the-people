@@ -127,7 +127,7 @@ export async function ingestWords(input: {
       englishText: text,
       translated: false,
       turnsJson: JSON.stringify([{ turnId: 0, startMs: 0, endMs: Math.max(durationMs, 1000), transcript: text }] satisfies Turn[]),
-      // No start word any more: being typed or dictated live on the page is the "real person" check.
+      // No start word any more: written, pasted or spoken on the page, then judged by the AI check.
       startWordPassed: true,
       kind: "voice",
       userId: input.viewerId ?? "",

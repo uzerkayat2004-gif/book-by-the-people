@@ -29,7 +29,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (origin) return origin;
   try {
     if (!(request.headers.get("content-type") ?? "").includes("application/json")) {
-      return jsonError("Uploads are off. Speak or type your words on the page.", 415);
+      return jsonError("File uploads are off. Write or speak your words on the page.", 415);
     }
     const ip = clientIp(request);
     if (!rateLimit(`voice:${ip}`, process.env.NODE_ENV === "production" ? 20 : 1000, 60 * 60 * 1000)) {

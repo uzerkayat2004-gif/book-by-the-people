@@ -42,8 +42,6 @@ function speechCtor(): SpeechCtor | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
-const BLOCKED_INPUT = new Set(["insertFromPaste", "insertFromPasteAsQuotation", "insertFromDrop", "insertFromYank", "insertLink"]);
-const PASTE_NOTE = "Pasting is off. Please type in your own words.";
 
 const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 
@@ -106,7 +104,7 @@ export function VoiceForm({
   // About 150 spoken words a minute, ~6 characters each, so the text limit matches the time limit.
   const maxChars = Math.min(9000, Math.max(600, Math.round((maxSeconds / 60) * 150 * 6)));
   const router = useRouter();
-  const [mode, setMode] = useState<"speak" | "write">("speak");
+  const [mode, setMode] = useState<"speak" | "write">("write");
   /** "cloud" = the book creator's speech model hears short clips; "browser" = the browser's own speech-to-text. */
   const [engine, setEngine] = useState<"cloud" | "browser" | null>(null);
   const [supported, setSupported] = useState<boolean | null>(null);
@@ -138,7 +136,6 @@ export function VoiceForm({
   const lastKeyRef = useRef(0);
   const keysRef = useRef(0);
   const spokenRef = useRef(0);
-  const composingRef = useRef(false);
   const noteTimer = useRef<number | null>(null);
   // Cloud speech
   const recorderRef = useRef<LiveRecorder | null>(null);
@@ -464,7 +461,6 @@ export function VoiceForm({
     setMicError(null);
     if (!engine) {
       setSupported(false);
-      setMode("write");
       return;
     }
     if (listenedMsRef.current / 1000 >= maxSeconds) {
@@ -500,32 +496,9 @@ export function VoiceForm({
     [],
   );
 
-  // ---- The words box: typing is fine, pasting and dropping are not. ----
-  const blockPaste = (event: React.SyntheticEvent) => {
-    event.preventDefault();
-    flash(PASTE_NOTE);
-  };
-  const onBeforeInput = (event: React.FormEvent<HTMLTextAreaElement>) => {
-    const native = event.nativeEvent as InputEvent;
-    const kind = native.inputType ?? "";
-    const data = native.data ?? "";
-    if (BLOCKED_INPUT.has(kind) || (kind === "insertReplacementText" && data.length > 40)) {
-      event.preventDefault();
-      flash(PASTE_NOTE);
-    }
-  };
+  // ---- The words box: type, paste or drop freely; the AI check decides what is used. ----
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const now = Date.now();
-    if ((event.ctrlKey || event.metaKey) && (event.key === "v" || event.key === "V")) {
-      event.preventDefault();
-      flash(PASTE_NOTE);
-      return;
-    }
-    if (event.shiftKey && event.key === "Insert") {
-      event.preventDefault();
-      flash(PASTE_NOTE);
-      return;
-    }
     if (event.key.length === 1 || event.key === "Backspace" || event.key === "Delete" || event.key === "Enter") {
       keysRef.current += 1;
       const gap = now - lastKeyRef.current;
@@ -535,12 +508,6 @@ export function VoiceForm({
   };
   const onChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     let next = event.target.value;
-    const before = text + (interim ? ` ${interim}` : "");
-    // Anything big that arrives without keys (autofill, a paste that slipped through) is refused.
-    if (!composingRef.current && next.length - before.length > 40 && Date.now() - lastKeyRef.current > 400) {
-      flash(PASTE_NOTE);
-      return;
-    }
     if (next.length > maxChars) next = next.slice(0, maxChars);
     if (recRef.current) {
       // The person edited while the browser was still hearing: keep what they see as the new base,
@@ -693,19 +660,6 @@ export function VoiceForm({
             <button
               type="button"
               role="tab"
-              aria-selected={mode === "speak"}
-              className={`vf__mode vf__mode--speak${mode === "speak" ? " on" : ""}`}
-              data-testid="mode-speak"
-              onClick={() => {
-                setMode("speak");
-                setError(null);
-              }}
-            >
-              <IconMicBig /> Speak
-            </button>
-            <button
-              type="button"
-              role="tab"
               aria-selected={mode === "write"}
               className={`vf__mode${mode === "write" ? " on" : ""}`}
               data-testid="mode-write"
@@ -716,6 +670,19 @@ export function VoiceForm({
               }}
             >
               <IconPen /> Write
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "speak"}
+              className={`vf__mode vf__mode--speak${mode === "speak" ? " on" : ""}`}
+              data-testid="mode-speak"
+              onClick={() => {
+                setMode("speak");
+                setError(null);
+              }}
+            >
+              <IconMicBig /> Speak
             </button>
           </div>
 
@@ -736,9 +703,9 @@ export function VoiceForm({
             </select>
           </label>
 
-          {supported === false ? (
+          {supported === false && mode === "speak" ? (
             <p className="vf__warn" role="status" data-testid="speech-unsupported">
-              Speech-to-text isn&apos;t available in this browser. Try Chrome, Edge or Safari, or write your answer below.
+              Speech-to-text isn&apos;t available in this browser. Try Chrome, Edge or Safari, or tap Write and type your answer.
             </p>
           ) : mode === "speak" ? (
             (
@@ -798,7 +765,7 @@ export function VoiceForm({
               </div>
             )
           ) : (
-            <p className="vf__hint">Type your answer. Pasting is turned off so every answer is written here, by a person.</p>
+            <p className="vf__hint">Type or paste your answer, in your own words. AI checks every voice before it goes in the book.</p>
           )}
 
           <div className="vf__box">
@@ -812,16 +779,6 @@ export function VoiceForm({
               spellCheck
               onChange={onChange}
               onKeyDown={onKeyDown}
-              onBeforeInput={onBeforeInput}
-              onPaste={blockPaste}
-              onDrop={blockPaste}
-              onDragOver={(event) => event.preventDefault()}
-              onCompositionStart={() => {
-                composingRef.current = true;
-              }}
-              onCompositionEnd={() => {
-                composingRef.current = false;
-              }}
             />
             <div className="vf__meta">
               <span>{words} {words === 1 ? "word" : "words"}</span>
@@ -830,7 +787,7 @@ export function VoiceForm({
                   {note}
                 </span>
               ) : (
-                <span>{shown.length > maxChars * 0.9 ? `${maxChars - shown.length} characters left` : mode === "speak" ? "Edit freely" : "No pasting"}</span>
+                <span>{shown.length > maxChars * 0.9 ? `${maxChars - shown.length} characters left` : "Edit freely"}</span>
               )}
             </div>
           </div>

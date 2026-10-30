@@ -45,6 +45,7 @@ test("cloud Speak: clips cut at pauses become words, in order, and no Web Speech
   });
   const seen = await mockTranscribe(page);
   await page.goto("/b/city-at-night/voice?guest=1&speech=cloud");
+  await page.getByTestId("mode-speak").click();
   await expect(page.getByTestId("speech-status")).toHaveAttribute("data-state", "idle");
   await expect(page.getByTestId("start-speaking")).toBeVisible();
   await expect(page.getByText("Tap to speak", { exact: true })).toBeVisible();
@@ -70,6 +71,7 @@ test("cloud Speak: clips cut at pauses become words, in order, and no Web Speech
 test("cloud Speak keeps the person's own edits and adds new words at the end", async ({ page }) => {
   await mockTranscribe(page, 300);
   await page.goto("/b/city-at-night/voice?guest=1&speech=cloud");
+  await page.getByTestId("mode-speak").click();
   const box = page.getByTestId("words");
   await box.click();
   await page.keyboard.type("Hello.");
@@ -83,6 +85,7 @@ test("cloud Speak with no speech model falls back to the browser's speech-to-tex
     route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: "No speech model.", code: "no-speech" }) }),
   );
   await page.goto("/b/city-at-night/voice?guest=1&speech=cloud");
+  await page.getByTestId("mode-speak").click();
   await page.getByTestId("start-speaking").click();
   await expect(page.getByTestId("paste-note")).toHaveText(/browser's speech-to-text/i, { timeout: 15_000 });
   await expect(page.getByTestId("start-speaking")).toBeVisible();
@@ -93,6 +96,7 @@ test("mic blocked: a clear message next to the button and a way to Write", async
     navigator.mediaDevices.getUserMedia = () => Promise.reject(new DOMException("Permission denied", "NotAllowedError"));
   });
   await page.goto("/b/city-at-night/voice?guest=1&speech=cloud");
+  await page.getByTestId("mode-speak").click();
   await page.getByTestId("start-speaking").click();
   await expect(page.getByTestId("mic-error")).toContainText(/Microphone access is blocked/);
   await page.getByRole("button", { name: "Use Write instead" }).click();
@@ -104,6 +108,7 @@ test("speech model failing twice: stops, says so, and falls back to the browser"
     route.fulfill({ status: 502, contentType: "application/json", body: JSON.stringify({ error: "Could not turn that part into words.", code: "provider" }) }),
   );
   await page.goto("/b/city-at-night/voice?guest=1&speech=cloud");
+  await page.getByTestId("mode-speak").click();
   await page.getByTestId("start-speaking").click();
   await expect(page.getByTestId("mic-error")).toContainText(/having trouble/, { timeout: 20_000 });
   await expect(page.getByTestId("start-speaking")).toBeVisible();
@@ -122,21 +127,22 @@ test("screenshots: idle, recording, processing, done", async ({ page }) => {
   for (const [w, h] of [[390, 844], [1280, 800]] as const) {
     await page.setViewportSize({ width: w, height: h });
     await page.goto("/b/city-at-night/voice?guest=1&speech=cloud");
+    await page.getByTestId("mode-speak").click();
     const card = page.getByTestId("speech-status");
     await card.scrollIntoViewIfNeeded();
     await page.evaluate(() => window.scrollBy(0, -120));
     await page.waitForTimeout(400);
-    await page.screenshot({ path: `/workspace/shots/v7/${w}-1-idle.png` });
+    await page.screenshot({ path: `/workspace/shots/v8/${w}-1-idle.png` });
     await page.getByTestId("start-speaking").click();
     await page.waitForTimeout(1500);
-    await page.screenshot({ path: `/workspace/shots/v7/${w}-2-recording.png` });
+    await page.screenshot({ path: `/workspace/shots/v8/${w}-2-recording.png` });
     await expect(page.getByTestId("speech-processing")).toBeVisible({ timeout: 15_000 });
     await page.getByTestId("stop-speaking").click();
     await page.waitForTimeout(200);
-    await page.screenshot({ path: `/workspace/shots/v7/${w}-3-processing.png` });
+    await page.screenshot({ path: `/workspace/shots/v8/${w}-3-processing.png` });
     await expect(page.getByTestId("speech-processing")).toHaveCount(0, { timeout: 20_000 });
     await page.waitForTimeout(300);
-    await page.screenshot({ path: `/workspace/shots/v7/${w}-4-done.png` });
+    await page.screenshot({ path: `/workspace/shots/v8/${w}-4-done.png` });
     await page.unroute("**/api/books/*/transcribe**");
     await mockTranscribe(page, 2500);
   }

@@ -43,6 +43,8 @@ async function newBook(request: import("@playwright/test").APIRequestContext, ti
 test("Speak turns live speech into words in the box; no start word, no audio", async ({ page }) => {
   await page.addInitScript(mockSpeech);
   await page.goto("/b/city-at-night/voice?guest=1");
+  await expect(page.getByTestId("mode-write")).toHaveClass(/on/);
+  await page.getByTestId("mode-speak").click();
   await expect(page.getByTestId("mode-speak")).toHaveClass(/on/);
   expect(await page.locator("select#language option").count()).toBeGreaterThanOrEqual(30);
   await expect(page.getByTestId("start-word")).toHaveCount(0);
@@ -54,29 +56,66 @@ test("Speak turns live speech into words in the box; no start word, no audio", a
   await expect(page.getByTestId("words")).toHaveValue("My first job taught me to listen before I speak.");
 });
 
-test("Write blocks pasting and says why", async ({ page }) => {
+test("Write is the default tab and comes first", async ({ page }) => {
   await page.goto("/b/city-at-night/voice?guest=1");
-  await page.getByTestId("mode-write").click();
+  await expect(page.getByTestId("mode-write")).toHaveClass(/on/);
+  await expect(page.getByTestId("mode-write")).toHaveAttribute("aria-selected", "true");
+  const order = await page.locator(".vf__modes [role=tab]").evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-testid")));
+  expect(order).toEqual(["mode-write", "mode-speak"]);
+  await expect(page.getByTestId("start-speaking")).toHaveCount(0);
+  await expect(page.getByText(/pasting is (off|turned off)/i)).toHaveCount(0);
+});
+
+test("Write allows pasting and dropping, with no note", async ({ page }) => {
+  await page.goto("/b/city-at-night/voice?guest=1");
   const box = page.getByTestId("words");
   await box.click();
   await page.keyboard.type("Typed by me.");
-  await box.evaluate((node) => {
+  const paste = await box.evaluate((node) => {
     const data = new DataTransfer();
-    data.setData("text/plain", "Pasted from somewhere else");
-    node.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+    data.setData("text/plain", " Pasted from somewhere else");
+    return node.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
   });
-  await expect(box).toHaveValue("Typed by me.");
-  await expect(page.getByTestId("paste-note")).toHaveText(/pasting is off/i);
+  expect(paste).toBe(true); // nobody called preventDefault
+  const drop = await box.evaluate((node) => {
+    const data = new DataTransfer();
+    data.setData("text/plain", "Dropped");
+    return node.dispatchEvent(new DragEvent("drop", { dataTransfer: data, bubbles: true, cancelable: true }));
+  });
+  expect(drop).toBe(true);
+  // A real paste lands as one big insert with no keys: it is kept.
+  const long = "This whole answer was written somewhere else and pasted in at once, which is fine now.";
+  await page.keyboard.press("End");
+  await page.keyboard.insertText(` ${long}`);
+  await expect(box).toHaveValue(`Typed by me. ${long}`);
+  await expect(page.getByTestId("paste-note")).toHaveCount(0);
 });
 
-test("no speech-to-text in the browser: a clear note, and Write still works", async ({ page }) => {
+test("Speak box allows pasting too", async ({ page }) => {
+  await page.addInitScript(mockSpeech);
+  await page.goto("/b/city-at-night/voice?guest=1");
+  await page.getByTestId("mode-speak").click();
+  const box = page.getByTestId("words");
+  await box.click();
+  const long = "Pasted into the Speak box, a long answer that arrives in one go without any keys.";
+  await page.keyboard.insertText(long);
+  await expect(box).toHaveValue(long);
+  await expect(page.getByTestId("paste-note")).toHaveCount(0);
+});
+
+test("no speech-to-text in the browser: a clear note under Speak, and Write still works", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(window, "SpeechRecognition", { value: undefined, configurable: true });
     Object.defineProperty(window, "webkitSpeechRecognition", { value: undefined, configurable: true });
   });
   await page.goto("/b/city-at-night/voice?guest=1");
-  await expect(page.getByTestId("speech-unsupported")).toBeVisible();
   await expect(page.getByTestId("mode-write")).toHaveClass(/on/);
+  await expect(page.getByTestId("speech-unsupported")).toHaveCount(0);
+  await page.getByTestId("mode-speak").click();
+  await expect(page.getByTestId("speech-unsupported")).toBeVisible();
+  await page.getByTestId("mode-write").click();
+  await page.getByTestId("words").fill("Still works.");
+  await expect(page.getByTestId("words")).toHaveValue("Still works.");
 });
 
 test("voices are words only: uploads are refused, start words are gone, text is kept", async ({ request }) => {

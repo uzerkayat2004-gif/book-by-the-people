@@ -134,7 +134,7 @@ export function BookHome({
             <div className="endband__text">
               <span className="label red">{paused ? "Paused" : stage === "closed" ? "Closed" : "Open now"}</span>
               <h2>Your voice belongs in this book.</h2>
-              <p>Speak or write for up to 10 minutes. Your words stay sealed until the book is released.</p>
+              <p>Write or speak, up to 10 minutes. Your words stay sealed until the book is released.</p>
             </div>
             {voiceHref && !paused && stage !== "closed" ? (
               <Link className="btn btn--red btn--big cta4 endband__btn" href={voiceHref}>
@@ -446,7 +446,7 @@ function How({ releaseLabel }: { releaseLabel: string }) {
   return (
     <HowSteps
       steps={[
-        { icon: <IconMic />, title: "Speak or write", copy: "Talk or type, up to 10 minutes, in your own words." },
+        { icon: <IconMic />, title: "Write or speak", copy: "Type, paste or talk, up to 10 minutes, in your own words." },
         { icon: <IconShield />, title: "AI checks", copy: "Real people, on topic. Same views, one paragraph." },
         { icon: <IconBook />, title: "Book drops", copy: `${day}. Read, listen, watch.` },
       ]}
