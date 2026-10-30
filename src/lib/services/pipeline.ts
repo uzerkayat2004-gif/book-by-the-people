@@ -155,6 +155,17 @@ async function runStep(step: (typeof VOICE_STEPS)[number], voiceId: string) {
       });
       checked = mergeModelReview(review, judged.review, kind);
     }
+    // Typed or dictated impossibly fast: keep it, but let the creator look before it is used.
+    const signal = (() => {
+      try {
+        return JSON.parse(fresh.inputJson || "{}") as { fast?: boolean; why?: string };
+      } catch {
+        return {};
+      }
+    })();
+    if (signal.fast && checked.decision === "approved") {
+      checked = { ...checked, decision: "needs_you", notes: [...checked.notes, signal.why || "Typed unusually fast."] };
+    }
     await prisma.voice.update({
       where: { id: fresh.id },
       data: { checkJson: JSON.stringify(checked), pipelineStep: "checks" },

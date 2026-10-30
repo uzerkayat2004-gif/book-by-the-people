@@ -1,9 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import { BASE, signIn } from "./helpers";
-
-const tone = readFileSync(path.join(process.cwd(), "e2e", "tone.wav"));
 
 const LINES = [
   "Night buses are the only place I can think. The city goes quiet and I finally hear my own thoughts on the night shift.",
@@ -21,16 +17,14 @@ test("Studio: voices in, make the book, release audiobook + video, read it", asy
   expect(created.ok()).toBeTruthy();
   const book = await created.json();
   for (const [index, line] of LINES.entries()) {
-    const word = await (await api.post(`/api/books/${book.id}/challenge`, { headers: { origin: BASE }, data: { language: "en" } })).json();
     const voice = await api.post(`/api/books/${book.id}/voices`, {
       headers: { origin: BASE },
-      multipart: {
-        audio: { name: "tone.wav", mimeType: "audio/wav", buffer: tone },
-        challengeId: word.challengeId,
+      data: {
+        text: line,
+        mode: "speak",
         name: `Speaker ${index + 1}`,
-        consent: "true",
-        durationMs: "4000",
-        clientTranscript: `${word.startWord}. ${line}`,
+        consent: true,
+        metrics: { activeMs: 30_000, keys: 0, spoken: line.length },
       },
     });
     expect(voice.ok(), await voice.text()).toBeTruthy();

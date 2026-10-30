@@ -23,21 +23,22 @@ export default async function ThanksPage({
   // Your own words are for you (and the book's owner) only.
   const { viewer, guestKey } = await getViewer();
   if (!canSeeOwnVoice(voice, book, viewer, guestKey)) notFound();
-  const ready = voice.status === "READY";
+  // Waiting for the creator (or for AI) still counts as kept; only a refused voice is "not this time".
+  const ready = voice.status === "READY" || voice.status === "NEEDS_YOU" || voice.status === "PROCESSING";
   return (
-    <main className="page speak">
-      <div className="narrow">
+    <main className="page speak vf">
+      <div className="narrow vf__wrap">
         <div className="done">
           <div className="sealbig">
             <IconLock />
           </div>
-          <h1>{ready ? "Sealed." : "Not this take."}</h1>
+          <h1>{ready ? "Sealed." : "Not this time."}</h1>
           <p className="lead">
             {ready
               ? book.status === "PUBLISHED"
-                ? "You're in. The recording is stored with your name."
+                ? "You're in. Your words are kept with your name."
                 : `Voices close ${releaseLabel(book.closesAt)}. Yours stays sealed until the book is released.`
-              : voice.rejectReason || "The recording is kept, and it will not be used in the book."}
+              : voice.rejectReason || "Your words are kept, but they will not be used in the book."}
           </p>
         </div>
         {voice.originalText ? <div className="transcript" style={{ marginTop: 18 }}>{voice.originalText}</div> : null}
@@ -49,7 +50,7 @@ export default async function ThanksPage({
           </Link>
         ) : (
           <Link className="btn btn--red btn--big btn--block" href={`/b/${book.slug}/voice`}>
-            Record again
+            Try again
           </Link>
         )}
       </div>

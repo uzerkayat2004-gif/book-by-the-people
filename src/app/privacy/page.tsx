@@ -20,8 +20,15 @@ export default function PrivacyPage() {
           <li>
             <IconCheck />
             <span>
-              Each book&apos;s creator brings their own AI key, usually Meta&apos;s models. Your voice goes to that AI
-              only to turn it into text and write the book. That provider&apos;s own privacy rules apply.
+              We never keep your audio. When you speak, your browser&apos;s own speech-to-text turns it into words on
+              your screen, and only those words are sent to us. You can edit them before you send.
+            </span>
+          </li>
+          <li>
+            <IconCheck />
+            <span>
+              Each book&apos;s creator brings their own AI key, usually Meta&apos;s models. Your words go to that AI only to
+              check them and write the book. That provider&apos;s own privacy rules apply.
             </span>
           </li>
           <li>
@@ -31,8 +38,8 @@ export default function PrivacyPage() {
           <li>
             <IconCheck />
             <span>
-              The site runs on Vercel. Accounts, books and text are kept in a Neon database. Voice recordings and
-              book files are kept in Vercel Blob storage.
+              The site runs on Vercel. Accounts, books and your words are kept in a Neon database. Finished
+              book files (like the AI-read audiobook) are kept in Vercel Blob storage.
             </span>
           </li>
           <li>

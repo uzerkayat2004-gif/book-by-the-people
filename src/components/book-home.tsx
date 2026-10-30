@@ -127,25 +127,9 @@ export function BookHome({
       ) : null}
       {mode === "home" ? <OpenNow books={openNow} heading="More books being written" /> : null}
       {bookId && poll.length ? <PollCard bookId={bookId} question={pollQuestion} options={poll} yourVote={yourVote} /> : null}
-      {mode === "book" && slug ? (
-        <section className="wrap bookfoot" data-testid="book-foot">
-          <ShareLink path={`/b/${slug}`} title={title ?? question} />
-          <Link className="btn btn--ghost btn--sm bookfoot__more" href="/books">
-            See other books <span aria-hidden>→</span>
-          </Link>
-        </section>
-      ) : (
-        <p className="ownbook wrap">
-          <Link href="/books/new">Start your own book</Link>
-          {" · "}
-          <Link href="/books">All books</Link>
-          {" · "}
-          <Link href="/library">Library</Link>
-        </p>
-      )}
-      {stage === "after" ? null : (
-        <section className="wrap section rv in">
-          <div className="cta-band">
+      <section className="wrap endcards" data-testid="book-foot">
+        {stage === "after" ? null : (
+          <div className="endcard endcard--cta">
             <h2>Your voice belongs in this book.</h2>
             {voiceHref && !paused ? (
               <Link className="btn btn--red btn--big cta4" href={voiceHref}>
@@ -159,10 +143,51 @@ export function BookHome({
               </span>
             )}
           </div>
-        </section>
-      )}
+        )}
+        {mode === "book" && slug ? (
+          <div className="endcard">
+            <span className="label">Share</span>
+            <b className="endcard__t">Invite your people</b>
+            <p>Every voice makes the book better. Send them this book&apos;s link.</p>
+            <ShareLink path={`/b/${slug}`} title={title ?? question} />
+          </div>
+        ) : (
+          <div className="endcard">
+            <span className="label">Your own book</span>
+            <b className="endcard__t">Ask your own question</b>
+            <p>Your community answers. AI writes the book. Free.</p>
+            <Link className="btn btn--light btn--sm" href="/books/new">
+              Start your own book
+            </Link>
+          </div>
+        )}
+        <div className="endcard">
+          <span className="label">Explore</span>
+          <b className="endcard__t">More books</b>
+          <p>See what others are writing now, or read the released ones.</p>
+          <div className="endcard__row">
+            <Link className="btn btn--light btn--sm bookfoot__more" href="/books">
+              See other books <span aria-hidden>→</span>
+            </Link>
+            <Link className="btn btn--ghost btn--sm" href="/library">
+              Library
+            </Link>
+          </div>
+        </div>
+      </section>
     </main>
   );
+}
+
+/**
+ * Sizes the big title for any length: the longest word always fits the column
+ * (no mid-word breaks) and long titles shrink so they stay within about three lines.
+ */
+function titleFit(lineA: string, lineB: string): React.CSSProperties {
+  const all = `${lineA} ${lineB}`.trim();
+  const longest = Math.max(4, ...all.split(/\s+/).map((word) => word.length));
+  const total = Math.max(8, all.length);
+  return { ["--lw" as string]: longest, ["--tl" as string]: total };
 }
 
 function heroLines(title?: string): [string, string] {
@@ -221,13 +246,24 @@ function Before({
           </span>
           <b>{voiceCount.toLocaleString("en-US")}</b> voices so far
         </span>
-        <h1 className="hero4__title">
-          <span className="w">
-            <span style={{ ["--d" as string]: "80ms" }}>{lineA}</span>
-          </span>{" "}
-          <span className="w red">
-            <span style={{ ["--d" as string]: "160ms" }}>{lineB}</span>
-          </span>
+        <h1 className="hero4__title" style={titleFit(lineA, lineB)} data-testid="hero-title">
+          {lineB === "." ? (
+            <span className="w">
+              <span style={{ ["--d" as string]: "80ms" }}>
+                {lineA}
+                <em className="dot">.</em>
+              </span>
+            </span>
+          ) : (
+            <>
+              <span className="w">
+                <span style={{ ["--d" as string]: "80ms" }}>{lineA}</span>
+              </span>{" "}
+              <span className="w red">
+                <span style={{ ["--d" as string]: "160ms" }}>{lineB}</span>
+              </span>
+            </>
+          )}
         </h1>
         <div className="topic in2">
           <div className="topic__label">
@@ -390,7 +426,7 @@ function After({
 
 function How({ releaseLabel }: { releaseLabel: string }) {
   const steps = [
-    [IconMic, "Speak", "Up to 10 minutes. No typing."],
+    [IconMic, "Speak or write", "Up to 10 minutes, in your own words."],
     [IconShield, "AI checks", "AI groups similar views together."],
     [IconBook, "Book drops", `${releaseLabel.split(" · ")[0] || "Oct 26"}. Read, listen, watch.`],
   ] as const;

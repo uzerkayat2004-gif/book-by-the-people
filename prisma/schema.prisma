@@ -160,6 +160,8 @@ model Voice {
   pipelineStep    String   @default("")
   checkJson       String   @default("{}")
   kind            String   @default("voice")
+  /// How the words were given: {"mode":"speak"|"write","activeMs":..,"keys":..,"chars":..,"fast":bool}. No audio is kept for these.
+  inputJson       String   @default("{}")
   /// A guest contributor's private key (sha256 of their browser's bbtp_guest cookie), so they can see and delete their own voice.
   guestKey        String   @default("")
   createdAt       DateTime @default(now())

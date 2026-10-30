@@ -19,6 +19,7 @@ import "@/styles/studio4.css";
 import "@/styles/library.css";
 import "@/styles/aisrc.css";
 import "@/styles/multibook.css";
+import "@/styles/v3.css";
 
 export const dynamic = "force-dynamic";
 

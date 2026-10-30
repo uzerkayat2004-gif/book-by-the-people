@@ -60,6 +60,7 @@ function paintBody(size: number, dpr: number) {
   canvas.width = canvas.height = Math.round(size * dpr);
   const ctx = canvas.getContext("2d");
   if (!ctx) return canvas;
+  ctx.imageSmoothingQuality = "high";
   ctx.scale(dpr, dpr);
   const c = size / 2;
   const r = (RADIUS * size) / 2;
@@ -125,7 +126,10 @@ export function GlobeView({ pins }: { pins: Pin[] }) {
 
     const resize = () => {
       const size = Math.max(80, Math.round(wrap.clientWidth || 320));
-      const dpr = clamp(window.devicePixelRatio || 1, 1, 2.5);
+      // Render above the screen's own density so dots stay round and sharp: at least 2x
+      // (supersampled on 1x / 1.25x Windows screens), up to 3x on retina; phones cap at 2.5x.
+      const coarse = window.matchMedia("(pointer: coarse)").matches;
+      const dpr = clamp(Math.max(2, window.devicePixelRatio || 1), 2, coarse ? 2.5 : 3);
       if (size === state.size && dpr === state.dpr && state.body) return;
       state.size = size;
       state.dpr = dpr;
@@ -139,27 +143,29 @@ export function GlobeView({ pins }: { pins: Pin[] }) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       if (state.body) ctx.drawImage(state.body, 0, 0);
-      // Land dots, front side only. Small dots are drawn as crisp pixel squares (like WebGL points);
-      // bigger ones (high-DPI screens) as round dots, all in one path.
-      const dot = Math.max(1.3, size * 0.0042) * dpr;
+      // Land dots, front side only: round, anti-aliased, and slightly dimmer toward the edge
+      // (three brightness bands, one path each) so the sphere reads as 3D without blur.
+      const radius = (Math.max(1.05, size * 0.0029) * dpr) / 2;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.fillStyle = "#e5e2da";
-      ctx.beginPath();
-      const square = dot < 3.5;
-      const side = Math.max(1, Math.round(dot));
+      const bands = [new Path2D(), new Path2D(), new Path2D()];
       for (let index = 0; index < GLOBE_DOTS.length; index += 2) {
         const point = project(GLOBE_DOTS[index], GLOBE_DOTS[index + 1], phi, theta, size, 1.004);
         if (point.depth <= 0) continue;
         const x = point.x * dpr;
         const y = point.y * dpr;
-        if (square) {
-          ctx.rect(Math.round(x - side / 2), Math.round(y - side / 2), side, side);
-        } else {
-          ctx.moveTo(x + dot / 2, y);
-          ctx.arc(x, y, dot / 2, 0, Math.PI * 2);
-        }
+        const depth = point.depth / RADIUS;
+        const band = depth > 0.55 ? 0 : depth > 0.25 ? 1 : 2;
+        // Dots shrink a little toward the limb, like real foreshortening.
+        const r = radius * (0.7 + 0.3 * Math.min(1, depth * 1.6));
+        bands[band].moveTo(x + r, y);
+        bands[band].arc(x, y, r, 0, Math.PI * 2);
       }
-      ctx.fill();
+      ctx.fillStyle = "rgba(240,237,229,1)";
+      ctx.fill(bands[0]);
+      ctx.fillStyle = "rgba(240,237,229,.78)";
+      ctx.fill(bands[1]);
+      ctx.fillStyle = "rgba(240,237,229,.5)";
+      ctx.fill(bands[2]);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       // Voices: red dots.
       const marker = Math.max(5.5, size * 0.0125) / 2;

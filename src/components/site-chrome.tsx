@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { IconArrow, IconBack, IconCheck, IconShield } from "@/components/icons";
+import { IconArrow, IconBack, IconCheck } from "@/components/icons";
 import { LogoMark } from "@/components/logo-mark";
 
 function initials(name: string) {
@@ -108,8 +108,7 @@ function TopBarInner({
             </>
           )}
           {user && !onStudio ? (
-            <Link className="studio-pill" href="/studio">
-              <IconShield />
+            <Link className={`signin-link toplib${path.startsWith("/studio") ? " on" : ""}`} href="/studio">
               Studio
             </Link>
           ) : null}
@@ -117,7 +116,6 @@ function TopBarInner({
             <div className="usermenu">
               <button className="avatar on" type="button" aria-label="My menu" onClick={() => setMenu((open) => !open)}>
                 {initials(user.name)}
-                <i />
               </button>
               {menu ? (
                 <div className="usermenu__pop">
@@ -203,7 +201,7 @@ export function SiteFooter({ question, voiceHref }: { question: string | null; v
       {sheet === "about" ? (
         <Sheet title="Book by the People" kicker="About" onClose={() => setSheet(null)}>
           <p className="soft">
-            One question. Everyone answers by voice. AI checks every voice and groups the same views, then writes a real book using people&apos;s exact words — with every contributor credited.
+            One question. Everyone answers by speaking or typing. AI checks every voice and groups the same views, then writes a real book using people&apos;s exact words — with every contributor credited.
           </p>
           <p className="soft">
             Book 1 asks: <b>{question || "Is AI making you smarter or lazier?"}</b>
@@ -215,7 +213,7 @@ export function SiteFooter({ question, voiceHref }: { question: string | null; v
           <ul className="trustlist">
             <li>
               <IconCheck />
-              <span>Before Oct 26 only your name, country and state are public. Your words stay sealed.</span>
+              <span>Until the book is released only your name, country and state are public. Your words stay sealed.</span>
             </li>
             <li>
               <IconCheck />
@@ -223,7 +221,7 @@ export function SiteFooter({ question, voiceHref }: { question: string | null; v
             </li>
             <li>
               <IconCheck />
-              <span>An AI service (Nebius) sorts the voices. It isn&apos;t used for training.</span>
+              <span>Only your words are kept, never your audio. The AI that sorts them isn&apos;t trained on them.</span>
             </li>
             <li>
               <IconCheck />
@@ -244,7 +242,7 @@ export function SiteFooter({ question, voiceHref }: { question: string | null; v
             <li>
               <IconCheck />
               <span>
-                <b>A real person?</b> No spam, no reading out AI text.
+                <b>A real person?</b> Words are spoken or typed on the page. No uploads, no pasting.
               </span>
             </li>
             <li>
@@ -262,7 +260,7 @@ export function SiteFooter({ question, voiceHref }: { question: string | null; v
             <li>
               <IconCheck />
               <span>
-                <b>Every quote is exact.</b> Checked word-for-word against the recording.
+                <b>Every quote is exact.</b> Word-for-word what you sent. We never keep your audio.
               </span>
             </li>
           </ul>
