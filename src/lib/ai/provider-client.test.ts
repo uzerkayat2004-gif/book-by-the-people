@@ -43,6 +43,17 @@ describe("provider client", () => {
     expect(second.generationConfig.thinkingConfig).toEqual({ thinkingLevel: "minimal" });
   });
 
+  it("reads Gemini audioTranscription parts, and tries the next model when an answer is empty", async () => {
+    const { fetcher, calls } = fakeFetch([
+      () => ({ status: 200, json: { candidates: [{ finishReason: "STOP", content: { parts: [] } }] } }),
+      () => ({ status: 200, json: { candidates: [{ content: { parts: [{ audioTranscription: { words: [{ word: "Hello" }, { word: "world" }] } }] } }] } }),
+    ]);
+    const gemini = target("gemini", "https://generativelanguage.googleapis.com/v1beta/openai");
+    const out = await transcribeWav(gemini, { wav: Buffer.alloc(44 + 64000), languageName: "", languageCode: "en", language: "en", keywords: [] }, fetcher);
+    expect(calls).toHaveLength(2);
+    expect(out.transcript).toBe("Hello world");
+  });
+
   it("falls back from json_schema to json_object to plain on 400", async () => {
     const { fetcher, calls } = fakeFetch([() => ({ status: 400, json: { error: { message: "response_format json_schema unsupported" } } }), () => ({ status: 400, json: { error: { message: "no" } } }), () => ok]);
     const out = await chatJson(target("groq"), input, fetcher);

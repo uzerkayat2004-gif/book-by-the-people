@@ -269,13 +269,31 @@ const GEMINI_LANG: Record<string, string[]> = {
 /** Gemini's speech model, then a fast flash model with no thinking. */
 export const GEMINI_HEARERS = ["gemini-3.5-transcribe", "gemini-3.5-flash-lite"];
 
+type GeminiPart = { text?: string; thought?: boolean; audioTranscription?: { transcript?: string; text?: string; words?: { word?: string }[] } };
+
 function geminiText(data: unknown): string {
-  const parts = (data as { candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] } }[] }).candidates?.[0]?.content?.parts ?? [];
-  return parts
+  const parts = (data as { candidates?: { content?: { parts?: GeminiPart[] } }[] }).candidates?.[0]?.content?.parts ?? [];
+  const text = parts
     .filter((part) => typeof part.text === "string" && !part.thought)
     .map((part) => part.text)
     .join("")
     .trim();
+  if (text) return text;
+  // The speech model can also answer with audioTranscription parts instead of plain text.
+  return parts
+    .map((part) => part.audioTranscription)
+    .filter(Boolean)
+    .map((item) => item?.transcript ?? item?.text ?? (item?.words ?? []).map((word) => word.word ?? "").join(" "))
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Shape only (field names, finish reason), never the words: for the server log when an answer is empty. */
+function geminiShape(data: unknown): string {
+  const candidate = (data as { candidates?: { finishReason?: string; content?: { parts?: Record<string, unknown>[] } }[] }).candidates?.[0];
+  const parts = (candidate?.content?.parts ?? []).map((part) => Object.keys(part).join("+")).join(",");
+  return `finish=${candidate?.finishReason ?? "none"} parts=[${parts}] top=${Object.keys((data as object) ?? {}).join("+")}`;
 }
 
 /**
@@ -320,8 +338,15 @@ async function transcribeGemini(
         errors.push(`${model}: HTTP ${response.status} ${await readError(response)}`);
         continue;
       }
-      const transcript = geminiText(await response.json());
+      const data = await response.json();
+      const transcript = geminiText(data);
       const ms = Math.round(((input.wav.length - 44) / 2 / 16000) * 1000);
+      // An empty answer for a clip that clearly holds speech: let the next model try.
+      if (!transcript && ms >= 1200 && model !== models[models.length - 1]) {
+        errors.push(`${model}: empty (${geminiShape(data)})`);
+        console.warn(`gemini empty model=${model} ${geminiShape(data)}`);
+        continue;
+      }
       return { transcript, audioDurationMs: Math.max(0, ms), turns: [], model };
     } catch (error) {
       errors.push(`${model}: ${error instanceof Error && error.name === "TimeoutError" ? "timed out" : error instanceof Error ? error.message : "failed"}`);
