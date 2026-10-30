@@ -88,6 +88,33 @@ test("cloud Speak with no speech model falls back to the browser's speech-to-tex
   await expect(page.getByTestId("start-speaking")).toBeVisible();
 });
 
+test("mic blocked: a clear message next to the button and a way to Write", async ({ page }) => {
+  await page.addInitScript(() => {
+    navigator.mediaDevices.getUserMedia = () => Promise.reject(new DOMException("Permission denied", "NotAllowedError"));
+  });
+  await page.goto("/b/city-at-night/voice?guest=1&speech=cloud");
+  await page.getByTestId("start-speaking").click();
+  await expect(page.getByTestId("mic-error")).toContainText(/Microphone access is blocked/);
+  await page.getByRole("button", { name: "Use Write instead" }).click();
+  await expect(page.getByTestId("mode-write")).toHaveClass(/on/);
+});
+
+test("speech model failing twice: stops, says so, and falls back to the browser", async ({ page }) => {
+  await page.route("**/api/books/*/transcribe**", (route) =>
+    route.fulfill({ status: 502, contentType: "application/json", body: JSON.stringify({ error: "Could not turn that part into words.", code: "provider" }) }),
+  );
+  await page.goto("/b/city-at-night/voice?guest=1&speech=cloud");
+  await page.getByTestId("start-speaking").click();
+  await expect(page.getByTestId("mic-error")).toContainText(/having trouble/, { timeout: 20_000 });
+  await expect(page.getByTestId("start-speaking")).toBeVisible();
+});
+
+test("About you comes before Speak/Write", async ({ page }) => {
+  await page.goto("/b/city-at-night/voice?guest=1");
+  const labels = await page.locator("section.vf__card").evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label")));
+  expect(labels.indexOf("About you")).toBeLessThan(labels.indexOf("Your answer"));
+});
+
 test("screenshots: idle, recording, processing, done", async ({ page }) => {
   test.skip(!process.env.SHOTS, "set SHOTS=1 to save screenshots");
   test.setTimeout(120_000);
@@ -99,17 +126,17 @@ test("screenshots: idle, recording, processing, done", async ({ page }) => {
     await card.scrollIntoViewIfNeeded();
     await page.evaluate(() => window.scrollBy(0, -120));
     await page.waitForTimeout(400);
-    await page.screenshot({ path: `/workspace/shots/v6/${w}-1-idle.png` });
+    await page.screenshot({ path: `/workspace/shots/v7/${w}-1-idle.png` });
     await page.getByTestId("start-speaking").click();
     await page.waitForTimeout(1500);
-    await page.screenshot({ path: `/workspace/shots/v6/${w}-2-recording.png` });
+    await page.screenshot({ path: `/workspace/shots/v7/${w}-2-recording.png` });
     await expect(page.getByTestId("speech-processing")).toBeVisible({ timeout: 15_000 });
     await page.getByTestId("stop-speaking").click();
     await page.waitForTimeout(200);
-    await page.screenshot({ path: `/workspace/shots/v6/${w}-3-processing.png` });
+    await page.screenshot({ path: `/workspace/shots/v7/${w}-3-processing.png` });
     await expect(page.getByTestId("speech-processing")).toHaveCount(0, { timeout: 20_000 });
     await page.waitForTimeout(300);
-    await page.screenshot({ path: `/workspace/shots/v6/${w}-4-done.png` });
+    await page.screenshot({ path: `/workspace/shots/v7/${w}-4-done.png` });
     await page.unroute("**/api/books/*/transcribe**");
     await mockTranscribe(page, 2500);
   }

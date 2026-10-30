@@ -20,12 +20,30 @@ export function canRecord(): boolean {
  * Nothing is saved: clips exist only until they are sent to be turned into words.
  */
 export async function startRecorder(input: { onClip: (clip: Clip) => void; onLevel?: (level: number) => void }): Promise<LiveRecorder> {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-  });
+  // Make and resume the AudioContext first, while the tap still counts as a user gesture.
+  // (Made after an await, Android Chrome and Safari can leave it suspended, and nothing is heard.)
+  // Its sample rate is the device's own; resampling to 16 kHz happens in JS, so no rate is forced.
   const Ctx = (window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext) as typeof AudioContext;
   const ctx = new Ctx();
-  await ctx.resume().catch(() => undefined);
+  const resumed = ctx.resume().catch(() => undefined);
+  let stream: MediaStream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    });
+  } catch (error) {
+    await ctx.close().catch(() => undefined);
+    throw error;
+  }
+  // resume() can stay pending forever when the browser refuses it, so never wait on it for long.
+  const brief = (promise: Promise<unknown>) => Promise.race([promise, new Promise((done) => setTimeout(done, 1200))]);
+  await brief(resumed);
+  if (ctx.state !== "running") await brief(ctx.resume().catch(() => undefined));
+  if (ctx.state !== "running") {
+    for (const track of stream.getTracks()) track.stop();
+    await ctx.close().catch(() => undefined);
+    throw new DOMException("The browser kept audio paused.", "AbortError");
+  }
   const source = ctx.createMediaStreamSource(stream);
   // ScriptProcessor works on every browser that records, including older Android Chrome and Safari.
   const node = ctx.createScriptProcessor(4096, 1, 1);

@@ -200,12 +200,12 @@ export type HeardOut = { transcript: string; turns: Turn[]; audioDurationMs: num
 /** Speech to text. Meta uses /asr/transcribe; the rest use OpenAI-style /audio/transcriptions. */
 export async function transcribeWav(
   target: CallTarget & { transcribeModel?: string },
-  input: { wav: Buffer; languageName: string; languageCode: string; keywords: string[]; mode?: string },
+  input: { wav: Buffer; languageName: string; languageCode: string; keywords: string[]; mode?: string; language?: string; timeoutMs?: number },
   fetcher: Fetch = fetch,
 ): Promise<HeardOut> {
   const preset = presetFor(target.type);
   const model = target.transcribeModel || preset.transcribeModel || target.model;
-  const signal = AbortSignal.timeout(180_000);
+  const signal = AbortSignal.timeout(input.timeoutMs ?? 180_000);
   if (target.type === "meta") {
     const form = new FormData();
     const request = {
@@ -232,7 +232,7 @@ export async function transcribeWav(
       model,
     };
   }
-  if (target.type === "gemini") return transcribeByChat(target, model, input, signal, fetcher);
+  if (target.type === "gemini") return transcribeGemini(target, target.transcribeModel ?? "", input, fetcher);
   const form = new FormData();
   form.append("file", new Blob([new Uint8Array(input.wav)], { type: "audio/wav" }), "voice.wav");
   form.append("model", model);
@@ -257,41 +257,77 @@ export async function transcribeWav(
   };
 }
 
-/** Gemini: the clip goes into a chat message as input_audio with a verbatim-transcription instruction. */
-async function transcribeByChat(
+/** Gemini language hints (BCP-47) for the page's languages; anything else is auto-detected. */
+const GEMINI_LANG: Record<string, string[]> = {
+  en: ["en-US", "en-IN", "en-GB"], hinglish: ["hi-IN", "en-IN"], hi: ["hi-IN"], bn: ["bn-IN", "bn-BD"], mr: ["mr-IN"], ta: ["ta-IN"],
+  te: ["te-IN"], ur: ["ur-PK"], ne: ["ne-NP"], fr: ["fr-FR"], de: ["de-DE"], es: ["es-US", "es-419"], pt: ["pt-BR", "pt-PT"],
+  it: ["it-IT"], nl: ["nl-NL"], pl: ["pl-PL"], ru: ["ru-RU"], uk: ["uk-UA"], tr: ["tr-TR"], ar: ["ar-EG"], fa: ["fa-IR"],
+  id: ["id-ID"], ms: ["ms-MY"], tl: ["fil-PH"], vi: ["vi-VN"], th: ["th-TH"], ja: ["ja-JP"], ko: ["ko-KR"], zh: ["cmn-Hans-CN"],
+  sv: ["sv-SE"], sw: ["sw-KE"],
+};
+
+/** Gemini's speech model, then a fast flash model with no thinking. */
+export const GEMINI_HEARERS = ["gemini-3.5-transcribe", "gemini-3.5-flash-lite"];
+
+function geminiText(data: unknown): string {
+  const parts = (data as { candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] } }[] }).candidates?.[0]?.content?.parts ?? [];
+  return parts
+    .filter((part) => typeof part.text === "string" && !part.thought)
+    .map((part) => part.text)
+    .join("")
+    .trim();
+}
+
+/**
+ * Gemini: native generateContent with the clip inline as audio/wav. gemini-3.5-transcribe is built for this
+ * (verbatim, language hints); a flash model with thinking at "minimal" is the backup. Each try has its own
+ * short time limit so one slow call can never hold the page.
+ */
+async function transcribeGemini(
   target: CallTarget,
-  model: string,
-  input: { wav: Buffer; languageName: string },
-  signal: AbortSignal,
+  configured: string,
+  input: { wav: Buffer; languageName: string; languageCode: string; language?: string; timeoutMs?: number },
   fetcher: Fetch,
 ): Promise<HeardOut> {
+  const root = target.baseUrl.replace(/\/openai\/?$/, "").replace(/\/$/, "");
+  const audio = { inlineData: { mimeType: "audio/wav", data: input.wav.toString("base64") } };
+  const codes = GEMINI_LANG[input.language ?? input.languageCode] ?? [];
   const language = input.languageName ? ` The speaker talks in ${input.languageName}; write it in that language's usual script.` : "";
   const prompt =
     `Transcribe this audio verbatim.${language} Output only the spoken words, with normal punctuation. ` +
     "No notes, labels, timestamps, quotes or translation. If nobody speaks, output nothing.";
-  const body = (effort: boolean) =>
-    JSON.stringify({
-      model,
-      temperature: 0,
-      ...(effort ? { reasoning_effort: "low" } : {}),
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: prompt },
-            { type: "input_audio", input_audio: { data: input.wav.toString("base64"), format: "wav" } },
-          ],
-        },
-      ],
-    });
-  let response = await fetcher(`${target.baseUrl}/chat/completions`, { method: "POST", signal, headers: openAiHeaders(target), body: body(true) });
-  // Some Gemini models reject reasoning_effort; try once more without it.
-  if (response.status === 400) response = await fetcher(`${target.baseUrl}/chat/completions`, { method: "POST", signal, headers: openAiHeaders(target), body: body(false) });
-  if (!response.ok) throw new ProviderError(target.label, response.status, await readError(response));
-  const data = (await response.json()) as { choices?: { message?: { content?: string | null } }[] };
-  const transcript = (data.choices?.[0]?.message?.content ?? "").trim();
-  const ms = Math.round(((input.wav.length - 44) / 2 / 16000) * 1000);
-  return { transcript, audioDurationMs: Math.max(0, ms), turns: [], model };
+  const models = [...GEMINI_HEARERS, ...(configured && !GEMINI_HEARERS.includes(configured) ? [configured] : [])];
+  const errors: string[] = [];
+  for (const model of models) {
+    const body =
+      model.includes("transcribe")
+        ? { contents: [{ role: "user", parts: [audio] }], generationConfig: { audioTranscriptionConfig: { languageCodes: codes, mode: "VERBATIM" } } }
+        : {
+            contents: [{ role: "user", parts: [{ text: prompt }, audio] }],
+            generationConfig: {
+              temperature: 0,
+              ...(/3\.(5|6)|3-flash/.test(model) ? { thinkingConfig: { thinkingLevel: "minimal" } } : /gemini-3|gemini-4/.test(model) ? { thinkingConfig: { thinkingLevel: "low" } } : {}),
+            },
+          };
+    try {
+      const response = await fetcher(`${root}/models/${encodeURIComponent(model)}:generateContent`, {
+        method: "POST",
+        signal: AbortSignal.timeout(input.timeoutMs ?? 120_000),
+        headers: { "Content-Type": "application/json", "x-goog-api-key": target.apiKey },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) {
+        errors.push(`${model}: HTTP ${response.status} ${await readError(response)}`);
+        continue;
+      }
+      const transcript = geminiText(await response.json());
+      const ms = Math.round(((input.wav.length - 44) / 2 / 16000) * 1000);
+      return { transcript, audioDurationMs: Math.max(0, ms), turns: [], model };
+    } catch (error) {
+      errors.push(`${model}: ${error instanceof Error && error.name === "TimeoutError" ? "timed out" : error instanceof Error ? error.message : "failed"}`);
+    }
+  }
+  throw new ProviderError(target.label, 0, errors.join(" · "));
 }
 
 /** Tries each provider in order and returns the first success. Errors from all of them are joined. */

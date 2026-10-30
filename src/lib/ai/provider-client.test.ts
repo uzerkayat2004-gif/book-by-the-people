@@ -19,23 +19,28 @@ const target = (type: CallTarget["type"], baseUrl = "https://api.example.dev/v1"
 const input = { system: "s", user: "u", schemaName: "ping", schema: { type: "object" } };
 
 describe("provider client", () => {
-  it("sends a Gemini clip as input_audio with a verbatim prompt, and retries without reasoning_effort", async () => {
+  it("sends a Gemini clip inline to gemini-3.5-transcribe, then a no-thinking flash model if that fails", async () => {
     const { fetcher, calls } = fakeFetch([
-      () => ({ status: 400, json: { error: { message: "reasoning_effort not supported" } } }),
-      () => ({ status: 200, json: { choices: [{ message: { content: " Namaste, my first job. " } }] } }),
+      () => ({ status: 404, json: { error: { message: "model not found" } } }),
+      () => ({ status: 200, json: { candidates: [{ content: { parts: [{ text: "hmm", thought: true }, { text: " Namaste, my first job. " }] } }] } }),
     ]);
     const wav = Buffer.alloc(44 + 32000);
-    const out = await transcribeWav(target("gemini"), { wav, languageName: "Hindi", languageCode: "hi", keywords: [] }, fetcher);
+    const gemini = target("gemini", "https://generativelanguage.googleapis.com/v1beta/openai");
+    const out = await transcribeWav(gemini, { wav, languageName: "Hindi", languageCode: "hi", language: "hi", keywords: [] }, fetcher);
     expect(out.transcript).toBe("Namaste, my first job.");
+    expect(out.model).toBe("gemini-3.5-flash-lite");
     expect(out.audioDurationMs).toBe(1000);
-    expect(calls[0].url).toBe("https://api.example.dev/v1/chat/completions");
-    expect(calls[0].body.reasoning_effort).toBe("low");
-    expect(calls[1].body.reasoning_effort).toBeUndefined();
-    const content = (calls[1].body.messages as { content: { type: string; text?: string; input_audio?: { format: string; data: string } }[] }[])[0].content;
-    expect(content[0].text).toMatch(/verbatim/);
-    expect(content[0].text).toMatch(/Hindi/);
-    expect(content[1].input_audio?.format).toBe("wav");
-    expect(content[1].input_audio?.data).toBe(wav.toString("base64"));
+    expect(calls[0].url).toBe("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-transcribe:generateContent");
+    expect(calls[0].headers["x-goog-api-key"]).toBe("sk-test-12345678");
+    type Body = { contents: { parts: { text?: string; inlineData?: { mimeType: string; data: string } }[] }[]; generationConfig: Record<string, unknown> };
+    const first = calls[0].body as unknown as Body;
+    expect(first.contents[0].parts[0].inlineData).toEqual({ mimeType: "audio/wav", data: wav.toString("base64") });
+    expect(first.generationConfig.audioTranscriptionConfig).toEqual({ languageCodes: ["hi-IN"], mode: "VERBATIM" });
+    const second = calls[1].body as unknown as Body;
+    expect(calls[1].url).toContain("/models/gemini-3.5-flash-lite:generateContent");
+    expect(second.contents[0].parts[0].text).toMatch(/verbatim/);
+    expect(second.contents[0].parts[0].text).toMatch(/Hindi/);
+    expect(second.generationConfig.thinkingConfig).toEqual({ thinkingLevel: "minimal" });
   });
 
   it("falls back from json_schema to json_object to plain on 400", async () => {

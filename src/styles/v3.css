@@ -80,6 +80,9 @@
 .vf__level i{width:4px;border-radius:2px;background:rgba(229,56,59,.25);transition:background .12s}
 .vf__level i:nth-child(1){height:5px}.vf__level i:nth-child(2){height:8px}.vf__level i:nth-child(3){height:11px}.vf__level i:nth-child(4){height:14px}.vf__level i:nth-child(5){height:16px}
 .vf__level i.on{background:var(--red)}
+.vf__recwarn{font-size:13.5px;color:#f1d9a8;line-height:1.4;max-width:34ch}
+.vf__recerr{display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:4px;padding:10px 12px;border-radius:12px;background:rgba(255,190,80,.08);border:1px solid rgba(255,190,80,.25);color:#f1d9a8;font-size:13.5px;line-height:1.4;max-width:40ch}
+.vf__recalt{font-weight:600;text-decoration:underline;text-underline-offset:3px;color:inherit}
 .vf__proc{display:inline-flex;align-items:center;gap:8px;font-size:13.5px;color:var(--text,inherit);font-weight:550}
 .vf__spin{width:14px;height:14px;border-radius:50%;border:2px solid rgba(229,56,59,.25);border-top-color:var(--red);animation:vfSpin .8s linear infinite}
 @keyframes vfSpin{to{transform:rotate(360deg)}}

@@ -128,6 +128,8 @@ export function VoiceForm({
   const [consent, setConsent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [micError, setMicError] = useState<string | null>(null);
+  const [quiet, setQuiet] = useState(false);
 
   const textRef = useRef("");
   const listenStartRef = useRef(0);
@@ -145,7 +147,7 @@ export function VoiceForm({
   const pendingRef = useRef(0);
   const levelRef = useRef(0);
   const sessionRef = useRef("");
-  const failNoteRef = useRef(false);
+  const heardRef = useRef(false);
   // Browser speech
   const recRef = useRef<SpeechRec | null>(null);
   const wantRef = useRef(false);
@@ -210,6 +212,13 @@ export function VoiceForm({
     [addSpoken],
   );
 
+  const failRunRef = useRef(0);
+
+  /** Something stopped the microphone path: say so next to the button, never leave a dead button. */
+  const micFail = useCallback((message: string) => {
+    setMicError(message);
+  }, []);
+
   const sendClip = useCallback(
     async (clip: Clip) => {
       seqRef.current += 1;
@@ -220,18 +229,31 @@ export function VoiceForm({
       const params = new URLSearchParams({ lang: language, session: sessionRef.current });
       if (invite) params.set("invite", invite);
       let words = "";
+      let failed = false;
       for (let attempt = 0; attempt < 2; attempt += 1) {
-        const response = await fetch(`/api/books/${bookId}/transcribe?${params}`, {
-          method: "POST",
-          headers: { "Content-Type": "audio/wav" },
-          body: new Blob([wav as BlobPart], { type: "audio/wav" }),
-        }).catch(() => null);
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), 50_000);
+        let response: Response | null = null;
+        let networkError = false;
+        try {
+          response = await fetch(`/api/books/${bookId}/transcribe?${params}`, {
+            method: "POST",
+            headers: { "Content-Type": "audio/wav" },
+            body: new Blob([wav as BlobPart], { type: "audio/wav" }),
+            signal: controller.signal,
+          });
+        } catch {
+          networkError = !controller.signal.aborted;
+        } finally {
+          window.clearTimeout(timer);
+        }
         const data = response ? await response.json().catch(() => ({})) : {};
         if (response?.ok) {
           words = cleanClipText(String(data.text ?? ""), clip.voicedMs);
+          failRunRef.current = 0;
           break;
         }
-        if (response && (data.code === "no-speech" || response.status === 403 || response.status === 409)) {
+        if (response && (data.code === "no-speech" || response.status === 409)) {
           // The book has no speech model (or it is paused): use the browser's own speech-to-text from now on.
           void recorderRef.current?.stop();
           recorderRef.current = null;
@@ -241,17 +263,38 @@ export function VoiceForm({
             setEngine("browser");
             flash("Switched to your browser's speech-to-text. Tap to speak again.", 6000);
           } else {
-            setSupported(false);
-            setMode("write");
+            micFail("Speech-to-text isn't available for this book right now. Please switch to Write.");
           }
           break;
         }
-        if (response && (response.status === 429 || response.status === 413)) {
-          setError(data.error ?? "That's the speaking limit. Edit your words, then add them.");
+        if (response && (response.status === 403 || response.status === 429 || response.status === 413)) {
+          void recorderRef.current?.stop();
+          recorderRef.current = null;
+          endTimer();
+          setListening(false);
+          micFail(data.error ?? "That's the speaking limit. Edit your words, then add them.");
           break;
         }
-        if (attempt === 1 && !failNoteRef.current) {
-          failNoteRef.current = true;
+        // Only a dropped connection is worth one quick retry; a slow or failed model is not.
+        if (networkError && attempt === 0) continue;
+        failed = true;
+        break;
+      }
+      if (failed) {
+        failRunRef.current += 1;
+        if (failRunRef.current >= 2) {
+          failRunRef.current = 0;
+          void recorderRef.current?.stop();
+          recorderRef.current = null;
+          endTimer();
+          setListening(false);
+          if (speechCtor()) {
+            setEngine("browser");
+            micFail("Speech-to-text is having trouble right now, so we switched to your browser's own. Tap to speak again, or use Write.");
+          } else {
+            micFail("Speech-to-text is having trouble right now. Try again in a minute, or switch to Write.");
+          }
+        } else {
           flash("One part could not be turned into words. Keep going, or type it in.", 6000);
         }
       }
@@ -259,7 +302,7 @@ export function VoiceForm({
       pendingRef.current -= 1;
       setPending(pendingRef.current);
     },
-    [bookId, flash, invite, language, settle],
+    [bookId, flash, invite, language, micFail, settle],
   );
 
   const stopCloud = useCallback(async () => {
@@ -273,30 +316,35 @@ export function VoiceForm({
 
   const startCloud = useCallback(async () => {
     if (!sessionRef.current) sessionRef.current = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
-    failNoteRef.current = false;
+    failRunRef.current = 0;
+    heardRef.current = false;
     setStarting(true);
     try {
+      // Called straight from the tap: the recorder makes its AudioContext before any await, so the browser lets it run.
       recorderRef.current = await startRecorder({
         onClip: (clip) => void sendClip(clip),
         onLevel: (value) => {
           levelRef.current = value;
+          if (value > 0.01) heardRef.current = true;
         },
       });
       listenStartRef.current = Date.now();
       setListening(true);
     } catch (problem) {
-      const name = problem instanceof DOMException ? problem.name : "";
-      setError(
-        name === "NotAllowedError" || name === "SecurityError"
-          ? "The microphone is blocked. Allow it in your browser, or switch to Write."
-          : name === "NotFoundError"
+      const name = problem instanceof DOMException || problem instanceof Error ? problem.name : "";
+      micFail(
+        name === "NotAllowedError" || name === "SecurityError" || name === "PermissionDeniedError"
+          ? "Microphone access is blocked. Allow the microphone for this site (the lock icon next to the address), then tap again, or switch to Write."
+          : name === "NotFoundError" || name === "DevicesNotFoundError"
             ? "No microphone found. Plug one in, or switch to Write."
-            : "The microphone could not start. Try again, or switch to Write.",
+            : name === "NotReadableError"
+              ? "Another app is using the microphone. Close it and tap again, or switch to Write."
+              : "The microphone could not start. Tap to try again, or switch to Write.",
       );
     } finally {
       setStarting(false);
     }
-  }, [sendClip]);
+  }, [micFail, sendClip]);
 
   // ---------- Browser: the browser's own speech-to-text, rebuilt per session so nothing repeats ----------
   const commitBrowser = useCallback(() => {
@@ -356,10 +404,10 @@ export function VoiceForm({
     rec.onerror = (event) => {
       if (event?.error === "not-allowed" || event?.error === "service-not-allowed") {
         wantRef.current = false;
-        setError("The microphone is blocked. Allow it in your browser, or switch to Write.");
+        setMicError("Microphone access is blocked. Allow the microphone for this site (the lock icon next to the address), then tap again, or switch to Write.");
       } else if (event?.error === "audio-capture") {
         wantRef.current = false;
-        setError("No microphone found. Plug one in, or switch to Write.");
+        setMicError("No microphone found. Plug one in, or switch to Write.");
       }
     };
     rec.onend = () => {
@@ -401,7 +449,7 @@ export function VoiceForm({
       setListening(true);
     } catch {
       wantRef.current = false;
-      setError("Speech-to-text could not start. Try again, or switch to Write.");
+      setMicError("Speech-to-text could not start. Tap to try again, or switch to Write.");
     }
   }, [startSession]);
 
@@ -413,6 +461,7 @@ export function VoiceForm({
 
   const startListening = useCallback(() => {
     setError(null);
+    setMicError(null);
     if (!engine) {
       setSupported(false);
       setMode("write");
@@ -432,6 +481,7 @@ export function VoiceForm({
       const total = (listenedMsRef.current + (listenStartRef.current ? Date.now() - listenStartRef.current : 0)) / 1000;
       setSeconds(total);
       setLevel(levelRef.current);
+      setQuiet(Boolean(recorderRef.current && !heardRef.current && listenStartRef.current && Date.now() - listenStartRef.current > 5000));
       if (total >= maxSeconds) stopListening();
     }, 100);
     return () => window.clearInterval(timer);
@@ -583,6 +633,61 @@ export function VoiceForm({
           <p className="vf__lead">Tell us a real moment, in your own words. Voices close {opens}.</p>
         </header>
 
+        <section className="vf__card" aria-label="About you">
+          <h2 className="vf__h">About you</h2>
+          <div className="vf__grid">
+            <label className="field">
+              <span>Name in the book</span>
+              <input id="name" className="input" value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Priya S." autoComplete="name" maxLength={40} />
+            </label>
+            <label className="field">
+              <span>Country</span>
+              <select
+                id="country"
+                className="input"
+                value={country}
+                onChange={(event) => {
+                  setCountry(event.target.value);
+                  setRegion("");
+                  setRegionOther(false);
+                }}
+              >
+                <option value="">Prefer not to say</option>
+                {COUNTRIES.map((item) => (
+                  <option key={item.code} value={item.code}>
+                    {flagEmoji(item.code)} {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <details className="vf__more">
+            <summary>More about you <em>optional</em></summary>
+            <AboutFields
+              nameLabel=""
+              name={name}
+              setName={setName}
+              handle={handle}
+              setHandle={setHandle}
+              ageBand={ageBand}
+              setAgeBand={setAgeBand}
+              country={country}
+              setCountry={setCountry}
+              region={region}
+              setRegion={setRegion}
+              regionOther={regionOther}
+              setRegionOther={setRegionOther}
+              language={language}
+              setLanguage={setLanguage}
+              extrasOnly
+            />
+          </details>
+          <label className="check vf__consent">
+            <input data-testid="consent" type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
+            <span>I&apos;m 18+. Quote my words with my name. AI sorts them and never trains on them.</span>
+          </label>
+        </section>
+
         <section className="vf__card" aria-label="Your answer">
           <div className="vf__modes" role="tablist" aria-label="How do you want to answer?">
             <button
@@ -665,6 +770,26 @@ export function VoiceForm({
                 ) : (
                   <span className="vf__rechelp">Your words will appear here. We never keep your audio.</span>
                 )}
+                {listening && quiet ? (
+                  <span className="vf__recwarn" role="status" data-testid="mic-quiet">
+                    We can&apos;t hear anything yet. Check that your microphone is on and not muted.
+                  </span>
+                ) : null}
+                {micError && !listening ? (
+                  <div className="vf__recerr" role="alert" data-testid="mic-error">
+                    <span>{micError}</span>
+                    <button
+                      type="button"
+                      className="vf__recalt"
+                      onClick={() => {
+                        setMicError(null);
+                        setMode("write");
+                      }}
+                    >
+                      Use Write instead
+                    </button>
+                  </div>
+                ) : null}
                 {pending > 0 ? (
                   <span className="vf__proc" role="status" data-testid="speech-processing">
                     <i className="vf__spin" aria-hidden="true" /> Turning speech into words…
@@ -709,61 +834,6 @@ export function VoiceForm({
               )}
             </div>
           </div>
-        </section>
-
-        <section className="vf__card" aria-label="About you">
-          <h2 className="vf__h">About you</h2>
-          <div className="vf__grid">
-            <label className="field">
-              <span>Name in the book</span>
-              <input id="name" className="input" value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Priya S." autoComplete="name" maxLength={40} />
-            </label>
-            <label className="field">
-              <span>Country</span>
-              <select
-                id="country"
-                className="input"
-                value={country}
-                onChange={(event) => {
-                  setCountry(event.target.value);
-                  setRegion("");
-                  setRegionOther(false);
-                }}
-              >
-                <option value="">Prefer not to say</option>
-                {COUNTRIES.map((item) => (
-                  <option key={item.code} value={item.code}>
-                    {flagEmoji(item.code)} {item.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <details className="vf__more">
-            <summary>More about you <em>optional</em></summary>
-            <AboutFields
-              nameLabel=""
-              name={name}
-              setName={setName}
-              handle={handle}
-              setHandle={setHandle}
-              ageBand={ageBand}
-              setAgeBand={setAgeBand}
-              country={country}
-              setCountry={setCountry}
-              region={region}
-              setRegion={setRegion}
-              regionOther={regionOther}
-              setRegionOther={setRegionOther}
-              language={language}
-              setLanguage={setLanguage}
-              extrasOnly
-            />
-          </details>
-          <label className="check vf__consent">
-            <input data-testid="consent" type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
-            <span>I&apos;m 18+. Quote my words with my name. AI sorts them and never trains on them.</span>
-          </label>
         </section>
 
         {error ? (

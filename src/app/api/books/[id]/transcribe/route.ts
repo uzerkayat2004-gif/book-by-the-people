@@ -78,12 +78,17 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     return jsonError("That's the speaking limit for this answer. Edit your words, then add them.", 429, "limit");
   }
 
+  const started = Date.now();
   try {
     const heard = await transcribeClip({ bookId: book.id, wav: Buffer.from(bytes), language });
+    // Timing only: no audio, no words, no keys.
+    console.info(`stt ok book=${book.id} provider=${heard.provider} model=${heard.model} audioMs=${info.ms} tookMs=${Date.now() - started}`);
     await recordUsage({ kind: "transcribe-live", provider: heard.provider, model: heard.model, bookId: book.id, audioMs: info.ms }).catch(() => undefined);
     return NextResponse.json({ text: cleanClipText(heard.text, info.ms) });
   } catch (error) {
     if (error instanceof NoSpeechModel) return jsonError("This book has no speech model.", 409, "no-speech");
+    const detail = (error instanceof Error ? error.message : "failed").replace(/(key|token|bearer)[=: ]+\S+/gi, "$1=…").slice(0, 300);
+    console.warn(`stt failed book=${book.id} audioMs=${info.ms} tookMs=${Date.now() - started} ${detail}`);
     // Never echo provider details (they can include request ids); just say it failed.
     return jsonError("Could not turn that part into words.", 502, "provider");
   }

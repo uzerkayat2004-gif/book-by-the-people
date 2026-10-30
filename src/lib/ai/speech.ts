@@ -44,10 +44,15 @@ export async function transcribeClip(input: { bookId: string; wav: Buffer; langu
   const lang = LANGUAGES.find((item) => item.code === input.language);
   const languageName = input.language === "hinglish" ? "" : lang?.muse ?? "";
   const languageCode = /^[a-z]{2}$/.test(input.language) ? input.language : "";
-  const options = { wav: input.wav, languageName, languageCode, keywords: [], mode: "PUSH_TO_TALK" };
+  const options = { wav: input.wav, languageName, languageCode, keywords: [], mode: "PUSH_TO_TALK", language: input.language, timeoutMs: 14_000 };
   const chain = await speechChain(input.bookId);
   if (chain.length) {
-    const { result, provider } = await firstThatWorks(chain, async (item) => transcribeWav(await prepare(item), options));
+    const started = Date.now();
+    const { result, provider } = await firstThatWorks(chain, async (item) => {
+      // The page waits for this clip, so stop trying more providers once the request is nearly out of time.
+      if (Date.now() - started > 35_000) throw new Error(`${item.label}: skipped, out of time`);
+      return transcribeWav(await prepare(item), options);
+    });
     return { text: result.transcript, provider: providerTag(provider), model: result.model, ms: result.audioDurationMs };
   }
   const meta = await metaFallback(input.bookId);

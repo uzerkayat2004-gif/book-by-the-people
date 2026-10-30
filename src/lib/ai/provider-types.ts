@@ -63,8 +63,8 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     name: "Google Gemini",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
     model: "gemini-3.8-flash",
-    // Gemini hears audio through chat (input_audio), not a separate speech endpoint.
-    transcribeModel: "gemini-3.8-flash",
+    // Speech goes to Gemini's own speech model through native generateContent (see transcribeGemini).
+    transcribeModel: "gemini-3.5-transcribe",
     keyRequired: true,
     api: "openai",
     hint: "Uses Gemini's OpenAI-compatible endpoint; also transcribes.",
