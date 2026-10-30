@@ -3,9 +3,10 @@ import { BookCover } from "@/components/book-cover";
 import { Countdown } from "@/components/countdown";
 import { CountryPanel, type CountryRow } from "@/components/country-panel";
 import { GlobeView } from "@/components/globe-view";
-import { IconBook, IconMic, IconShield } from "@/components/icons";
+import { IconBook, IconMic, IconPlus, IconShare, IconShield } from "@/components/icons";
 import { NamesMarquee } from "@/components/names-marquee";
 import { PollCard } from "@/components/poll-card";
+import { HowSteps } from "@/components/how-steps";
 import { ReadActions } from "@/components/read-actions";
 import { BookMedia, OpenNow, type ShelfOpen } from "@/components/shelf";
 import { ShareLink } from "@/components/share-link";
@@ -126,52 +127,68 @@ export function BookHome({
         <BookMedia slug={slug} media={media} title={title ?? question} question={question} people={voiceCount} countries={countries.length} />
       ) : null}
       {mode === "home" ? <OpenNow books={openNow} heading="More books being written" /> : null}
-      {bookId && poll.length ? <PollCard bookId={bookId} question={pollQuestion} options={poll} yourVote={yourVote} /> : null}
-      <section className="wrap endcards" data-testid="book-foot">
+      {bookId && poll.length ? <PollCard bookId={bookId} question={pollQuestion} options={poll} yourVote={yourVote} open={stage === "after"} /> : null}
+      <section className="wrap endzone" data-testid="book-foot">
         {stage === "after" ? null : (
-          <div className="endcard endcard--cta">
-            <h2>Your voice belongs in this book.</h2>
-            {voiceHref && !paused ? (
-              <Link className="btn btn--red btn--big cta4" href={voiceHref}>
+          <div className="endband">
+            <div className="endband__text">
+              <span className="label red">{paused ? "Paused" : stage === "closed" ? "Closed" : "Open now"}</span>
+              <h2>Your voice belongs in this book.</h2>
+              <p>Speak or write for up to 10 minutes. Your words stay sealed until the book is released.</p>
+            </div>
+            {voiceHref && !paused && stage !== "closed" ? (
+              <Link className="btn btn--red btn--big cta4 endband__btn" href={voiceHref}>
                 <span className="rec" />
                 Add your voice
               </Link>
             ) : (
-              <span className="btn btn--red btn--big cta4 is-closed" aria-disabled="true">
+              <span className="btn btn--red btn--big cta4 endband__btn is-closed" aria-disabled="true">
                 <span className="rec" />
                 {paused ? "Voices are paused right now" : "Voices are closed"}
               </span>
             )}
           </div>
         )}
-        {mode === "book" && slug ? (
+        <div className="endpair">
+          {mode === "book" && slug ? (
+            <div className="endcard">
+              <span className="endcard__ic" aria-hidden="true">
+                <IconShare />
+              </span>
+              <span className="label">Share</span>
+              <b className="endcard__t">Invite your people</b>
+              <p>Every voice makes the book better. Send them the link.</p>
+              <div className="endcard__act">
+                <ShareLink path={`/b/${slug}`} title={title ?? question} />
+              </div>
+            </div>
+          ) : (
+            <div className="endcard">
+              <span className="endcard__ic" aria-hidden="true">
+                <IconPlus />
+              </span>
+              <span className="label">Your own book</span>
+              <b className="endcard__t">Ask your own question</b>
+              <p>Your community answers. AI writes the book. Free.</p>
+              <div className="endcard__act">
+                <Link className="btn btn--light btn--sm" href="/books/new">
+                  Start your own book <span aria-hidden>→</span>
+                </Link>
+              </div>
+            </div>
+          )}
           <div className="endcard">
-            <span className="label">Share</span>
-            <b className="endcard__t">Invite your people</b>
-            <p>Every voice makes the book better. Send them this book&apos;s link.</p>
-            <ShareLink path={`/b/${slug}`} title={title ?? question} />
-          </div>
-        ) : (
-          <div className="endcard">
-            <span className="label">Your own book</span>
-            <b className="endcard__t">Ask your own question</b>
-            <p>Your community answers. AI writes the book. Free.</p>
-            <Link className="btn btn--light btn--sm" href="/books/new">
-              Start your own book
-            </Link>
-          </div>
-        )}
-        <div className="endcard">
-          <span className="label">Explore</span>
-          <b className="endcard__t">More books</b>
-          <p>See what others are writing now, or read the released ones.</p>
-          <div className="endcard__row">
-            <Link className="btn btn--light btn--sm bookfoot__more" href="/books">
-              See other books <span aria-hidden>→</span>
-            </Link>
-            <Link className="btn btn--ghost btn--sm" href="/library">
-              Library
-            </Link>
+            <span className="endcard__ic" aria-hidden="true">
+              <IconBook />
+            </span>
+            <span className="label">Explore</span>
+            <b className="endcard__t">More books</b>
+            <p>See what others are writing now, or read the released ones.</p>
+            <div className="endcard__act">
+              <Link className="btn btn--light btn--sm bookfoot__more" href="/books">
+                See other books <span aria-hidden>→</span>
+              </Link>
+            </div>
           </div>
         </div>
       </section>
@@ -425,30 +442,14 @@ function After({
 }
 
 function How({ releaseLabel }: { releaseLabel: string }) {
-  const steps = [
-    [IconMic, "Speak or write", "Up to 10 minutes, in your own words."],
-    [IconShield, "AI checks", "AI groups similar views together."],
-    [IconBook, "Book drops", `${releaseLabel.split(" · ")[0] || "Oct 26"}. Read, listen, watch.`],
-  ] as const;
+  const day = releaseLabel.split(" · ")[0] || "Soon";
   return (
-    <section className="wrap section how5 rv in" id="how">
-      <h2 className="how5__h">
-        Your voice.
-        <br />
-        <span className="red">A real book.</span>
-      </h2>
-      <ol className="how5__steps">
-        {steps.map(([Icon, title, copy], index) => (
-          <li className="how5__s" style={{ ["--i" as string]: index }} key={title}>
-            <span className="how5__ic">
-              <Icon />
-            </span>
-            <span className="how5__n">0{index + 1}</span>
-            <b className="how5__t">{title}</b>
-            <p>{copy}</p>
-          </li>
-        ))}
-      </ol>
-    </section>
+    <HowSteps
+      steps={[
+        { icon: <IconMic />, title: "Speak or write", copy: "Talk or type, up to 10 minutes, in your own words." },
+        { icon: <IconShield />, title: "AI checks", copy: "Real people, on topic. Same views, one paragraph." },
+        { icon: <IconBook />, title: "Book drops", copy: `${day}. Read, listen, watch.` },
+      ]}
+    />
   );
 }

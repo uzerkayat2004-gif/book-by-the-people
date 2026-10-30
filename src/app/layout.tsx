@@ -20,6 +20,7 @@ import "@/styles/library.css";
 import "@/styles/aisrc.css";
 import "@/styles/multibook.css";
 import "@/styles/v3.css";
+import "@/styles/v4r.css";
 
 export const dynamic = "force-dynamic";
 

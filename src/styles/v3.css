@@ -9,7 +9,7 @@
 .avatar{width:38px;height:38px}
 @media(max-width:560px){
   .top__bar{gap:8px}
-  .logo__word{display:none!important}
+  .top .logo__word{display:none!important}
   .top__right{gap:6px}
   .top__right .signin-link,.top__right .signin-link.toplib{display:inline-flex!important;height:34px;padding:0 12px;font-size:13px}
   .avatar{width:34px;height:34px}
@@ -40,36 +40,6 @@
 .cta6__open{margin:10px 2px 16px!important;font-size:13.5px}
 .cta6__live{margin-top:12px}
 .hero4__globe .gpanel{margin-top:6px!important}
-
-/* ---------- How it works: three aligned cards ---------- */
-.how5{padding-block:clamp(40px,6vw,72px)}
-.how5__h{font-size:clamp(40px,6.4vw,76px)!important;margin-bottom:clamp(26px,3.6vw,44px)!important}
-.how5__line,.how5__s::after{display:none!important}
-.how5__steps{display:grid!important;max-width:none!important;width:100%!important;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px!important;justify-items:stretch!important}
-.how5__s{max-width:none!important;width:auto!important;padding:24px 22px 22px!important;border-radius:20px;background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.015));border:1px solid var(--line);text-align:left!important;justify-items:start!important;align-content:start;grid-template-columns:1fr!important}
-.how5__ic{width:44px!important;height:44px!important;margin:0 0 18px!important;box-shadow:none!important}
-.how5__ic svg{width:20px!important;height:20px!important}
-.how5__n{display:none!important}
-.how5__t{font-size:clamp(26px,2.6vw,34px)!important;margin-top:0!important}
-.how5__s p{font-size:15px!important;color:var(--soft)}
-@media(max-width:760px){.how5__steps{grid-template-columns:1fr}}
-
-/* ---------- End of the book page: three tidy cards ---------- */
-.endcards{display:grid;grid-template-columns:1.35fr 1fr 1fr;gap:14px;margin-block:clamp(24px,4vw,48px) clamp(40px,6vw,72px)}
-.endcard{display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:24px 22px;border-radius:22px;background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.015));border:1px solid var(--line);min-width:0}
-.endcard p{margin:0 0 8px;color:var(--soft);font-size:14.5px;line-height:1.45}
-.endcard__t{font-family:var(--display);font-stretch:64%;font-weight:850;text-transform:uppercase;font-size:28px;line-height:.95}
-.endcard__row{display:flex;flex-wrap:wrap;gap:8px;margin-top:auto}
-.endcard .sharelink{display:flex;flex-wrap:wrap;gap:8px;margin-top:auto}
-.endcard--cta{justify-content:space-between;gap:20px;background:radial-gradient(circle at 90% 10%,rgba(229,56,59,.28),transparent 60%),linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.015));border-color:rgba(229,56,59,.28)}
-.endcard--cta h2{font-size:clamp(30px,3.4vw,44px);max-width:13ch}
-.endcard--cta .btn{min-height:54px}
-.btn--light,.endcard .sharelink__copy{background:var(--text)!important;color:var(--bg)!important;border-color:transparent!important;box-shadow:none!important}
-.btn--light:hover,.endcard .sharelink__copy:hover{background:#fff!important}
-.endcards .btn--sm{min-height:40px}
-@media(max-width:980px){.endcards{grid-template-columns:1fr 1fr}.endcard--cta{grid-column:1/-1}}
-@media(max-width:640px){.endcards{grid-template-columns:1fr}}
-.bookfoot{display:none}
 
 /* ---------- Voice page: words only ---------- */
 .vf{padding:18px 0 56px;min-height:0}

@@ -9,44 +9,96 @@ export function PollCard({
   question,
   options,
   yourVote,
+  open = true,
 }: {
   bookId: string;
   question: string;
   options: Option[];
   yourVote: string | null;
+  /** Votes open once the book is released; before that the poll is shown read-only. */
+  open?: boolean;
 }) {
   const [vote, setVote] = useState(yourVote);
   const [counts, setCounts] = useState(options);
-  const total = counts.reduce((sum, option) => sum + option.votes, 0) || 1;
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const total = counts.reduce((sum, option) => sum + option.votes, 0);
+  const top = Math.max(0, ...counts.map((option) => option.votes));
+
   async function choose(id: string) {
-    if (vote) return;
-    const response = await fetch(`/api/books/${bookId}/poll`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ optionId: id }),
-    });
-    if (!response.ok) return;
-    setVote(id);
-    setCounts((current) => current.map((option) => (option.id === id ? { ...option, votes: option.votes + 1 } : option)));
+    if (vote || busy || !open) return;
+    setBusy(id);
+    setError(null);
+    try {
+      const response = await fetch(`/api/books/${bookId}/poll`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ optionId: id }),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        setError(body.error ?? "That vote didn't go through. Try again.");
+        return;
+      }
+      setVote(id);
+      setCounts((current) => current.map((option) => (option.id === id ? { ...option, votes: option.votes + 1 } : option)));
+    } finally {
+      setBusy(null);
+    }
   }
+
   return (
-    <section className="wrap section rv in">
-      <div className="card poll" id="poll">
-        <span className="label red">Next book</span>
-        <div className="section__head">
-          <h2>Vote for the next book</h2>
-        </div>
-        {counts.map((option) => (
-          <div key={option.id}>
-            <button className={`poll__opt${vote === option.id ? " mine" : ""}`} type="button" disabled={Boolean(vote)} onClick={() => void choose(option.id)}>
-              <span>{option.label}</span>
-            </button>
-            <span className="poll__meta">
-              {option.votes} {option.votes === 1 ? "vote" : "votes"}
-            </span>
+    <section className="wrap section">
+      <div className="vote" id="poll" data-testid="poll">
+        <header className="vote__head">
+          <div>
+            <span className="label red">Next book</span>
+            <h2>Vote for the next book</h2>
+            {question ? <p className="vote__q">{question}</p> : null}
           </div>
-        ))}
-        <p className="sr">{question || "Next book"} {total}</p>
+          <span className="vote__total" data-testid="poll-total">
+            <b>{total}</b> {total === 1 ? "vote" : "votes"}
+          </span>
+        </header>
+        <ul className="vote__list">
+          {counts.map((option) => {
+            const share = total ? Math.round((option.votes / total) * 100) : 0;
+            const mine = vote === option.id;
+            const leading = total > 0 && option.votes === top;
+            return (
+              <li key={option.id}>
+                <button
+                  className={`vote__row${mine ? " mine" : ""}${vote || !open ? " done" : ""}${leading ? " lead" : ""}`}
+                  type="button"
+                  disabled={Boolean(vote) || Boolean(busy) || !open}
+                  aria-pressed={mine}
+                  onClick={() => void choose(option.id)}
+                  data-testid="poll-option"
+                >
+                  <span className="vote__bar" style={{ width: `${share}%` }} aria-hidden="true" />
+                  <span className="vote__label">{option.label}</span>
+                  <span className="vote__side">
+                    <span className="vote__count">
+                      <b>{option.votes}</b> {option.votes === 1 ? "vote" : "votes"}
+                      {total ? <em> · {share}%</em> : null}
+                    </span>
+                    {mine ? (
+                      <span className="vote__chip vote__chip--mine">✓ Your vote</span>
+                    ) : vote || !open ? null : (
+                      <span className="vote__chip">{busy === option.id ? "…" : "Vote"}</span>
+                    )}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        <p className="vote__foot">{error ??
+            (vote
+              ? "Thanks. Your vote is in."
+              : open
+                ? "One vote per person. The top question becomes the next book."
+                : "Voting opens when this book is released. The top question becomes the next book.")}</p>
       </div>
     </section>
   );

@@ -162,38 +162,47 @@ export function SiteFooter({ question, voiceHref }: { question: string | null; v
   const [sheet, setSheet] = useState<null | "about" | "privacy" | "trust">(null);
   return (
     <>
-      <footer className="foot4">
+      <footer className="foot7" data-testid="site-footer">
         <div className="wrap">
-          <div className="foot4__top">
-            <Link className="logo" href="/">
-              <span className="logo__word">Book by the People</span>
-            </Link>
-            <nav className="foot4__links" aria-label="Footer">
-              <div>
-                <Link href="/speak">Add your voice</Link>
-                <Link href="/library">Library</Link>
+          <div className="foot7__top">
+            <div className="foot7__brand">
+              <Link className="logo foot7__logo" href="/" aria-label="Book by the People home">
+                <LogoMark />
+                <span className="logo__word">Book by the People</span>
+              </Link>
+              <p className="foot7__tag">Real voices, written into a real book by AI.</p>
+            </div>
+            <nav className="foot7__cols" aria-label="Footer">
+              <div className="foot7__col">
+                <span className="foot7__h">Take part</span>
+                <Link href={voiceHref || "/speak"}>Add your voice</Link>
                 <Link href="/books">Books</Link>
               </div>
-              <div>
+              <div className="foot7__col">
+                <span className="foot7__h">Read</span>
+                <Link href="/library">Library</Link>
+                <Link href="/me">My page</Link>
+              </div>
+              <div className="foot7__col">
+                <span className="foot7__h">Trust</span>
                 <button type="button" onClick={() => setSheet("about")}>
                   About
+                </button>
+                <button type="button" onClick={() => setSheet("trust")}>
+                  How AI checks
                 </button>
                 <button type="button" onClick={() => setSheet("privacy")}>
                   Privacy
                 </button>
               </div>
-              <div>
-                <button type="button" onClick={() => setSheet("trust")}>
-                  How AI checks
-                </button>
-              </div>
             </nav>
           </div>
-          <div className="foot4__bot">
-            <span>© 2026</span>
-            <span className="age18">18+</span>
-            <Link className="foot4__new" href="/books/new">
-              Start your own book
+          <div className="foot7__bot">
+            <span className="foot7__copy">
+              © 2026 Book by the People <span className="age18">18+</span>
+            </span>
+            <Link className="foot7__new" href="/books/new">
+              Start your own book <span aria-hidden>→</span>
             </Link>
           </div>
         </div>
