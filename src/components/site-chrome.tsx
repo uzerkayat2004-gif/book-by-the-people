@@ -230,7 +230,7 @@ export function SiteFooter({ question, voiceHref }: { question: string | null; v
             </li>
             <li>
               <IconCheck />
-              <span>Only your words are kept, never your audio. The AI that sorts them isn&apos;t trained on them.</span>
+              <span>Only your words are kept. Your audio goes to the book creator&apos;s chosen AI only to turn it into words, and is never stored by us. The AI that sorts them isn&apos;t trained on them.</span>
             </li>
             <li>
               <IconCheck />
@@ -269,7 +269,7 @@ export function SiteFooter({ question, voiceHref }: { question: string | null; v
             <li>
               <IconCheck />
               <span>
-                <b>Every quote is exact.</b> Word-for-word what you sent. We never keep your audio.
+                <b>Every quote is exact.</b> Word-for-word what you sent. Audio is sent to the book creator&apos;s chosen AI only to turn it into text, and is not stored by us.
               </span>
             </li>
           </ul>

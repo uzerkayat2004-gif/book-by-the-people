@@ -4,6 +4,7 @@ import { SignInForm } from "@/components/sign-in-form";
 import { VoiceForm } from "@/components/voice-form";
 import { getCurrentUser } from "@/lib/auth";
 import { canAcceptVoice } from "@/lib/book/lifecycle";
+import { speechAvailable } from "@/lib/ai/speech";
 import { getConfig } from "@/lib/config";
 import { loadBookBySlug, pausedNow } from "@/lib/load-book";
 import { voicesLeftToday } from "@/lib/services/pipeline";
@@ -14,7 +15,7 @@ export default async function VoicePage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ invite?: string; step?: string; guest?: string }>;
+  searchParams: Promise<{ invite?: string; step?: string; guest?: string; speech?: string }>;
 }) {
   const { slug } = await params;
   const query = await searchParams;
@@ -50,6 +51,7 @@ export default async function VoicePage({
       leftToday={await voicesLeftToday(loaded.id, user?.id ?? null)}
       defaultLanguage={loaded.language}
       maxSeconds={loaded.maxVoiceSeconds}
+      cloudSpeech={(cfg.aiMode === "mock" && query.speech === "cloud") || (await speechAvailable(loaded.id))}
     />
   );
 

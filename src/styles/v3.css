@@ -66,6 +66,24 @@
 .vf__micinfo{display:flex;flex-direction:column;gap:4px;min-width:0}
 .vf__micinfo b{font-size:16px;font-weight:650}
 .vf__micinfo span{font-size:13.5px;color:var(--muted);line-height:1.4;font-variant-numeric:tabular-nums}
+.vf__rec{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;margin:16px 0 12px;padding:22px 16px 18px;border-radius:18px;background:rgba(229,56,59,.07);border:1px solid rgba(229,56,59,.22)}
+.vf__recbtn{width:88px;height:88px;border-radius:50%;display:grid;place-items:center;background:var(--grad-btn);color:#fff;box-shadow:0 14px 34px -12px rgba(229,56,59,.95);transition:transform .3s var(--ease-spring);touch-action:manipulation}
+.vf__recbtn svg{width:34px;height:34px}
+.vf__recbtn:active{transform:scale(.94)}
+.vf__recbtn:disabled{opacity:.6}
+.vf__rec.on .vf__recbtn{animation:vfPulse 1.6s ease-out infinite}
+.vf__reclabel{font-size:17px;font-weight:650;margin-top:2px}
+.vf__rechelp{font-size:13.5px;color:var(--muted);line-height:1.4;max-width:30ch}
+.vf__recrow{display:flex;align-items:center;justify-content:center;gap:14px;font-size:13.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.vf__clock em{font-style:normal;opacity:.8}
+.vf__level{display:inline-flex;align-items:flex-end;gap:3px;height:16px}
+.vf__level i{width:4px;border-radius:2px;background:rgba(229,56,59,.25);transition:background .12s}
+.vf__level i:nth-child(1){height:5px}.vf__level i:nth-child(2){height:8px}.vf__level i:nth-child(3){height:11px}.vf__level i:nth-child(4){height:14px}.vf__level i:nth-child(5){height:16px}
+.vf__level i.on{background:var(--red)}
+.vf__proc{display:inline-flex;align-items:center;gap:8px;font-size:13.5px;color:var(--text,inherit);font-weight:550}
+.vf__spin{width:14px;height:14px;border-radius:50%;border:2px solid rgba(229,56,59,.25);border-top-color:var(--red);animation:vfSpin .8s linear infinite}
+@keyframes vfSpin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.vf__rec.on .vf__recbtn,.vf__spin{animation:none}}
 .vf__live{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--red);margin-right:4px;animation:vfBlink 1s steps(2) infinite}
 @keyframes vfBlink{50%{opacity:.25}}
 .vf__hint,.vf__warn{margin:14px 2px 12px;font-size:14px;color:var(--soft);line-height:1.45}

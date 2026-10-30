@@ -20,8 +20,9 @@ export default function PrivacyPage() {
           <li>
             <IconCheck />
             <span>
-              We never keep your audio. When you speak, your browser&apos;s own speech-to-text turns it into words on
-              your screen, and only those words are sent to us. You can edit them before you send.
+              We never store your audio. When you speak, short pieces of it are sent to the AI provider the book&apos;s
+              creator chose, only to turn them into words on your screen, then thrown away. (If the book has no speech
+              model, your browser&apos;s own speech-to-text is used instead.) You can edit the words before you send.
             </span>
           </li>
           <li>

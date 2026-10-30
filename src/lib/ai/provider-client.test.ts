@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chatJson, firstThatWorks, testTarget, type CallTarget } from "./provider-client";
+import { chatJson, firstThatWorks, testTarget, transcribeWav, type CallTarget } from "./provider-client";
 
 type Call = { url: string; body: Record<string, unknown>; headers: Record<string, string> };
 
@@ -19,6 +19,25 @@ const target = (type: CallTarget["type"], baseUrl = "https://api.example.dev/v1"
 const input = { system: "s", user: "u", schemaName: "ping", schema: { type: "object" } };
 
 describe("provider client", () => {
+  it("sends a Gemini clip as input_audio with a verbatim prompt, and retries without reasoning_effort", async () => {
+    const { fetcher, calls } = fakeFetch([
+      () => ({ status: 400, json: { error: { message: "reasoning_effort not supported" } } }),
+      () => ({ status: 200, json: { choices: [{ message: { content: " Namaste, my first job. " } }] } }),
+    ]);
+    const wav = Buffer.alloc(44 + 32000);
+    const out = await transcribeWav(target("gemini"), { wav, languageName: "Hindi", languageCode: "hi", keywords: [] }, fetcher);
+    expect(out.transcript).toBe("Namaste, my first job.");
+    expect(out.audioDurationMs).toBe(1000);
+    expect(calls[0].url).toBe("https://api.example.dev/v1/chat/completions");
+    expect(calls[0].body.reasoning_effort).toBe("low");
+    expect(calls[1].body.reasoning_effort).toBeUndefined();
+    const content = (calls[1].body.messages as { content: { type: string; text?: string; input_audio?: { format: string; data: string } }[] }[])[0].content;
+    expect(content[0].text).toMatch(/verbatim/);
+    expect(content[0].text).toMatch(/Hindi/);
+    expect(content[1].input_audio?.format).toBe("wav");
+    expect(content[1].input_audio?.data).toBe(wav.toString("base64"));
+  });
+
   it("falls back from json_schema to json_object to plain on 400", async () => {
     const { fetcher, calls } = fakeFetch([() => ({ status: 400, json: { error: { message: "response_format json_schema unsupported" } } }), () => ({ status: 400, json: { error: { message: "no" } } }), () => ok]);
     const out = await chatJson(target("groq"), input, fetcher);

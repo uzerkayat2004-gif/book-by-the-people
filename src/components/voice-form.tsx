@@ -6,6 +6,11 @@ import { COUNTRIES, flagEmoji } from "@/lib/countries";
 import { LANGUAGES } from "@/lib/languages";
 import { SPEAK_LANGUAGES } from "@/lib/speak-languages";
 import { AGE_BANDS, regionsFor } from "@/lib/regions";
+import { ClipQueue, cleanClipText, dropOverlap, joinPhrase } from "@/lib/speech/assemble";
+import type { Clip } from "@/lib/speech/chunker";
+import { canRecord, startRecorder, type LiveRecorder } from "@/lib/speech/recorder";
+import { encodeWav, toInt16 } from "@/lib/speech/wav";
+import { isAndroid, sessionText } from "@/lib/speech/web-speech";
 
 /** Browser speech-to-text language for each language on the page. */
 const SPEECH_LANG: Record<string, string> = {
@@ -35,16 +40,6 @@ function speechCtor(): SpeechCtor | null {
   if (typeof window === "undefined") return null;
   const w = window as unknown as { SpeechRecognition?: SpeechCtor; webkitSpeechRecognition?: SpeechCtor };
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
-}
-
-/** Joins a new phrase onto the text with one space and a capital at sentence starts. */
-function joinPhrase(text: string, phrase: string) {
-  const clean = phrase.replace(/\s+/g, " ").trim();
-  if (!clean) return text;
-  const base = text.replace(/\s+$/, "");
-  if (!base) return clean.charAt(0).toUpperCase() + clean.slice(1);
-  const capital = /[.!?]$/.test(base) ? clean.charAt(0).toUpperCase() + clean.slice(1) : clean;
-  return `${base} ${capital}`;
 }
 
 const BLOCKED_INPUT = new Set(["insertFromPaste", "insertFromPasteAsQuotation", "insertFromDrop", "insertFromYank", "insertLink"]);
@@ -87,6 +82,7 @@ export function VoiceForm({
   leftToday = 3,
   defaultLanguage = "en",
   maxSeconds = 600,
+  cloudSpeech = false,
 }: {
   bookId: string;
   slug: string;
@@ -103,17 +99,24 @@ export function VoiceForm({
   leftToday?: number;
   defaultLanguage?: string;
   maxSeconds?: number;
+  /** The book creator has a speech model, so clips are turned into words by it instead of the browser. */
+  cloudSpeech?: boolean;
 }) {
   const maxLong = maxSeconds % 60 === 0 ? `${maxSeconds / 60} min` : `${maxSeconds} sec`;
   // About 150 spoken words a minute, ~6 characters each, so the text limit matches the time limit.
   const maxChars = Math.min(9000, Math.max(600, Math.round((maxSeconds / 60) * 150 * 6)));
   const router = useRouter();
   const [mode, setMode] = useState<"speak" | "write">("speak");
+  /** "cloud" = the book creator's speech model hears short clips; "browser" = the browser's own speech-to-text. */
+  const [engine, setEngine] = useState<"cloud" | "browser" | null>(null);
   const [supported, setSupported] = useState<boolean | null>(null);
   const [language, setLanguage] = useState(defaultLanguage);
   const [text, setText] = useState("");
   const [interim, setInterim] = useState("");
   const [listening, setListening] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [pending, setPending] = useState(0);
+  const [level, setLevel] = useState(0);
   const [seconds, setSeconds] = useState(0);
   const [note, setNote] = useState<string | null>(null);
   const [name, setName] = useState(presetName);
@@ -126,12 +129,7 @@ export function VoiceForm({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const recRef = useRef<SpeechRec | null>(null);
-  const wantRef = useRef(false);
   const textRef = useRef("");
-  const absorbedRef = useRef(new Set<number>());
-  const pendingIdxRef = useRef<number[]>([]);
-  const interimRef = useRef("");
   const listenStartRef = useRef(0);
   const listenedMsRef = useRef(0);
   const typedMsRef = useRef(0);
@@ -140,6 +138,22 @@ export function VoiceForm({
   const spokenRef = useRef(0);
   const composingRef = useRef(false);
   const noteTimer = useRef<number | null>(null);
+  // Cloud speech
+  const recorderRef = useRef<LiveRecorder | null>(null);
+  const queueRef = useRef(new ClipQueue());
+  const seqRef = useRef(0);
+  const pendingRef = useRef(0);
+  const levelRef = useRef(0);
+  const sessionRef = useRef("");
+  const failNoteRef = useRef(false);
+  // Browser speech
+  const recRef = useRef<SpeechRec | null>(null);
+  const wantRef = useRef(false);
+  const baseRef = useRef("");
+  const usedWordsRef = useRef(0);
+  const shownWordsRef = useRef(0);
+  const interimRef = useRef("");
+  const restartsRef = useRef<number[]>([]);
 
   useEffect(() => {
     textRef.current = text;
@@ -147,27 +161,156 @@ export function VoiceForm({
 
   useEffect(() => {
     // Feature detection has to wait for the browser; this runs once after hydration.
-    const ok = Boolean(speechCtor());
+    const next = cloudSpeech && canRecord() ? "cloud" : speechCtor() ? "browser" : null;
     queueMicrotask(() => {
-      setSupported(ok);
-      if (!ok) setMode("write");
+      setEngine(next);
+      setSupported(Boolean(next));
+      if (!next) setMode("write");
     });
-  }, []);
+  }, [cloudSpeech]);
 
-  const flash = useCallback((message: string) => {
+  const flash = useCallback((message: string, ms = 4000) => {
     setNote(message);
     if (noteTimer.current) window.clearTimeout(noteTimer.current);
-    noteTimer.current = window.setTimeout(() => setNote(null), 4000);
+    noteTimer.current = window.setTimeout(() => setNote(null), ms);
   }, []);
 
-  const stopListening = useCallback(() => {
-    wantRef.current = false;
-    const rec = recRef.current;
-    recRef.current = null;
+  const putText = useCallback(
+    (next: string) => {
+      const clipped = next.length > maxChars ? next.slice(0, maxChars) : next;
+      textRef.current = clipped;
+      setText(clipped);
+    },
+    [maxChars],
+  );
+
+  /** Adds heard words at the end, after anything the person typed or fixed. */
+  const addSpoken = useCallback(
+    (phrase: string) => {
+      const fresh = dropOverlap(textRef.current, phrase);
+      if (!fresh) return;
+      spokenRef.current += fresh.length;
+      putText(joinPhrase(textRef.current, fresh));
+    },
+    [putText],
+  );
+
+  const endTimer = () => {
     if (listenStartRef.current) {
       listenedMsRef.current += Date.now() - listenStartRef.current;
       listenStartRef.current = 0;
     }
+  };
+
+  // ---------- Cloud: record clips, send each to the creator's speech model, add words in order ----------
+  const settle = useCallback(
+    (seq: number, words: string) => {
+      for (const phrase of queueRef.current.settle(seq, words)) addSpoken(phrase);
+    },
+    [addSpoken],
+  );
+
+  const sendClip = useCallback(
+    async (clip: Clip) => {
+      seqRef.current += 1;
+      const seq = seqRef.current;
+      pendingRef.current += 1;
+      setPending(pendingRef.current);
+      const wav = encodeWav(toInt16(clip.samples));
+      const params = new URLSearchParams({ lang: language, session: sessionRef.current });
+      if (invite) params.set("invite", invite);
+      let words = "";
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const response = await fetch(`/api/books/${bookId}/transcribe?${params}`, {
+          method: "POST",
+          headers: { "Content-Type": "audio/wav" },
+          body: new Blob([wav as BlobPart], { type: "audio/wav" }),
+        }).catch(() => null);
+        const data = response ? await response.json().catch(() => ({})) : {};
+        if (response?.ok) {
+          words = cleanClipText(String(data.text ?? ""), clip.voicedMs);
+          break;
+        }
+        if (response && (data.code === "no-speech" || response.status === 403 || response.status === 409)) {
+          // The book has no speech model (or it is paused): use the browser's own speech-to-text from now on.
+          void recorderRef.current?.stop();
+          recorderRef.current = null;
+          endTimer();
+          setListening(false);
+          if (speechCtor()) {
+            setEngine("browser");
+            flash("Switched to your browser's speech-to-text. Tap to speak again.", 6000);
+          } else {
+            setSupported(false);
+            setMode("write");
+          }
+          break;
+        }
+        if (response && (response.status === 429 || response.status === 413)) {
+          setError(data.error ?? "That's the speaking limit. Edit your words, then add them.");
+          break;
+        }
+        if (attempt === 1 && !failNoteRef.current) {
+          failNoteRef.current = true;
+          flash("One part could not be turned into words. Keep going, or type it in.", 6000);
+        }
+      }
+      settle(seq, words);
+      pendingRef.current -= 1;
+      setPending(pendingRef.current);
+    },
+    [bookId, flash, invite, language, settle],
+  );
+
+  const stopCloud = useCallback(async () => {
+    const recorder = recorderRef.current;
+    recorderRef.current = null;
+    endTimer();
+    setListening(false);
+    setLevel(0);
+    if (recorder) await recorder.stop();
+  }, []);
+
+  const startCloud = useCallback(async () => {
+    if (!sessionRef.current) sessionRef.current = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
+    failNoteRef.current = false;
+    setStarting(true);
+    try {
+      recorderRef.current = await startRecorder({
+        onClip: (clip) => void sendClip(clip),
+        onLevel: (value) => {
+          levelRef.current = value;
+        },
+      });
+      listenStartRef.current = Date.now();
+      setListening(true);
+    } catch (problem) {
+      const name = problem instanceof DOMException ? problem.name : "";
+      setError(
+        name === "NotAllowedError" || name === "SecurityError"
+          ? "The microphone is blocked. Allow it in your browser, or switch to Write."
+          : name === "NotFoundError"
+            ? "No microphone found. Plug one in, or switch to Write."
+            : "The microphone could not start. Try again, or switch to Write.",
+      );
+    } finally {
+      setStarting(false);
+    }
+  }, [sendClip]);
+
+  // ---------- Browser: the browser's own speech-to-text, rebuilt per session so nothing repeats ----------
+  const commitBrowser = useCallback(() => {
+    const pendingWords = interimRef.current;
+    if (pendingWords) addSpoken(pendingWords);
+    interimRef.current = "";
+    setInterim("");
+  }, [addSpoken]);
+
+  const stopBrowser = useCallback(() => {
+    wantRef.current = false;
+    const rec = recRef.current;
+    recRef.current = null;
+    endTimer();
     if (rec) {
       // Late results after Stop would repeat words already shown, so stop listening to them.
       rec.onresult = null;
@@ -178,48 +321,37 @@ export function VoiceForm({
         // already stopped
       }
     }
-    const pending = interimRef.current;
-    if (pending) {
-      const next = joinPhrase(textRef.current, pending);
-      spokenRef.current += pending.length;
-      textRef.current = next;
-      setText(next);
-    }
-    interimRef.current = "";
-    setInterim("");
+    commitBrowser();
     setListening(false);
-  }, []);
+  }, [commitBrowser]);
 
-  const restartRef = useRef<() => void>(() => {});
+  const startSessionRef = useRef<() => void>(() => {});
   const startSession = useCallback(() => {
     const Ctor = speechCtor();
     if (!Ctor) return;
+    const android = isAndroid(navigator.userAgent);
     const rec = new Ctor();
-    rec.continuous = true;
+    // Android Chrome beeps and repeats itself in continuous mode, so it hears one stretch at a time.
+    rec.continuous = !android;
     rec.interimResults = true;
     rec.lang = SPEECH_LANG[language] ?? language;
-    absorbedRef.current = new Set();
+    baseRef.current = textRef.current;
+    usedWordsRef.current = 0;
+    shownWordsRef.current = 0;
     rec.onresult = (event) => {
-      let pending = "";
-      const pendingIdx: number[] = [];
-      for (let index = event.resultIndex; index < event.results.length; index += 1) {
-        const result = event.results[index];
-        const phrase = result[0]?.transcript ?? "";
-        if (result.isFinal) {
-          if (absorbedRef.current.has(index)) continue;
-          absorbedRef.current.add(index);
-          const next = joinPhrase(textRef.current, phrase);
-          spokenRef.current += phrase.trim().length;
-          textRef.current = next;
-          setText(next);
-        } else if (!absorbedRef.current.has(index)) {
-          pending += phrase;
-          pendingIdx.push(index);
-        }
+      const heard = sessionText(event.results);
+      const finalWords = heard.final.split(/\s+/).filter(Boolean);
+      const freshWords = finalWords.slice(usedWordsRef.current);
+      shownWordsRef.current = freshWords.length;
+      const fresh = freshWords.join(" ");
+      // Replace this session's words instead of appending, so cumulative results never repeat.
+      const next = joinPhrase(baseRef.current, fresh);
+      if (next !== textRef.current) {
+        spokenRef.current = Math.max(spokenRef.current, next.length - baseRef.current.length);
+        putText(next);
       }
-      pendingIdxRef.current = pendingIdx;
-      interimRef.current = pending.trim();
-      setInterim(pending.trim());
+      interimRef.current = heard.interim;
+      setInterim(heard.interim);
     };
     rec.onerror = (event) => {
       if (event?.error === "not-allowed" || event?.error === "service-not-allowed") {
@@ -231,37 +363,38 @@ export function VoiceForm({
       }
     };
     rec.onend = () => {
-      // Browsers end a session after a pause. Keep listening until the person taps Stop.
-      if (wantRef.current && recRef.current === rec) {
-        try {
-          restartRef.current();
-          return;
-        } catch {
-          // fall through and stop
-        }
+      if (recRef.current !== rec) return;
+      commitBrowser();
+      const now = Date.now();
+      restartsRef.current = [...restartsRef.current.filter((at) => now - at < 10_000), now];
+      // Desktop browsers end a session after a pause: start a fresh one quietly. Android does not restart (it beeps).
+      if (wantRef.current && !android && restartsRef.current.length < 6) {
+        window.setTimeout(() => {
+          if (wantRef.current && recRef.current === rec) {
+            try {
+              startSessionRef.current();
+              return;
+            } catch {
+              // fall through
+            }
+          }
+        }, 150);
+        return;
       }
-      if (recRef.current === rec) stopListening();
+      stopBrowser();
+      if (android && textRef.current) flash("Paused. Tap to speak to keep going.");
     };
     recRef.current = rec;
     rec.start();
-  }, [language, stopListening]);
+  }, [commitBrowser, flash, language, putText, stopBrowser]);
 
   useEffect(() => {
-    restartRef.current = startSession;
+    startSessionRef.current = startSession;
   }, [startSession]);
 
-  const startListening = useCallback(() => {
-    setError(null);
-    if (!speechCtor()) {
-      setSupported(false);
-      setMode("write");
-      return;
-    }
-    if (listenedMsRef.current / 1000 >= maxSeconds) {
-      setError(`That's the ${maxLong} limit. Edit your words, then add them.`);
-      return;
-    }
+  const startBrowser = useCallback(() => {
     wantRef.current = true;
+    restartsRef.current = [];
     try {
       startSession();
       listenStartRef.current = Date.now();
@@ -270,26 +403,52 @@ export function VoiceForm({
       wantRef.current = false;
       setError("Speech-to-text could not start. Try again, or switch to Write.");
     }
-  }, [maxLong, maxSeconds, startSession]);
+  }, [startSession]);
+
+  // ---------- Shared controls ----------
+  const stopListening = useCallback(() => {
+    if (recorderRef.current) void stopCloud();
+    else stopBrowser();
+  }, [stopBrowser, stopCloud]);
+
+  const startListening = useCallback(() => {
+    setError(null);
+    if (!engine) {
+      setSupported(false);
+      setMode("write");
+      return;
+    }
+    if (listenedMsRef.current / 1000 >= maxSeconds) {
+      setError(`That's the ${maxLong} limit. Edit your words, then add them.`);
+      return;
+    }
+    if (engine === "cloud") void startCloud();
+    else startBrowser();
+  }, [engine, maxLong, maxSeconds, startBrowser, startCloud]);
 
   useEffect(() => {
     if (!listening) return;
     const timer = window.setInterval(() => {
       const total = (listenedMsRef.current + (listenStartRef.current ? Date.now() - listenStartRef.current : 0)) / 1000;
       setSeconds(total);
+      setLevel(levelRef.current);
       if (total >= maxSeconds) stopListening();
-    }, 250);
+    }, 100);
     return () => window.clearInterval(timer);
   }, [listening, maxSeconds, stopListening]);
 
-  useEffect(() => () => {
-    wantRef.current = false;
-    try {
-      recRef.current?.abort?.();
-    } catch {
-      // ignore
-    }
-  }, []);
+  useEffect(
+    () => () => {
+      wantRef.current = false;
+      void recorderRef.current?.stop();
+      try {
+        recRef.current?.abort?.();
+      } catch {
+        // ignore
+      }
+    },
+    [],
+  );
 
   // ---- The words box: typing is fine, pasting and dropping are not. ----
   const blockPaste = (event: React.SyntheticEvent) => {
@@ -333,10 +492,12 @@ export function VoiceForm({
       return;
     }
     if (next.length > maxChars) next = next.slice(0, maxChars);
-    if (interim) {
-      // The person edited while a phrase was still being heard: keep what they see, drop the duplicate final.
-      for (const index of pendingIdxRef.current) absorbedRef.current.add(index);
-      pendingIdxRef.current = [];
+    if (recRef.current) {
+      // The person edited while the browser was still hearing: keep what they see as the new base,
+      // and skip the words of this session that are already in it.
+      baseRef.current = next;
+      usedWordsRef.current += shownWordsRef.current;
+      shownWordsRef.current = 0;
       interimRef.current = "";
       setInterim("");
     }
@@ -350,7 +511,10 @@ export function VoiceForm({
 
   async function submit() {
     if (closed || busy) return;
-    if (listening) stopListening();
+    if (recorderRef.current) await stopCloud();
+    else if (listening) stopListening();
+    // Wait for the last clips to come back as words.
+    for (let waited = 0; pendingRef.current > 0 && waited < 30_000; waited += 200) await new Promise((done) => setTimeout(done, 200));
     const finalText = (textRef.current || text).trim();
     if (finalText.length < 12) {
       setError("Add a few more words first.");
@@ -473,28 +637,39 @@ export function VoiceForm({
             </p>
           ) : mode === "speak" ? (
             (
-              <div className={`vf__mic${listening ? " on" : ""}`}>
+              <div className={`vf__rec${listening ? " on" : ""}`} data-testid="speech-status" data-state={listening ? "recording" : pending > 0 ? "processing" : "idle"}>
                 <button
                   type="button"
-                  className="vf__micbtn"
+                  className="vf__recbtn"
                   data-testid={listening ? "stop-speaking" : "start-speaking"}
                   onClick={() => (listening ? stopListening() : startListening())}
-                  aria-label={listening ? "Stop" : "Start speaking"}
+                  disabled={starting}
+                  aria-label={listening ? "Stop" : "Tap to speak"}
                 >
                   {listening ? <IconStop /> : <IconMicBig />}
                 </button>
-                <div className="vf__micinfo">
-                  <b>{listening ? "Listening… your words appear below" : text ? "Tap to keep talking" : "Tap and start talking"}</b>
-                  <span>
-                    {listening ? (
-                      <>
-                        <i className="vf__live" /> {clock(seconds)} · {clock(remaining)} left
-                      </>
-                    ) : (
-                      `No keyword needed. Up to ${maxLong}. Only the words are kept, never your audio.`
-                    )}
+                <b className="vf__reclabel">{listening ? "Stop" : starting ? "Starting…" : text ? "Tap to keep speaking" : "Tap to speak"}</b>
+                {listening ? (
+                  <div className="vf__recrow">
+                    <span className="vf__clock">
+                      <i className="vf__live" /> {clock(seconds)} <em>· {clock(remaining)} left</em>
+                    </span>
+                    {engine === "cloud" ? (
+                      <span className="vf__level" data-testid="level" aria-hidden="true">
+                        {[0.15, 0.3, 0.5, 0.7, 0.9].map((step, index) => (
+                          <i key={index} className={Math.min(1, level * 9) >= step ? "on" : ""} />
+                        ))}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : (
+                  <span className="vf__rechelp">Your words will appear here. We never keep your audio.</span>
+                )}
+                {pending > 0 ? (
+                  <span className="vf__proc" role="status" data-testid="speech-processing">
+                    <i className="vf__spin" aria-hidden="true" /> Turning speech into words…
                   </span>
-                </div>
+                ) : null}
               </div>
             )
           ) : (
@@ -507,7 +682,7 @@ export function VoiceForm({
               data-testid="words"
               aria-label="Your words"
               value={shown}
-              placeholder={mode === "speak" ? "Your words will appear here as you speak. You can fix any word." : "Start typing your answer…"}
+              placeholder={mode === "speak" ? (listening ? "Keep talking. Words appear after each pause." : "Your words will appear here. You can fix any word.") : "Start typing your answer…"}
               rows={7}
               spellCheck
               onChange={onChange}

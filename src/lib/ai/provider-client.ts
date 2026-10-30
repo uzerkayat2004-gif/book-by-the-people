@@ -232,6 +232,7 @@ export async function transcribeWav(
       model,
     };
   }
+  if (target.type === "gemini") return transcribeByChat(target, model, input, signal, fetcher);
   const form = new FormData();
   form.append("file", new Blob([new Uint8Array(input.wav)], { type: "audio/wav" }), "voice.wav");
   form.append("model", model);
@@ -254,6 +255,43 @@ export async function transcribeWav(
     })),
     model,
   };
+}
+
+/** Gemini: the clip goes into a chat message as input_audio with a verbatim-transcription instruction. */
+async function transcribeByChat(
+  target: CallTarget,
+  model: string,
+  input: { wav: Buffer; languageName: string },
+  signal: AbortSignal,
+  fetcher: Fetch,
+): Promise<HeardOut> {
+  const language = input.languageName ? ` The speaker talks in ${input.languageName}; write it in that language's usual script.` : "";
+  const prompt =
+    `Transcribe this audio verbatim.${language} Output only the spoken words, with normal punctuation. ` +
+    "No notes, labels, timestamps, quotes or translation. If nobody speaks, output nothing.";
+  const body = (effort: boolean) =>
+    JSON.stringify({
+      model,
+      temperature: 0,
+      ...(effort ? { reasoning_effort: "low" } : {}),
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: prompt },
+            { type: "input_audio", input_audio: { data: input.wav.toString("base64"), format: "wav" } },
+          ],
+        },
+      ],
+    });
+  let response = await fetcher(`${target.baseUrl}/chat/completions`, { method: "POST", signal, headers: openAiHeaders(target), body: body(true) });
+  // Some Gemini models reject reasoning_effort; try once more without it.
+  if (response.status === 400) response = await fetcher(`${target.baseUrl}/chat/completions`, { method: "POST", signal, headers: openAiHeaders(target), body: body(false) });
+  if (!response.ok) throw new ProviderError(target.label, response.status, await readError(response));
+  const data = (await response.json()) as { choices?: { message?: { content?: string | null } }[] };
+  const transcript = (data.choices?.[0]?.message?.content ?? "").trim();
+  const ms = Math.round(((input.wav.length - 44) / 2 / 16000) * 1000);
+  return { transcript, audioDurationMs: Math.max(0, ms), turns: [], model };
 }
 
 /** Tries each provider in order and returns the first success. Errors from all of them are joined. */

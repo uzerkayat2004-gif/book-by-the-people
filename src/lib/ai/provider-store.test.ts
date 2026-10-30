@@ -62,7 +62,8 @@ describe("AI provider store", () => {
     await expect(s.create("u1", { type: "openai", apiKey: "short" })).rejects.toThrow(/API key/);
     await expect(s.create("u1", { type: "custom", baseUrl: "ftp://x", model: "m" })).rejects.toThrow(/http/);
     await expect(s.create("u1", { type: "custom", baseUrl: "https://user:pw@x.dev/v1", model: "m" })).rejects.toThrow(/URL/);
-    await expect(s.create("u1", { type: "gemini", apiKey: "AIzaSyTESTKEY1234", role: "transcription" })).rejects.toThrow();
+    await expect(s.create("u1", { type: "anthropic", apiKey: "sk-ant-TESTKEY1234abcd", role: "transcription" })).rejects.toThrow();
+    expect((await s.create("u1", { type: "gemini", apiKey: "AIzaSyTESTKEY1234", role: "transcription" })).canTranscribe).toBe(true);
     await expect(s.create("u1", { type: "nope", apiKey: "AIzaSyTESTKEY1234" })).rejects.toThrow();
   });
 
