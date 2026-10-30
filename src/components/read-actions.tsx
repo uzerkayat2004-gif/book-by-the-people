@@ -145,7 +145,7 @@ function Dock({ kind, clips, question, onClose }: { kind: "audio" | "video"; cli
                 <br />
                 <em>the people.</em>
               </strong>
-              <small>Book 1 · {question}</small>
+              <small>{question}</small>
             </span>
           ) : (
             <span className="mp__art">
@@ -160,7 +160,7 @@ function Dock({ kind, clips, question, onClose }: { kind: "audio" | "video"; cli
         </button>
         <div className="mp__meta">
           <b>Book by the People</b>
-          <span>{video ? "Video" : "Audio"} · Book 1</span>
+          <span>{video ? "Video" : "Audio"} · Book by the People</span>
         </div>
         <div className="mp__bar">
           <input

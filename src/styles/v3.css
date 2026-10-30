@@ -120,3 +120,5 @@
 .vf__answerhead{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .vf__answerhead .vf__h{margin:0!important}
 .vf__answerhead .vf__lang{margin:0}
+.vf__answerhead .vf__lang{flex:1 1 240px;justify-content:flex-end}
+.vf__answerhead .vf__lang .input{max-width:none;flex:0 1 auto;min-width:150px}

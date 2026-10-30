@@ -2,6 +2,8 @@ import { SignInForm } from "@/components/sign-in-form";
 import { getConfig } from "@/lib/config";
 import { canSendEmail } from "@/lib/mailer";
 
+export const metadata = { title: "Sign in", robots: { index: false, follow: false } };
+
 export default async function SignInPage({
   searchParams,
 }: {

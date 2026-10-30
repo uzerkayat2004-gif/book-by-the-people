@@ -1,6 +1,6 @@
 import { IconCheck } from "@/components/icons";
 
-export const metadata = { title: "Privacy · Book by the People" };
+export const metadata = { title: "Privacy" };
 
 export default function PrivacyPage() {
   return (

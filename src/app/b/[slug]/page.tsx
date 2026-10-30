@@ -13,13 +13,14 @@ import type { Metadata } from "next";
 /** Share previews show only the public card: title and question. Unlisted books ask search engines to stay away. */
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const book = await prisma.book.findUnique({ where: { slug }, select: { title: true, question: true, unlisted: true } });
+  const book = await prisma.book.findUnique({ where: { slug }, select: { title: true, question: true, unlisted: true, type: true } });
   if (!book) return { title: "Book not found" };
   return {
     title: book.title,
     description: book.question,
-    openGraph: { title: book.title, description: book.question },
-    robots: book.unlisted ? { index: false, follow: false } : undefined,
+    openGraph: { type: "website", siteName: "Book by the People", title: book.title, description: book.question },
+    twitter: { card: "summary_large_image", title: book.title, description: book.question },
+    robots: book.unlisted || book.type === "INVITED" || book.type === "SOLO" ? { index: false, follow: false } : undefined,
   };
 }
 

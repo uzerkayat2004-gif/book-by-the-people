@@ -122,14 +122,18 @@ export function GlobeView({ pins }: { pins: Pin[] }) {
       body: null as HTMLCanvasElement | null,
     };
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // Phones and small screens: fewer dots, lower density, 30 fps.
+    const lite = window.matchMedia("(pointer: coarse)").matches || window.innerWidth < 700;
+    const stride = lite ? 4 : 2;
+    const minFrameMs = lite ? 33 : 0;
+    let drawn = { phi: NaN, theta: NaN, size: 0, pins: null as unknown, selected: -2 };
     let drag: { id: number; lx: number; ly: number; t: number; moved: number; mouse: boolean } | null = null;
 
     const resize = () => {
       const size = Math.max(80, Math.round(wrap.clientWidth || 320));
-      // Render above the screen's own density so dots stay round and sharp: at least 2x
-      // (supersampled on 1x / 1.25x Windows screens), up to 3x on retina; phones cap at 2.5x.
-      const coarse = window.matchMedia("(pointer: coarse)").matches;
-      const dpr = clamp(Math.max(2, window.devicePixelRatio || 1), 2, coarse ? 2.5 : 3);
+      // Desktops render at 2x for crisp round dots; phones cap at 1.5x, which looks the same
+      // at their size and costs well under half the pixels.
+      const dpr = lite ? clamp(window.devicePixelRatio || 1, 1, 1.5) : clamp(Math.max(2, window.devicePixelRatio || 1), 2, 2.5);
       if (size === state.size && dpr === state.dpr && state.body) return;
       state.size = size;
       state.dpr = dpr;
@@ -145,10 +149,10 @@ export function GlobeView({ pins }: { pins: Pin[] }) {
       if (state.body) ctx.drawImage(state.body, 0, 0);
       // Land dots, front side only: round, anti-aliased, and slightly dimmer toward the edge
       // (three brightness bands, one path each) so the sphere reads as 3D without blur.
-      const radius = (Math.max(1.05, size * 0.0029) * dpr) / 2;
+      const radius = ((Math.max(1.05, size * 0.0029) * dpr) / 2) * (lite ? 1.3 : 1);
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       const bands = [new Path2D(), new Path2D(), new Path2D()];
-      for (let index = 0; index < GLOBE_DOTS.length; index += 2) {
+      for (let index = 0; index < GLOBE_DOTS.length; index += stride) {
         const point = project(GLOBE_DOTS[index], GLOBE_DOTS[index + 1], phi, theta, size, 1.004);
         if (point.depth <= 0) continue;
         const x = point.x * dpr;
@@ -219,6 +223,9 @@ export function GlobeView({ pins }: { pins: Pin[] }) {
         state.phi += SPIN * dt;
         state.theta += (REST_THETA - state.theta) * (1 - Math.exp(-3 * dt));
       }
+      // Only draw when something moved.
+      if (drawn.phi === state.phi && drawn.theta === state.theta && drawn.size === state.size && drawn.pins === pinsRef.current && drawn.selected === state.selected) return;
+      drawn = { phi: state.phi, theta: state.theta, size: state.size, pins: pinsRef.current, selected: state.selected };
       render();
       placeTip();
     };
@@ -226,16 +233,34 @@ export function GlobeView({ pins }: { pins: Pin[] }) {
     let frame = 0;
     let last = 0;
     let stopped = false;
+    let onScreen = true;
     const loop = (now: number) => {
-      if (stopped) return;
+      frame = 0;
+      if (stopped || !onScreen || document.hidden) return;
+      if (minFrameMs && last && now - last < minFrameMs && !state.dragging) {
+        frame = requestAnimationFrame(loop);
+        return;
+      }
       const dt = last ? Math.min(0.05, (now - last) / 1000) : 0.016;
       last = now;
       step(dt, now);
       frame = requestAnimationFrame(loop);
     };
+    const wake = () => {
+      if (stopped || frame || !onScreen || document.hidden) return;
+      last = 0;
+      frame = requestAnimationFrame(loop);
+    };
     resize();
     render();
     frame = requestAnimationFrame(loop);
+    // Pause when the globe is scrolled away or the tab is hidden.
+    const seen = typeof IntersectionObserver === "undefined" ? null : new IntersectionObserver((entries) => {
+      onScreen = entries.some((entry) => entry.isIntersecting);
+      wake();
+    });
+    seen?.observe(wrap);
+    document.addEventListener("visibilitychange", wake);
     const observer = new ResizeObserver(() => {
       resize();
       render();
@@ -336,6 +361,8 @@ export function GlobeView({ pins }: { pins: Pin[] }) {
       stopped = true;
       cancelAnimationFrame(frame);
       observer.disconnect();
+      seen?.disconnect();
+      document.removeEventListener("visibilitychange", wake);
       canvas.removeEventListener("pointerdown", onDown);
       canvas.removeEventListener("pointermove", onMove);
       canvas.removeEventListener("pointerup", onUp);

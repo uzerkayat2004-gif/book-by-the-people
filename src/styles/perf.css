@@ -1,0 +1,13 @@
+/* Phones: no live blur behind sticky/floating bars (costly on every scroll frame on Android),
+   solid backgrounds instead, and no endless decorative animations. */
+@media (max-width: 760px), (pointer: coarse) {
+  *, *::before, *::after { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+  .top__bar { background: rgba(12, 13, 16, 0.94) !important; box-shadow: 0 8px 22px -14px rgba(0, 0, 0, 0.8) !important; }
+  .gpanel, .demo, .mp { background: rgba(16, 17, 21, 0.96) !important; }
+  .scrim { background: rgba(0, 0, 0, 0.72) !important; }
+  .gwrap__atmo, .cta4::after, .bk6, .how5__line em { animation: none !important; }
+  [class*="glow"] { animation: none !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}

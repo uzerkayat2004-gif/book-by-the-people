@@ -4,6 +4,8 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { aiOptions } from "@/lib/ai/book-ai";
 
+export const metadata = { title: "Start a book", robots: { index: false, follow: false } };
+
 export default async function NewBookPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/sign-in?next=/books/new");

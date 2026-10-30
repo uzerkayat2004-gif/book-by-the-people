@@ -9,6 +9,8 @@ import { loadBookBySlug, pausedNow } from "@/lib/load-book";
 import { voicesLeftToday } from "@/lib/services/pipeline";
 import { releaseLabel } from "@/lib/stage";
 
+export const metadata = { title: "Add your voice", robots: { index: false, follow: false } };
+
 export default async function VoicePage({
   params,
   searchParams,

@@ -1,6 +1,6 @@
 import { IconCheck } from "@/components/icons";
 
-export const metadata = { title: "Terms · Book by the People" };
+export const metadata = { title: "Terms" };
 
 export default function TermsPage() {
   return (

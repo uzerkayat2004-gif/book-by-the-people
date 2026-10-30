@@ -3,6 +3,7 @@ import { Motion, SiteFooter, TopBar } from "@/components/site-chrome";
 import { getCurrentUser } from "@/lib/auth";
 import { homeBookLite } from "@/lib/public-books";
 import "./globals.css";
+import { siteUrl } from "@/lib/site-url";
 import "@/styles/fonts.css";
 import "@/styles/proto/styles.css";
 import "@/styles/proto/v4.css";
@@ -21,6 +22,7 @@ import "@/styles/aisrc.css";
 import "@/styles/multibook.css";
 import "@/styles/v3.css";
 import "@/styles/v4r.css";
+import "@/styles/perf.css";
 
 export const dynamic = "force-dynamic";
 
@@ -29,8 +31,17 @@ export const metadata: Metadata = {
     default: "Book by the People",
     template: "%s · Book by the People",
   },
-  description: "One question. Everyone answers by voice. A real book, in people's exact words.",
+  description: "One question. Everyone answers in their own words. AI checks every voice and writes a real book from people's exact words.",
+  metadataBase: new URL(siteUrl()),
+  applicationName: "Book by the People",
   icons: { icon: "/favicon.png", apple: "/apple-touch-icon.png" },
+  openGraph: {
+    type: "website",
+    siteName: "Book by the People",
+    title: "Book by the People",
+    description: "One question. Everyone answers in their own words. A real book, in people's exact words.",
+  },
+  twitter: { card: "summary_large_image", title: "Book by the People", description: "One question. Everyone answers. A real book in people's exact words." },
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {

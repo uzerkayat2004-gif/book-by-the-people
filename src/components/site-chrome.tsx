@@ -213,7 +213,7 @@ export function SiteFooter({ question, voiceHref }: { question: string | null; v
             One question. Everyone writes an answer in their own words. AI checks every voice and groups the same views, then writes a real book using people&apos;s exact words — with every contributor credited.
           </p>
           <p className="soft">
-            Book 1 asks: <b>{question || "Is AI making you smarter or lazier?"}</b>
+            {question ? <>Now asking: <b>{question}</b></> : null}
           </p>
         </Sheet>
       ) : null}
