@@ -1308,7 +1308,7 @@ function SettingsTab({
             <div className="s2-setrow">
               <div>
                 <b>Main language</b>
-                <span>Picked first on the speak page</span>
+                <span>Picked first on the Add your voice page</span>
               </div>
               <select className="s2-input s2-sel" aria-label="Main language" value={language} onChange={(event) => setLanguage(event.target.value)}>
                 {SPEAK_LANGUAGES.map((item) => (
