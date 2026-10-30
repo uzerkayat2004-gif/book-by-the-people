@@ -8,7 +8,7 @@ import { AiSourcePicker, type AiPick } from "@/components/ai/ai-source-picker";
 import type { AiOptions } from "@/lib/ai/book-source";
 
 const MODES = [
-  { id: "SOLO", title: "Solo", copy: "Only you speak, over days or years. A memoir in your own voice." },
+  { id: "SOLO", title: "Solo", copy: "Only you write, over days or years. A memoir in your own voice." },
   { id: "INVITED", title: "Invited", copy: "A private link for family, a team or a class." },
   { id: "OPEN", title: "Open", copy: "Anyone with the link. A public page with a live globe." },
   { id: "FAMOUS", title: "Famous", copy: "Real public quotes only, each with its source link and date." },
@@ -140,7 +140,7 @@ export function CreateBookForm({ suggestion = "", ai }: { suggestion?: string; a
         <section className="setcard">
           <div className="setcard__head">
             <h2>
-              <span className="nb">2</span> Who speaks
+              <span className="nb">2</span> Who answers
             </h2>
           </div>
           <div className="modes" role="radiogroup" aria-label="Mode">
@@ -211,7 +211,7 @@ export function CreateBookForm({ suggestion = "", ai }: { suggestion?: string; a
               <input id="time" className="input" type="time" value={time} onChange={(event) => setTime(event.target.value)} />
             </label>
           </div>
-          <p className="hint">Voices close at this moment and the book is written. People can speak in any of 30 languages.</p>
+          <p className="hint">Voices close at this moment and the book is written. People can write in any of 30 languages.</p>
         </section>
 
         <AiSourcePicker options={ai} onChange={onAi} alert={aiError} />

@@ -210,7 +210,7 @@ export function SiteFooter({ question, voiceHref }: { question: string | null; v
       {sheet === "about" ? (
         <Sheet title="Book by the People" kicker="About" onClose={() => setSheet(null)}>
           <p className="soft">
-            One question. Everyone answers by speaking or typing. AI checks every voice and groups the same views, then writes a real book using people&apos;s exact words — with every contributor credited.
+            One question. Everyone writes an answer in their own words. AI checks every voice and groups the same views, then writes a real book using people&apos;s exact words — with every contributor credited.
           </p>
           <p className="soft">
             Book 1 asks: <b>{question || "Is AI making you smarter or lazier?"}</b>
@@ -230,7 +230,7 @@ export function SiteFooter({ question, voiceHref }: { question: string | null; v
             </li>
             <li>
               <IconCheck />
-              <span>Only your words are kept. Your audio goes to the book creator&apos;s chosen AI only to turn it into words, and is never stored by us. The AI that sorts them isn&apos;t trained on them.</span>
+              <span>Only your written words are kept. The AI that checks and sorts them isn&apos;t trained on them.</span>
             </li>
             <li>
               <IconCheck />
@@ -269,7 +269,7 @@ export function SiteFooter({ question, voiceHref }: { question: string | null; v
             <li>
               <IconCheck />
               <span>
-                <b>Every quote is exact.</b> Word-for-word what you sent. Audio is sent to the book creator&apos;s chosen AI only to turn it into text, and is not stored by us.
+                <b>Every quote is exact.</b> Word-for-word what you wrote, with your name.
               </span>
             </li>
           </ul>

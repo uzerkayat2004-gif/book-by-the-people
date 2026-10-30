@@ -362,16 +362,29 @@ export async function makeMediaInBackground(bookId: string, document: NonNullabl
   }
 }
 
-export async function votePoll(bookId: string, optionId: string, voterKey: string) {
+/**
+ * One vote per person per book, any time the poll is shown: while the book is open, after it closes and
+ * after release. `voterKeys` are every key this person is known by (account first, then the browser
+ * cookie); if any has voted, that vote stands and is returned. Returns the option this person voted for.
+ */
+export async function votePoll(bookId: string, optionId: string, voterKeys: string[]) {
+  const keys = voterKeys.filter(Boolean);
+  if (!keys.length) throw new AppError("We could not tell who is voting. Turn on cookies and try again.");
   const option = await prisma.pollOption.findFirst({ where: { id: optionId, bookId } });
   if (!option) throw new AppError("That choice is not on this poll.");
-  const book = await prisma.book.findUnique({ where: { id: bookId } });
-  if (!book || book.status !== "PUBLISHED") throw new AppError("The poll opens when the book is published.");
-  await prisma.pollVote.upsert({
-    where: { bookId_voterKey: { bookId, voterKey } },
-    update: { optionId },
-    create: { bookId, optionId, voterKey },
-  });
+  const book = await prisma.book.findUnique({ where: { id: bookId }, select: { showPoll: true } });
+  if (!book || !book.showPoll) throw new AppError("This poll is not open.", 404);
+  const existing = await prisma.pollVote.findFirst({ where: { bookId, voterKey: { in: keys } } });
+  if (existing) return existing.optionId;
+  try {
+    await prisma.pollVote.create({ data: { bookId, optionId, voterKey: keys[0] } });
+  } catch {
+    // Two taps at once: the first one counts.
+    const again = await prisma.pollVote.findFirst({ where: { bookId, voterKey: { in: keys } } });
+    if (again) return again.optionId;
+    throw new AppError("That vote didn't go through. Try again.");
+  }
+  return optionId;
 }
 
 /**

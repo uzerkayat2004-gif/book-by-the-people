@@ -116,3 +116,7 @@
 .vf__meta > *:first-child{white-space:nowrap}
 .vf__note{flex:1 1 220px;text-align:right}
 @media(max-width:560px){.vf__note{text-align:left;flex-basis:100%;order:3}}
+/* Write-only answer card */
+.vf__answerhead{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.vf__answerhead .vf__h{margin:0!important}
+.vf__answerhead .vf__lang{margin:0}

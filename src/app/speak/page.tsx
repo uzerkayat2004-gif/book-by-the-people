@@ -1,7 +1,6 @@
 import { SignInForm } from "@/components/sign-in-form";
 import { VoiceForm } from "@/components/voice-form";
 import { getCurrentUser } from "@/lib/auth";
-import { speechAvailable } from "@/lib/ai/speech";
 import { getConfig } from "@/lib/config";
 import { voiceBookLite } from "@/lib/public-books";
 import { voicesLeftToday } from "@/lib/services/pipeline";
@@ -49,7 +48,6 @@ export default async function SpeakPage({ searchParams }: { searchParams: Promis
       presetName={user.name || ""}
       presetWord={query.word ?? null}
       leftToday={await voicesLeftToday(book.id, user.id)}
-      cloudSpeech={await speechAvailable(book.id)}
     />
   );
 }

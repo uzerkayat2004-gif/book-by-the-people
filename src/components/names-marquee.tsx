@@ -23,7 +23,7 @@ export function NamesMarquee({ names }: { names: { name: string; countryCode: st
     );
   };
   return (
-    <section className="wrap names4" aria-label="Everyone who has spoken">
+    <section className="wrap names4" aria-label="Everyone who has added a voice">
       <div className="names4__head">
         <span className="label">
           <b>{names.length.toLocaleString("en-US")}</b> names

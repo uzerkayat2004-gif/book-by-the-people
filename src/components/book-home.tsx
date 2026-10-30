@@ -3,7 +3,7 @@ import { BookCover } from "@/components/book-cover";
 import { Countdown } from "@/components/countdown";
 import { CountryPanel, type CountryRow } from "@/components/country-panel";
 import { GlobeView } from "@/components/globe-view";
-import { IconBook, IconMic, IconPlus, IconShare, IconShield } from "@/components/icons";
+import { IconBook, IconPen, IconPlus, IconShare, IconShield } from "@/components/icons";
 import { NamesMarquee } from "@/components/names-marquee";
 import { PollCard } from "@/components/poll-card";
 import { HowSteps } from "@/components/how-steps";
@@ -127,14 +127,14 @@ export function BookHome({
         <BookMedia slug={slug} media={media} title={title ?? question} question={question} people={voiceCount} countries={countries.length} />
       ) : null}
       {mode === "home" ? <OpenNow books={openNow} heading="More books being written" /> : null}
-      {bookId && poll.length ? <PollCard bookId={bookId} question={pollQuestion} options={poll} yourVote={yourVote} open={stage === "after"} /> : null}
+      {bookId && poll.length ? <PollCard bookId={bookId} question={pollQuestion} options={poll} yourVote={yourVote} /> : null}
       <section className="wrap endzone" data-testid="book-foot">
         {stage === "after" ? null : (
           <div className="endband">
             <div className="endband__text">
               <span className="label red">{paused ? "Paused" : stage === "closed" ? "Closed" : "Open now"}</span>
               <h2>Your voice belongs in this book.</h2>
-              <p>Write or speak, up to 10 minutes. Your words stay sealed until the book is released.</p>
+              <p>Write your answer in your own words. It takes about 5 minutes, and stays sealed until the book is released.</p>
             </div>
             {voiceHref && !paused && stage !== "closed" ? (
               <Link className="btn btn--red btn--big cta4 endband__btn" href={voiceHref}>
@@ -309,13 +309,12 @@ function Before({
             <span className="btn btn--red btn--big btn--block cta4 is-closed" aria-disabled="true">
               <span className="rec" />
               Voices are closed
-              <span className="cta4__t">10 min</span>
             </span>
           ) : (
             <Link className="btn btn--red btn--big btn--block cta4" href={voiceHref}>
               <span className="rec" />
               Add your voice
-              <span className="cta4__t">10 min</span>
+              <span className="cta4__t">5 min</span>
             </Link>
           )}
           <div className="cta6__live">
@@ -446,7 +445,7 @@ function How({ releaseLabel }: { releaseLabel: string }) {
   return (
     <HowSteps
       steps={[
-        { icon: <IconMic />, title: "Write or speak", copy: "Type, paste or talk, up to 10 minutes, in your own words." },
+        { icon: <IconPen />, title: "Write", copy: "Your answer, in your own words. About 5 minutes." },
         { icon: <IconShield />, title: "AI checks", copy: "Real people, on topic. Same views, one paragraph." },
         { icon: <IconBook />, title: "Book drops", copy: `${day}. Read, listen, watch.` },
       ]}

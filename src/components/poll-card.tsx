@@ -15,7 +15,7 @@ export function PollCard({
   question: string;
   options: Option[];
   yourVote: string | null;
-  /** Votes open once the book is released; before that the poll is shown read-only. */
+  /** Set false to show the poll read-only. Votes are open by default, before and after release. */
   open?: boolean;
 }) {
   const [vote, setVote] = useState(yourVote);
@@ -40,8 +40,12 @@ export function PollCard({
         setError(body.error ?? "That vote didn't go through. Try again.");
         return;
       }
-      setVote(id);
-      setCounts((current) => current.map((option) => (option.id === id ? { ...option, votes: option.votes + 1 } : option)));
+      const body = (await response.json().catch(() => ({}))) as { options?: Option[]; yourVote?: string };
+      setVote(body.yourVote ?? id);
+      if (body.options?.length) setCounts(body.options);
+      else setCounts((current) => current.map((option) => (option.id === id ? { ...option, votes: option.votes + 1 } : option)));
+    } catch {
+      setError("That vote didn't go through. Check your connection and try again.");
     } finally {
       setBusy(null);
     }

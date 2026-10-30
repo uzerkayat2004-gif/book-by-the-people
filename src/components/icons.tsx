@@ -23,6 +23,15 @@ export function IconMic() {
   );
 }
 
+export function IconPen() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M4 20h4L19 9l-4-4L4 16v4z" fill="white" fillOpacity=".18" />
+      <path d="M13.5 6.5l4 4" />
+    </svg>
+  );
+}
+
 export function IconShield() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

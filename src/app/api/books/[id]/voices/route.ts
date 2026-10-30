@@ -9,7 +9,7 @@ import { guestKeyForWrite } from "@/lib/viewer";
 /** Words only. Audio or file uploads are not accepted for contributions. */
 const schema = z.object({
   text: z.string().max(12000),
-  mode: z.enum(["speak", "write"]).default("speak"),
+  mode: z.enum(["speak", "write"]).default("write"),
   name: z.string().max(80),
   language: z.string().max(16).default("en"),
   country: z.string().max(4).optional().nullable(),
@@ -29,7 +29,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (origin) return origin;
   try {
     if (!(request.headers.get("content-type") ?? "").includes("application/json")) {
-      return jsonError("File uploads are off. Write or speak your words on the page.", 415);
+      return jsonError("File uploads are off. Write your words on the page.", 415);
     }
     const ip = clientIp(request);
     if (!rateLimit(`voice:${ip}`, process.env.NODE_ENV === "production" ? 20 : 1000, 60 * 60 * 1000)) {

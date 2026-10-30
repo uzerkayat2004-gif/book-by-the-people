@@ -1,5 +1,6 @@
 import "server-only";
 import { cookies } from "next/headers";
+import { getCurrentUser } from "./auth";
 import { parseDocument } from "./book/assemble";
 import type { BookDocument } from "./book/types";
 import { countryStats } from "./countries";
@@ -35,11 +36,18 @@ export async function currentDocument(bookId: string, draftId: string | null): P
   return draft ? parseDocument(draft.contentJson) : null;
 }
 
-export async function voterChoice(bookId: string) {
+/** Every key this visitor votes under: their account (if signed in), then this browser's voter cookie. */
+export async function voterKeys(): Promise<string[]> {
   const jar = await cookies();
-  const voter = jar.get("bbtp_voter")?.value;
-  if (!voter) return null;
-  const vote = await prisma.pollVote.findUnique({ where: { bookId_voterKey: { bookId, voterKey: voter } } });
+  const user = await getCurrentUser().catch(() => null);
+  const cookie = jar.get("bbtp_voter")?.value;
+  return [user ? `u:${user.id}` : "", cookie ?? ""].filter(Boolean);
+}
+
+export async function voterChoice(bookId: string) {
+  const keys = await voterKeys();
+  if (!keys.length) return null;
+  const vote = await prisma.pollVote.findFirst({ where: { bookId, voterKey: { in: keys } } });
   return vote?.optionId ?? null;
 }
 

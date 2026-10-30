@@ -7,6 +7,7 @@ import { assertSameOrigin, fromError } from "@/lib/http";
 import { clientIp, jsonError } from "@/lib/http";
 import { hourly } from "@/lib/rate-limit";
 import { votePoll } from "@/lib/services/books";
+import { getCurrentUser } from "@/lib/auth";
 
 const schema = z.object({ optionId: z.string() });
 
@@ -29,7 +30,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         maxAge: 60 * 60 * 24 * 365,
       });
     }
-    await votePoll(id, parsed.optionId, voter);
+    const user = await getCurrentUser().catch(() => null);
+    const yourVote = await votePoll(id, parsed.optionId, [user ? `u:${user.id}` : "", voter]);
     const options = await prisma.pollOption.findMany({
       where: { bookId: id },
       orderBy: { position: "asc" },
@@ -37,7 +39,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     });
     return NextResponse.json({
       options: options.map((option) => ({ id: option.id, label: option.label, votes: option._count.votes })),
-      yourVote: parsed.optionId,
+      yourVote,
     });
   } catch (error) {
     return fromError(error);

@@ -76,7 +76,7 @@ export async function ingestWords(input: {
   const name = cleanName(input.name);
   const text = input.text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
   if (text.length < 12) throw new AppError("Add a few more words first.");
-  if (text.length > MAX_WORD_CHARS) throw new AppError("That is longer than ten minutes of talking. Trim it a little.");
+  if (text.length > MAX_WORD_CHARS) throw new AppError("That is longer than this book allows. Trim it a little.");
 
   const found = await prisma.book.findUnique({ where: { id: input.bookId } });
   if (!found) throw new AppError("This book does not exist.", 404);
