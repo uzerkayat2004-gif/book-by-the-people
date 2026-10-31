@@ -149,8 +149,8 @@ export function VoiceForm({
     };
   }, [speech.phase, speech.why, speech.stage, speech.problem, speech.note, speech.detail, speech.info, speech.chunks, speech.pending, speech.percent, tab]);
 
-  const speakable = speech.supported;
-  const shownTab = speakable || speech.checking ? tab : "write";
+  // Speak is always shown. If this browser truly can't run it, tapping the mic says so and offers Write.
+  const shownTab = tab;
   const words = text.trim() ? text.trim().split(/\s+/).length : 0;
   const listening = speech.phase === "listening";
   const writing = speech.pending > 0 || speech.phase === "finishing";
@@ -233,7 +233,9 @@ export function VoiceForm({
             ? t.errModel
             : speech.problem === "slow"
               ? t.errSlow
-              : "";
+              : speech.problem === "unsupported"
+                ? t.errUnsupported
+                : "";
   const noteText =
     speech.note === "ready"
       ? t.modelReady
@@ -319,7 +321,7 @@ export function VoiceForm({
         <section className="vf__card" aria-label={t.yourAnswer}>
           <div className="vf__answerhead">
             <h2 className="vf__h">{t.yourAnswer}</h2>
-            {speakable || speech.checking ? (
+            {(
               <div className="vf__tabs" role="tablist" aria-label={t.yourAnswer}>
                 <button
                   type="button"
@@ -345,7 +347,7 @@ export function VoiceForm({
                   <PenIcon /> {t.write}
                 </button>
               </div>
-            ) : null}
+            )}
           </div>
           <label className="vf__lang">
             <span>{shownTab === "speak" ? t.speakIn : t.writeIn}</span>

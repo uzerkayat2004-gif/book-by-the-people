@@ -12,10 +12,12 @@ const SIMD_PROBE = new Uint8Array([
   0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98, 11,
 ]);
 
-/** Can this browser plausibly run the model? If not, the mic stays hidden. */
+/**
+ * Can this browser run the model at all? Only hard blockers count: Speak always shows, and a failure
+ * is explained after the tap. No isolation, threads, GPU or memory hints are required (1 thread is fine).
+ */
 export function voiceSupport(): { ok: boolean; reason?: string } {
   if (typeof window === "undefined") return { ok: false, reason: "server" };
-  if (!window.isSecureContext) return { ok: false, reason: "needs https" };
   if (typeof Worker === "undefined") return { ok: false, reason: "no Web Workers" };
   if (typeof WebAssembly === "undefined") return { ok: false, reason: "no WebAssembly" };
   try {
@@ -23,11 +25,6 @@ export function voiceSupport(): { ok: boolean; reason?: string } {
   } catch {
     return { ok: false, reason: "no WebAssembly SIMD" };
   }
-  if (!navigator.mediaDevices?.getUserMedia) return { ok: false, reason: "no microphone API" };
-  const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-  if (!AC) return { ok: false, reason: "no Web Audio" };
-  const mem = (navigator as unknown as { deviceMemory?: number }).deviceMemory;
-  if (typeof mem === "number" && mem < 2) return { ok: false, reason: `low memory (${mem} GB)` };
   return { ok: true };
 }
 
@@ -254,7 +251,13 @@ export class VoiceEngine {
    * before any await, so iOS Safari and Chrome allow audio.
    */
   begin(): { audio: Promise<void> } {
-    const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AC || !navigator.mediaDevices?.getUserMedia) {
+      // No mic access here (very old browser, or a page not opened over https): explained after the tap.
+      const missing = Promise.reject(new Error(!AC ? "no Web Audio" : "no microphone access on this page"));
+      missing.catch(() => {});
+      return { audio: missing };
+    }
     const ctx = new AC();
     void ctx.resume();
     this.ctx = ctx;

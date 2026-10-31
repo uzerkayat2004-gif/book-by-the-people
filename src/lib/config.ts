@@ -76,9 +76,13 @@ export function getConfig(): AppConfig {
       ? mode
       : "ENDPOINTING";
 
+  // Showing a sign-in link on screen is for local testing only. On a hosted site (any Vercel
+  // deployment, production above all) links only ever go by email, whatever the env says.
   const exposeFlag = process.env.AUTH_DEV_EXPOSE_LINKS;
-  const exposeMagicLinks =
-    exposeFlag === undefined
+  const hosted = Boolean(process.env.VERCEL) || Boolean(process.env.VERCEL_ENV);
+  const exposeMagicLinks = hosted
+    ? false
+    : exposeFlag === undefined
       ? process.env.NODE_ENV !== "production"
       : exposeFlag === "true";
 

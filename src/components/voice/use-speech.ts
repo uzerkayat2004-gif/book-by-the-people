@@ -5,7 +5,7 @@ import { MODEL_MB_ESTIMATE, VoiceEngine, isPhone, modelCached, voiceSupport, typ
 
 /** What the person sees: Downloading → Getting ready → Listening (and Writing your words) → Done. */
 export type SpeechPhase = "checking" | "off" | "idle" | "downloading" | "preparing" | "listening" | "finishing";
-export type SpeechProblem = "" | "mic" | "nomic" | "micother" | "model" | "slow";
+export type SpeechProblem = "" | "mic" | "nomic" | "micother" | "model" | "slow" | "unsupported";
 export type SpeechNote = "" | "ready" | "done" | "nothing" | "nospeech" | "nowords" | "left";
 
 /**
@@ -127,7 +127,11 @@ export function useSpeech(insert: (words: string) => void) {
   /** Call straight from the tap: the browser only allows the mic and audio inside it. */
   const toggle = useCallback(async () => {
     const live = engine.current;
-    if (!live) return;
+    if (!live) {
+      // This browser can't run the voice model: say so kindly and offer Write.
+      if (phaseRef.current === "off") setProblem("unsupported");
+      return;
+    }
     if (phaseRef.current === "listening") {
       await stop();
       return;
