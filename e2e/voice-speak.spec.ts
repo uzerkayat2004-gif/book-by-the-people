@@ -4,7 +4,7 @@ import { expect, test, type Page } from "@playwright/test";
  * Speak, end to end, with a fake microphone playing a recorded sample (see the speak-* projects in
  * playwright.config.ts). The real Whisper Base model runs in the browser.
  */
-type Voice = { phase: string; note: string; problem: string; chunks: { sec: number; ms: number }[]; pending: number };
+type Voice = { phase: string; note: string; problem: string; chunks: { sec: number; ms: number }[]; pending: number; info?: unknown };
 const voice = (page: Page) => page.evaluate(() => (window as unknown as { __voice: Voice }).__voice);
 
 async function speak(page: Page, language: string, seconds: number) {
@@ -27,12 +27,14 @@ async function speak(page: Page, language: string, seconds: number) {
   const micButton = page.getByTestId("mic");
   // The model gets ready by itself as soon as the Speak tab shows; the mic waits until it truly is.
   await expect.poll(async () => (await voice(page)).phase, { timeout: 30_000 }).toMatch(/downloading|preparing|idle/);
-  if ((await voice(page)).phase !== "idle") await expect(micButton).toBeDisabled();
+  // Until the model is truly ready the mic is off and the page says it is warming up.
+  if ((await voice(page)).phase !== "idle" || !(await voice(page)).info) await expect(micButton).toBeDisabled();
   await expect(micButton).toBeEnabled({ timeout: 240_000 });
   await expect(page.getByTestId("mic-state")).toHaveText(/Ready|तैयार|準備完了/);
   await micButton.click();
   // Ready means ready: listening starts at once and says so.
   await expect.poll(async () => (await voice(page)).phase, { timeout: 10_000 }).toBe("listening");
+  if (language === "en") await expect(page.getByTestId("listen-label")).toHaveText("Start speaking");
   await expect(page.getByTestId("wave")).toBeVisible();
   const started = Date.now();
   // Words arrive while still listening.

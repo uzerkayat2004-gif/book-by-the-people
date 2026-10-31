@@ -151,7 +151,8 @@ export function useSpeech(insert: (words: string) => void) {
       onLevel: setLevel,
       onSpeaking: (on: boolean) => {
         setSpeaking(on);
-        if (on) setFresh(false);
+        // Keep "Start speaking" up for a moment after sound starts, so it is actually seen.
+        if (on) setTimeout(() => setFresh(false), 1500);
       },
       onText: (text: string) => {
         words.current += 1;

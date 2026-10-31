@@ -162,16 +162,23 @@ export function VoiceForm({
   // Get the voice model ready as soon as the Speak tab shows, so it is usually ready before the tap.
   // Already on this device: always. Not yet: on computers, and on phones unless data saving is on.
   const { preload } = speech;
-  useEffect(() => {
-    if (tab !== "speak" || speech.phase !== "idle" || speech.info || speech.problem || speech.cached === null) return;
+  // May this device download the model on its own? Not on data saver or mobile data.
+  // Automated test browsers only do it when asked (?preload=1), so tests stay quick.
+  const [eager] = useState(() => {
+    if (typeof navigator === "undefined") return true;
     const connection = (navigator as unknown as { connection?: { saveData?: boolean; type?: string } }).connection;
     const thrifty = Boolean(connection?.saveData) || connection?.type === "cellular";
-    // Automated test browsers only download on their own when asked (?preload=1), so tests stay quick.
     const robot = navigator.webdriver && new URLSearchParams(window.location.search).get("preload") !== "1";
-    if (!speech.cached && (thrifty || robot)) return;
+    return !(thrifty || robot);
+  });
+  // The model is (about to be) getting ready on its own: keep the mic off and say "warming up" until it is.
+  const autoLoading = tab === "speak" && speech.phase === "idle" && !speech.info && !speech.problem && (speech.cached === null || speech.cached || eager);
+  useEffect(() => {
+    if (tab !== "speak" || speech.phase !== "idle" || speech.info || speech.problem || speech.cached === null) return;
+    if (!speech.cached && !eager) return;
     const id = setTimeout(() => void preload(), 0);
     return () => clearTimeout(id);
-  }, [tab, speech.phase, speech.info, speech.problem, speech.cached, preload]);
+  }, [tab, speech.phase, speech.info, speech.problem, speech.cached, preload, eager]);
 
   const listening = speech.phase === "listening";
   const writing = speech.pending > 0 || speech.phase === "finishing";
@@ -390,7 +397,7 @@ export function VoiceForm({
                 data-testid="mic"
                 aria-label={listening ? t.stop : t.tapToSpeak}
                 aria-pressed={listening}
-                disabled={loading || speech.phase === "finishing" || speech.checking}
+                disabled={loading || autoLoading || speech.phase === "finishing" || speech.checking}
                 onClick={() => {
                   const element = area.current;
                   caret.current = element && document.activeElement === element ? element.selectionStart : (caret.current ?? text.length);
@@ -439,6 +446,13 @@ export function VoiceForm({
                   <b className="vs__state vs__writing">
                     <span className="vs__spin" aria-hidden /> {t.writingWords}…
                   </b>
+                ) : autoLoading ? (
+                  <>
+                    <b className="vs__state" data-testid="warming">
+                      <span className="vs__spin" aria-hidden /> {t.warmingUp}
+                    </b>
+                    <span className="vs__sub">{t.pleaseWait}</span>
+                  </>
                 ) : (
                   <>
                     <b className="vs__state" data-testid="mic-state">{speech.info ? t.readyTap : t.tapToSpeak}</b>
