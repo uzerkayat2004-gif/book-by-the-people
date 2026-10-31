@@ -166,9 +166,12 @@ export function GlobeView({ pins }: { pins: Pin[] }) {
       tip.classList.add("on");
       tip.classList.toggle("hid", point.depth < 0.05);
       // Open toward the side with room, measured on the real tooltip width (names can be long).
-      const width = (tip.firstElementChild as HTMLElement | null)?.offsetWidth ?? 0;
-      const roomRight = state.size - point.x - 12;
-      const roomLeft = point.x - 12;
+      // If neither side is wide enough, the lines wrap to fit the wider side.
+      const label = tip.firstElementChild as HTMLElement | null;
+      const roomRight = Math.max(80, state.size - point.x - 14);
+      const roomLeft = Math.max(80, point.x - 14);
+      if (label) label.style.maxWidth = `${Math.round(Math.max(roomLeft, roomRight))}px`;
+      const width = label?.offsetWidth ?? 0;
       tip.classList.toggle("l", width > roomRight ? roomLeft > roomRight : point.x > state.size * 0.62);
       if (sel) {
         sel.style.transform = transform;

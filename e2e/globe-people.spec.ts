@@ -42,7 +42,7 @@ test("open book: names and places under the count and on the globe, words sealed
 
   for (const phone of [false, true]) {
     const context = await browser.newContext(
-      phone ? { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, reducedMotion: "reduce" } : { viewport: { width: 1366, height: 860 }, reducedMotion: "reduce" },
+      phone ? { viewport: { width: 360, height: 780 }, hasTouch: true, isMobile: true, reducedMotion: "reduce" } : { viewport: { width: 1366, height: 860 }, reducedMotion: "reduce" },
     );
     const page = await context.newPage();
     const errors: string[] = [];
@@ -70,9 +70,9 @@ test("open book: names and places under the count and on the globe, words sealed
     // The tooltip stays on screen (it opens toward the side with room).
     await page.waitForTimeout(300);
     const tipBox = (await tip.boundingBox())!;
-    const width = page.viewportSize()!.width;
-    expect(tipBox.x).toBeGreaterThanOrEqual(0);
-    expect(tipBox.x + tipBox.width).toBeLessThanOrEqual(width);
+    const globeBox = (await page.locator(".gwrap").boundingBox())!;
+    expect(tipBox.x).toBeGreaterThanOrEqual(globeBox.x - 1);
+    expect(tipBox.x + tipBox.width).toBeLessThanOrEqual(globeBox.x + globeBox.width + 1);
     await page.screenshot({ path: `test-results/globe-${phone ? "phone" : "desktop"}.png` });
     expect(errors).toEqual([]);
     if (!phone) {
