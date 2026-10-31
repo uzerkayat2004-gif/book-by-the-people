@@ -165,7 +165,11 @@ export function GlobeView({ pins }: { pins: Pin[] }) {
       tip.style.transform = transform;
       tip.classList.add("on");
       tip.classList.toggle("hid", point.depth < 0.05);
-      tip.classList.toggle("l", point.x > state.size * 0.62);
+      // Open toward the side with room, measured on the real tooltip width (names can be long).
+      const width = (tip.firstElementChild as HTMLElement | null)?.offsetWidth ?? 0;
+      const roomRight = state.size - point.x - 12;
+      const roomLeft = point.x - 12;
+      tip.classList.toggle("l", width > roomRight ? roomLeft > roomRight : point.x > state.size * 0.62);
       if (sel) {
         sel.style.transform = transform;
         sel.classList.toggle("hid", point.depth < 0.05);

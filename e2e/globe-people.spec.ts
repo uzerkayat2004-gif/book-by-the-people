@@ -67,6 +67,12 @@ test("open book: names and places under the count and on the globe, words sealed
     const tip = await tapIndia(page, phone);
     await expect(tip).toContainText(/Asha Rao|ravi k|Meera/);
     await expect(tip).toContainText("India");
+    // The tooltip stays on screen (it opens toward the side with room).
+    await page.waitForTimeout(300);
+    const tipBox = (await tip.boundingBox())!;
+    const width = page.viewportSize()!.width;
+    expect(tipBox.x).toBeGreaterThanOrEqual(0);
+    expect(tipBox.x + tipBox.width).toBeLessThanOrEqual(width);
     await page.screenshot({ path: `test-results/globe-${phone ? "phone" : "desktop"}.png` });
     expect(errors).toEqual([]);
     if (!phone) {
