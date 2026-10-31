@@ -33,6 +33,11 @@ const nextConfig: NextConfig = {
           { key: "Cross-Origin-Embedder-Policy", value: "credentialless" },
         ],
       },
+      // The speech runtime never changes under this versioned path: cache it for a year.
+      {
+        source: "/voice/ort/:path*",
+        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
+      },
       // The speech worker and its files must say the same, or an isolated page can't start them.
       {
         source: "/voice/:path*",

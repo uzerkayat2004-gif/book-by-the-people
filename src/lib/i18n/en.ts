@@ -106,6 +106,8 @@ export const EN = {
   errModel: "The voice model did not load. Check your internet and tap the mic to try again, or write instead.",
   errSlow: "This device is taking too long to turn speech into words. You can write instead.",
   errUnsupported: "This browser can't turn speech into words. Try the latest Chrome, Edge or Safari, or write your answer instead.",
+  openingModel: "Opening the voice model",
+  almostReady: "Almost ready",
   heardNothing: "I heard almost nothing. Check the microphone is on and not muted, then try again.",
   noSpeech: "I heard sound but no clear words. Speak a little closer to the mic.",
   noWords: "No words came out of that. Try again with short pauses.",

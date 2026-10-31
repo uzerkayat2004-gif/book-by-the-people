@@ -70,6 +70,13 @@ export function VoiceForm({
   const [startedAt, setStartedAt] = useState(0);
   const [keys, setKeys] = useState(0);
   const [tab, setTab] = useState<"speak" | "write">("speak");
+  // Hidden diagnostics (tap the status, or ?debug=1) so a stuck start can be screenshotted.
+  const [debug, setDebug] = useState(false);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("debug") !== "1") return;
+    const id = setTimeout(() => setDebug(true), 0);
+    return () => clearTimeout(id);
+  }, []);
   const [caretAt, setCaretAt] = useState<number | null>(null);
   const area = useRef<HTMLTextAreaElement | null>(null);
   const ghost = useRef<HTMLDivElement | null>(null);
@@ -379,7 +386,7 @@ export function VoiceForm({
               >
                 {listening ? <span className="vs__stopsq" aria-hidden /> : <MicIcon size={26} />}
               </button>
-              <div className="vs__side" role="status" aria-live="polite">
+              <div className="vs__side" role="status" aria-live="polite" onClick={() => setDebug((on) => !on)}>
                 {speech.phase === "downloading" ? (
                   <>
                     <b className="vs__state">{t.downloading}</b>
@@ -396,7 +403,10 @@ export function VoiceForm({
                     <b className="vs__state">
                       <span className="vs__spin" aria-hidden /> {t.gettingReady}
                     </b>
-                    {speech.stage === "retrying" ? <span className="vs__sub">{t.retrying}</span> : null}
+                    <span className="vs__sub" data-testid="prep-sub">
+                      {speech.stage === "retrying" ? t.retrying : speech.stage === "warming" ? t.almostReady : t.openingModel}
+                      {speech.prepSec >= 3 ? ` · ${speech.prepSec} s` : ""}
+                    </span>
                   </>
                 ) : listening ? (
                   <>
@@ -422,6 +432,24 @@ export function VoiceForm({
                 )}
               </div>
             </div>
+          ) : null}
+          {shownTab === "speak" && debug ? (
+            <p className="vs__diag" data-testid="voice-diag">
+              {(() => {
+                const d = speech.diagnostics();
+                const parts = [
+                  `threads ${d?.threads ?? "?"}`,
+                  `isolated ${d?.isolated ? "yes" : "no"}`,
+                  `cores ${d?.cores ?? "?"}`,
+                  `${d?.backend === "webgpu" ? "GPU" : "CPU (wasm)"}`,
+                  `phase ${speech.phase}/${speech.stage}`,
+                  d?.readyMs ? `ready in ${(d.readyMs / 1000).toFixed(1)} s` : "not ready yet",
+                  d?.safe ? "one-thread mode" : "",
+                  d?.lastError || speech.detail ? `last error: ${d?.lastError || speech.detail}` : "",
+                ];
+                return parts.filter(Boolean).join(" · ");
+              })()}
+            </p>
           ) : null}
 
           <div className="vf__box">
@@ -471,9 +499,16 @@ export function VoiceForm({
           {shownTab === "speak" && problemText ? (
             <div className="vs__problem" role="alert" data-testid="speak-error">
               <p>{problemText}</p>
-              <button type="button" className="btn btn--ghost btn--sm" onClick={() => setTab("write")}>
-                {t.writeInstead}
-              </button>
+              <span className="vs__actions">
+                {speech.problem === "model" || speech.problem === "micother" ? (
+                  <button type="button" className="btn btn--ghost btn--sm" data-testid="speak-retry" onClick={() => void speech.toggle()}>
+                    {t.tryAgain}
+                  </button>
+                ) : null}
+                <button type="button" className="btn btn--ghost btn--sm" onClick={() => setTab("write")}>
+                  {t.writeInstead}
+                </button>
+              </span>
             </div>
           ) : shownTab === "speak" && noteText ? (
             <p className="vs__note" role="status" data-testid="speak-note">

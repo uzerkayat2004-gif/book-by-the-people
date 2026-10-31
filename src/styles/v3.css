@@ -149,6 +149,9 @@
 .vs__writing{color:var(--soft)}
 .vs__problem{margin:12px 0 0;padding:12px 14px;border-radius:14px;background:rgba(229,56,59,.1);border:1px solid rgba(229,56,59,.3);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .vs__problem p{margin:0;flex:1 1 220px;font-size:14px;line-height:1.45;color:var(--text)}
+.vs__actions{display:flex;gap:8px;flex-wrap:wrap}
+.vs__diag{margin:8px 2px 0;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--muted,#999);word-break:break-word}
+.vs__side{cursor:default}
 .vs__note{margin:12px 2px 0;font-size:14px;line-height:1.45;color:var(--soft)}
 .vf__field{position:relative}
 .vf__ghost{position:absolute;inset:0;padding:16px 18px 8px;font-family:var(--serif);font-size:19px;line-height:1.5;white-space:pre-wrap;word-wrap:break-word;overflow:hidden;pointer-events:none;color:transparent}

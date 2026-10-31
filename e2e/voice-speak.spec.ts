@@ -93,3 +93,34 @@ test("speak, see the words, edit them, and send", async ({ page }) => {
   await page.getByTestId("send-words").click();
   await expect(page).toHaveURL(/\/voice\/thanks\?id=/, { timeout: 60_000 });
 });
+
+test("a stuck start on several threads quietly restarts Whisper on one thread", async ({ page }) => {
+  test.skip(test.info().project.name !== "speak-en", "once is enough");
+  test.setTimeout(240_000);
+  // Make the fast (multi-thread) setting hang while getting ready, like the Windows laptop report.
+  await page.route("**/voice/whisper.worker.js", async (route) => {
+    const response = await route.fetch();
+    const body = (await response.text()).replace(
+      'post({ type: "status", stage: "warming", device });',
+      'post({ type: "status", stage: "warming", device }); if (env.backends.onnx.wasm.numThreads > 1) await new Promise(() => {});',
+    );
+    await route.fulfill({ response, body });
+  });
+  await page.goto("/b/gate-check/voice?guest=1&debug=1");
+  await page.evaluate(() => localStorage.removeItem("bbtp:voice-safe"));
+  await expect(page.getByTestId("mic")).toBeEnabled({ timeout: 60_000 });
+  const started = Date.now();
+  await page.getByTestId("mic").click();
+  await expect(page.getByTestId("prep-sub")).toBeVisible({ timeout: 120_000 });
+  await expect.poll(async () => (await voice(page)).phase, { timeout: 180_000 }).toBe("listening");
+  const took = Date.now() - started;
+  const info = await page.evaluate(() => (window as unknown as { __voice: { info?: { threads?: number } } }).__voice.info);
+  expect(info?.threads).toBe(1);
+  await expect(page.getByTestId("voice-diag")).toContainText("one-thread mode");
+  expect(await page.evaluate(() => localStorage.getItem("bbtp:voice-safe"))).toBeTruthy();
+  await expect(page.getByTestId("words")).not.toHaveValue("", { timeout: 30_000 });
+  console.log(`[watchdog] listening after ${took} ms; diag: ${await page.getByTestId("voice-diag").innerText()}`);
+  await page.getByTestId("mic").click();
+  await expect.poll(async () => (await voice(page)).phase, { timeout: 60_000 }).toBe("idle");
+  await page.evaluate(() => localStorage.removeItem("bbtp:voice-safe"));
+});

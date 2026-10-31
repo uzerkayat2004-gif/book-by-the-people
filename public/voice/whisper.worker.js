@@ -14,6 +14,11 @@ env.allowLocalModels = false;
 env.useBrowserCache = true; // Cache Storage "transformers-cache": download once.
 
 const MODEL = "onnx-community/whisper-base";
+// The ONNX runtime (wasm + its loader) is served from this site, not a CDN: same origin means its
+// helper threads start as plain same-origin workers, with no cross-origin or blob tricks that some
+// browsers block or stall on.
+env.backends.onnx.wasm.wasmPaths = new URL("/voice/ort/3.8.1/", self.location.origin).href;
+env.backends.onnx.wasm.proxy = false;
 const cores = self.navigator?.hardwareConcurrency || 2;
 const defaultThreads = self.crossOriginIsolated ? Math.max(1, Math.min(4, cores - 1)) : 1;
 env.backends.onnx.wasm.numThreads = defaultThreads;
@@ -98,14 +103,16 @@ function tracker() {
 
 async function build(dev, t) {
   device = dev;
+  post({ type: "diag", threads: env.backends.onnx.wasm.numThreads, isolated: self.crossOriginIsolated, cores });
   post({ type: "status", stage: cachedNow ? "loading" : "downloading", device: dev });
   return pipeline("automatic-speech-recognition", MODEL, { device: dev, dtype: dtypeFor(dev), progress_callback: t.onProgress });
 }
 
 async function warm(p) {
   post({ type: "status", stage: "warming", device });
-  // A short tone-free clip compiles the kernels so the first real chunk is quick.
-  await p(new Float32Array(16000), { language: "en", task: "transcribe" });
+  // A short quiet clip compiles the kernels so the first real chunk is quick. Only a couple of
+  // tokens: on silence Whisper can ramble up to 448 tokens, which takes minutes on a slow laptop.
+  await p(new Float32Array(16000), { language: "en", task: "transcribe", max_new_tokens: 2 });
 }
 
 async function loadOn(dev, t) {

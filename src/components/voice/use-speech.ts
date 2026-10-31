@@ -85,6 +85,19 @@ export function useSpeech(insert: (words: string) => void) {
     if (engine.current) engine.current.language = code;
   }, []);
 
+  // Seconds spent getting ready, shown next to the label so a slow start never looks frozen.
+  const [prepSec, setPrepSec] = useState(0);
+  useEffect(() => {
+    if (phase !== "preparing") return;
+    const began = Date.now();
+    const reset = setTimeout(() => setPrepSec(0), 0);
+    const timer = setInterval(() => setPrepSec(Math.floor((Date.now() - began) / 1000)), 1000);
+    return () => {
+      clearTimeout(reset);
+      clearInterval(timer);
+    };
+  }, [phase]);
+
   useEffect(() => {
     if (phase !== "listening") return;
     const timer = setInterval(() => setElapsed((Date.now() - startedAt.current) / 1000), 250);
@@ -197,13 +210,7 @@ export function useSpeech(insert: (words: string) => void) {
       setPhase("idle");
       return;
     }
-    if (first && loaded.downloaded) {
-      // A long first download: don't start listening behind the person's back.
-      live.abort();
-      setNote("ready");
-      setPhase("idle");
-      return;
-    }
+    // Straight on: once the model is ready, listening starts without a second tap.
     try {
       await audio;
       if (tries.current !== attempt) return;
@@ -239,6 +246,8 @@ export function useSpeech(insert: (words: string) => void) {
     chunks,
     elapsed,
     spokenMs,
+    prepSec,
+    diagnostics: () => engine.current?.diagnostics() ?? null,
     supported: phase !== "off" && phase !== "checking",
     checking: phase === "checking",
     toggle,

@@ -63,6 +63,28 @@ type Handlers = {
 
 const DRAIN_LIMIT_MS = 120_000;
 const PAUSE_SEC = 0.5;
+/** Time allowed from "files are here" to "ready" before trying again on one thread. */
+const READY_LIMIT_MS = 22_000;
+const SAFE_READY_LIMIT_MS = 75_000;
+const DOWNLOAD_STALL_MS = 45_000;
+const SAFE_KEY = "bbtp:voice-safe";
+const SAFE_DAYS = 14;
+
+function rememberedSafe(): boolean {
+  try {
+    const at = Number(localStorage.getItem(SAFE_KEY) || 0);
+    return at > 0 && Date.now() - at < SAFE_DAYS * 864e5;
+  } catch {
+    return false;
+  }
+}
+function rememberSafe() {
+  try {
+    localStorage.setItem(SAFE_KEY, String(Date.now()));
+  } catch {
+    // private mode: fine, it just tries the fast setting again next time
+  }
+}
 const MAX_CHUNK_SEC = 12;
 
 /** Phones and tablets: fewer threads keep them cool and inside their memory. */
@@ -104,6 +126,11 @@ export class VoiceEngine {
   sent = 0;
   /** Why the GPU was given up on (empty when it never was tried or worked). */
   fellBack = "";
+  /** One-thread mode after the fast setting failed or stalled on this browser. */
+  safeMode = false;
+  lastError = "";
+  readyMs = 0;
+  private workerDiag: { threads?: number; isolated?: boolean; cores?: number } | null = null;
   private copies = new Map<number, { audio: Float32Array; language: string; speech: boolean }>(); // GPU chunks, kept for a CPU redo.
 
   // Pause-splitting state (native sample rate).
@@ -143,6 +170,7 @@ export class VoiceEngine {
     const w = new Worker("/voice/whisper.worker.js", { type: "module" });
     w.onmessage = (e: MessageEvent) => {
       const m = e.data;
+      if (m.type === "diag") this.workerDiag = m;
       if (m.type === "progress") this.h.onProgress?.(m.loaded, m.total, m.files, m.done);
       if (m.type === "status") this.h.onStatus?.(m.stage, m.device, m.error);
       if (m.type === "text" && m.gpuFailed) {
@@ -211,39 +239,114 @@ export class VoiceEngine {
   /** Downloads (first time) or loads from cache, then warms up. Resolves only once the model can run. */
   loadModel(): Promise<ModelInfo> {
     if (this.ready) return this.ready;
+    const p = this.loadGuarded();
+    this.ready = p;
+    p.catch(() => {
+      if (this.ready === p) this.ready = null;
+    });
+    return p;
+  }
+
+  /**
+   * Never wait forever. The fast setting (several CPU threads) is tried first; if it errors or getting
+   * ready stalls, the worker is stopped and Whisper is started again quietly on one thread (the plain
+   * setup that works everywhere). A browser where that happened remembers it and starts on one thread.
+   */
+  private async loadGuarded(): Promise<ModelInfo> {
+    if (!this.threads && rememberedSafe()) {
+      this.threads = 1;
+      this.safeMode = true;
+    }
+    const t0 = performance.now();
+    try {
+      const info = await this.loadOnce(this.safeMode ? SAFE_READY_LIMIT_MS : READY_LIMIT_MS);
+      this.readyMs = performance.now() - t0;
+      return info;
+    } catch (err) {
+      this.lastError = String((err as Error)?.message || err).slice(0, 200);
+      if (this.safeMode) throw err;
+      this.kill();
+      this.safeMode = true;
+      this.threads = 1;
+      this.device = "wasm";
+      rememberSafe();
+      const info = await this.loadOnce(SAFE_READY_LIMIT_MS);
+      this.readyMs = performance.now() - t0;
+      return info;
+    }
+  }
+
+  private kill() {
+    this.worker?.terminate();
+    this.worker = null;
+    this.info = null;
+  }
+
+  private loadOnce(limit: number): Promise<ModelInfo> {
     const w = this.getWorker();
-    this.ready = new Promise<ModelInfo>((resolve, reject) => {
+    return new Promise<ModelInfo>((resolve, reject) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let preparing = false;
       const done = () => {
+        clearTimeout(timer);
         w.removeEventListener("message", on);
         w.removeEventListener("error", bad);
       };
+      const fail = (error: Error) => {
+        done();
+        if (this.worker === w) this.kill();
+        reject(error);
+      };
+      // While downloading: give up only if no bytes arrive for a while. Once the files are here,
+      // getting ready has a fixed time limit.
+      const arm = (ms: number, why: string) => {
+        clearTimeout(timer);
+        timer = setTimeout(() => fail(new Error(why)), ms);
+      };
+      arm(DOWNLOAD_STALL_MS, "the download stopped");
       const on = (e: MessageEvent) => {
-        if (e.data.type === "ready") {
+        const m = e.data;
+        if (m.type === "progress" && !preparing) arm(DOWNLOAD_STALL_MS, "the download stopped");
+        if (m.type === "status" && (m.stage === "loading" || m.stage === "warming") && !preparing) {
+          preparing = true;
+          arm(limit, `getting ready took longer than ${Math.round(limit / 1000)} s (${this.threads ?? "auto"} threads)`);
+        }
+        if (m.type === "status" && m.stage === "retrying") {
+          preparing = false;
+          arm(DOWNLOAD_STALL_MS, "the download stopped");
+        }
+        if (m.type === "ready") {
           done();
-          const d = e.data;
-          this.info = { device: d.device, loadMs: d.loadMs, warmMs: d.warmMs, bytes: d.bytes, threads: d.threads, downloaded: d.downloaded, fellBack: this.fellBack };
+          this.info = { device: m.device, loadMs: m.loadMs, warmMs: m.warmMs, bytes: m.bytes, threads: m.threads, downloaded: m.downloaded, fellBack: this.fellBack };
           resolve(this.info);
-        } else if (e.data.type === "error") {
-          done();
-          if (e.data.gpu && this.device !== "wasm") {
-            this.toCpu(e.data.message);
-            this.loadModel().then(resolve, reject);
+        } else if (m.type === "error") {
+          if (m.gpu && this.device !== "wasm") {
+            done();
+            this.toCpu(m.message);
+            this.loadOnce(limit).then(resolve, reject);
             return;
           }
-          this.ready = null;
-          reject(new Error(e.data.message));
+          fail(new Error(m.message));
         }
       };
-      const bad = (ev: ErrorEvent) => {
-        done();
-        this.ready = null;
-        reject(new Error(ev.message || "the voice model could not start"));
-      };
+      const bad = (ev: ErrorEvent) => fail(new Error(ev.message || "the voice model could not start"));
       w.addEventListener("message", on);
       w.addEventListener("error", bad);
       w.postMessage({ type: "load", device: this.device, threads: this.threads });
     });
-    return this.ready;
+  }
+
+  /** For the hidden diagnostics line. */
+  diagnostics() {
+    return {
+      threads: this.info?.threads ?? this.workerDiag?.threads ?? this.threads ?? null,
+      isolated: typeof window !== "undefined" ? window.crossOriginIsolated : false,
+      cores: typeof navigator !== "undefined" ? navigator.hardwareConcurrency : 0,
+      backend: this.info?.device ?? this.device ?? "wasm",
+      readyMs: this.readyMs,
+      safe: this.safeMode,
+      lastError: this.lastError,
+    };
   }
 
   /**
