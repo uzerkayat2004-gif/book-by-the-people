@@ -49,6 +49,8 @@ export function presentHome(input: {
   // Released: every voice with its name. Still collecting (open, listed books): an unnamed dot per voice,
   // so a new voice shows on the globe right away while names and words stay sealed.
   const dots = reveal ? ready : input.liveGlobe ? counted : [];
+  // Open, listed books show who has spoken (name and place only) while the words stay sealed.
+  const named = reveal || Boolean(input.liveGlobe);
   const pins = dots.flatMap((voice) => {
     const country = countryByCode(voice.countryCode);
     if (!country) return [];
@@ -56,12 +58,19 @@ export function presentHome(input: {
     for (const character of reveal ? voice.contributorName : voice.id) hash = (hash * 33 + character.charCodeAt(0)) >>> 0;
     return [
       {
-        name: reveal ? voice.contributorName : "",
+        name: named ? publicName(voice.contributorName) : "",
+        place: named ? placeLabel(voice.region, country.name) : "",
         lat: country.lat + ((hash % 21) - 10) * 0.28,
         lng: country.lng + (((hash >> 6) % 21) - 10) * 0.35,
       },
     ];
   });
+  // Everyone who spoke, for the list under the voice count: name and place, never words or emails.
+  const people = (named ? dots : []).map((voice) => ({
+    name: publicName(voice.contributorName),
+    countryCode: voice.countryCode,
+    place: placeLabel(voice.region, countryByCode(voice.countryCode)?.name ?? ""),
+  }));
   const names = ready.map((voice) => ({ name: voice.contributorName, countryCode: voice.countryCode, region: voice.region || "" }));
   const shown = new Set<string>();
   const chapters = (input.document?.chapters ?? []).map((chapter, index) => {
@@ -101,6 +110,7 @@ export function presentHome(input: {
     sealed: !reveal,
     countries,
     pins,
+    people,
     names,
     closesAt: input.closesAt?.toISOString() ?? null,
     releaseLabel: releaseLabel(input.publishedAt ?? input.closesAt),
@@ -117,4 +127,18 @@ export function presentHome(input: {
     clips,
     flag: flagEmoji,
   };
+}
+
+/** A contributor's public name: what they typed in About you, never an email address. */
+export function publicName(name: string): string {
+  const clean = name.replace(/\s+/g, " ").trim();
+  const masked = clean.includes("@") ? clean.split("@")[0].replace(/[._-]+/g, " ").trim() : clean;
+  return masked.slice(0, 60) || "Someone";
+}
+
+/** "Pune, India" when a region was given, else just the country. */
+export function placeLabel(region: string | undefined, country: string): string {
+  const area = (region ?? "").replace(/\s+/g, " ").trim().slice(0, 40);
+  if (!country) return area;
+  return area && area.toLowerCase() !== country.toLowerCase() ? `${area}, ${country}` : country;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mergeModelReview, reviewVoice } from "@/lib/book/checks";
-import { presentHome } from "@/lib/present-home";
+import { placeLabel, presentHome, publicName } from "@/lib/present-home";
 
 const base = {
   id: "v2",
@@ -53,14 +53,35 @@ describe("globe while a book is open", () => {
       { id: "b", contributorName: "Ben", countryCode: "US", status: "NEEDS_YOU", hidden: false, storageKey: null, kind: "voice" },
     ],
   };
-  it("shows an unnamed dot per kept voice", () => {
+  it("shows a dot per kept voice with the name and place, and lists the people", () => {
     const view = presentHome({ ...input, liveGlobe: true });
-    const pins = view.pins;
-    expect(pins).toHaveLength(1);
-    expect(pins[0].name).toBe("");
+    expect(view.pins).toHaveLength(1);
+    expect(view.pins[0]).toMatchObject({ name: "Asha", place: "India" });
+    expect(view.people).toEqual([{ name: "Asha", countryCode: "IN", place: "India" }]);
+  });
+  it("never sends words, emails or ids for an open book", () => {
+    const voices = [
+      { ...input.voices[0], originalText: "my secret words", englishText: "my secret words", contributorName: "asha.k@example.com", region: "Pune" },
+    ];
+    const view = presentHome({ ...input, voices, liveGlobe: true });
+    const sent = JSON.stringify({ pins: view.pins, people: view.people, names: view.names, chapters: view.chapters, clips: view.clips });
+    expect(sent).not.toContain("secret");
+    expect(sent).not.toContain("@");
+    expect(sent).not.toContain("example.com");
+    expect(view.people[0]).toEqual({ name: "asha k", countryCode: "IN", place: "Pune, India" });
+    expect(Object.keys(view.pins[0]).sort()).toEqual(["lat", "lng", "name", "place"]);
+    expect(view.names).toEqual([]);
   });
   it("shows nothing for unlisted books", () => {
     const view = presentHome({ ...input, liveGlobe: false });
     expect(view.pins).toHaveLength(0);
+    expect(view.people).toHaveLength(0);
+  });
+  it("cleans names and places", () => {
+    expect(publicName("  Uzer   Kayat ")).toBe("Uzer Kayat");
+    expect(publicName("someone@gmail.com")).toBe("someone");
+    expect(publicName("")).toBe("Someone");
+    expect(placeLabel("India", "India")).toBe("India");
+    expect(placeLabel("", "Japan")).toBe("Japan");
   });
 });

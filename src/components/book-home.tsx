@@ -5,6 +5,7 @@ import { CountryPanel, type CountryRow } from "@/components/country-panel";
 import { GlobeView } from "@/components/globe-view";
 import { IconBook, IconPen, IconPlus, IconShare, IconShield } from "@/components/icons";
 import { NamesMarquee } from "@/components/names-marquee";
+import { PeopleList, type Person } from "@/components/people-list";
 import { PollCard } from "@/components/poll-card";
 import { HowSteps } from "@/components/how-steps";
 import { ReadActions } from "@/components/read-actions";
@@ -14,7 +15,7 @@ import { countryByCode } from "@/lib/countries";
 import type { Stage } from "@/lib/stage";
 import { EN, fill, type Ui } from "@/lib/i18n";
 
-export type HomePin = { name: string; lat: number; lng: number };
+export type HomePin = { name: string; place?: string; lat: number; lng: number };
 export type HomeName = { name: string; countryCode: string | null; region?: string };
 export type HomeChapter = { title: string; summary: string; quote: { text: string; name: string } | null; voices: number; href: string };
 export type HomePoll = { id: string; label: string; votes: number };
@@ -28,6 +29,7 @@ export function BookHome({
   voiceCount,
   countries,
   pins,
+  people = [],
   names,
   closesAt,
   releaseLabel,
@@ -67,6 +69,8 @@ export function BookHome({
   voiceCount: number;
   countries: CountryRow[];
   pins: HomePin[];
+  /** Open books: who has spoken (name and place only). */
+  people?: Person[];
   names: HomeName[];
   closesAt: string | null;
   releaseLabel: string;
@@ -125,6 +129,7 @@ export function BookHome({
           voiceCount={voiceCount}
           countries={countries}
           pins={pins}
+          people={people}
           closesAt={closesAt}
           releaseLabel={releaseLabel}
           paused={paused}
@@ -245,6 +250,7 @@ function Before({
   voiceCount,
   countries,
   pins,
+  people,
   closesAt,
   releaseLabel,
   paused,
@@ -263,6 +269,7 @@ function Before({
   voiceCount: number;
   countries: CountryRow[];
   pins: HomePin[];
+  people: Person[];
   closesAt: string | null;
   releaseLabel: string;
   paused: boolean;
@@ -354,9 +361,11 @@ function Before({
                 {voiceCount === 1 ? ui.voiceWord : ui.voicesWord}
               </span>
             </div>
+            <PeopleList people={people} showAll={ui.showAll} showLess={ui.showLess} />
             <p className="gpanel__seal">
               <IconShield /> {ui.sealedNote}
             </p>
+            {people.length ? <p className="gpanel__hint">{ui.tapDot}</p> : null}
           </div>
         ) : (
           <CountryPanel countries={countries} voiceCount={voiceCount} />

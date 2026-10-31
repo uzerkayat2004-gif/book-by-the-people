@@ -15,7 +15,7 @@ export const EN = {
   firstVoice: "Be the first voice",
   justSpoke: "{name} from {place} just spoke",
   theWorld: "the world",
-  sealedNote: "Names and words stay sealed until the book is released.",
+  sealedNote: "Their words stay sealed until the book is released.", showAll: "Show all", showLess: "Show less", tapDot: "Tap a dot to see who spoke there.",
   voicesWord: "voices",
   voiceWord: "voice",
   paused: "Paused",

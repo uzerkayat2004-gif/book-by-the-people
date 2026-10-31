@@ -2,51 +2,17 @@
 
 import { useEffect, useRef } from "react";
 import { GLOBE_DOTS } from "@/lib/globe-dots";
+import { IDLE_MS, MAX_THETA, MIN_THETA, RADIUS, REST_THETA, SPIN, START_LNG, clamp, phiFacing, project } from "@/lib/globe-math";
 
-type Pin = { name: string; lat: number; lng: number };
-
-/** Sphere radius in the [-1, 1] view, as on the live globe (0.805 → 40.25% of the canvas width). */
-const RADIUS = 0.805;
-/** Start facing India (lng 79), tilted slightly toward the viewer. */
-const START_LNG = 79;
-const REST_THETA = 0.3;
-const MIN_THETA = -0.6;
-const MAX_THETA = 0.9;
-/** Slow auto-spin (radians per second) once the globe has been left alone for a moment. */
-const SPIN = 0.157;
-const IDLE_MS = 2500;
 const TAP_MS = 600;
 const TAP_MOVE = 6;
-const PICK_MOUSE = 12;
-const PICK_TOUCH = 18;
+const PICK_MOUSE = 18;
+const PICK_TOUCH = 30;
+/** Dots this close together on screen count as one spot: the tooltip lists everyone there. */
+const SAME_SPOT = 14;
+const TIP_LINES = 8;
 
-const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
-const phiFacing = (lng: number) => Math.PI / 2 - ((lng * Math.PI) / 180 - Math.PI);
-const angleDelta = (from: number, to: number) => {
-  let delta = (to - from) % (Math.PI * 2);
-  if (delta > Math.PI) delta -= Math.PI * 2;
-  if (delta < -Math.PI) delta += Math.PI * 2;
-  return delta;
-};
-
-/** Orthographic projection to canvas pixels; depth > 0 is the visible side. */
-function project(lat: number, lng: number, phi: number, theta: number, size: number, scale = 1) {
-  const la = (lat * Math.PI) / 180;
-  const lo = (lng * Math.PI) / 180 - Math.PI;
-  const o = Math.cos(la);
-  const r = RADIUS * scale;
-  const x = -o * Math.cos(lo) * r;
-  const y = Math.sin(la) * r;
-  const z = o * Math.sin(lo) * r;
-  const cp = Math.cos(phi);
-  const sp = Math.sin(phi);
-  const ct = Math.cos(theta);
-  const st = Math.sin(theta);
-  const px = cp * x + sp * z;
-  const py = sp * st * x + ct * y - cp * st * z;
-  const depth = -sp * ct * x + st * y + cp * ct * z;
-  return { x: ((px + 1) / 2) * size, y: ((-py + 1) / 2) * size, depth };
-}
+type Pin = { name: string; place?: string; lat: number; lng: number };
 
 const smoothstep = (a: number, b: number, x: number) => {
   const t = clamp((x - a) / (b - a), 0, 1);
@@ -272,11 +238,16 @@ export function GlobeView({ pins }: { pins: Pin[] }) {
       state.dragging = false;
       wrap.classList.remove("gwrap--drag");
     };
-    const select = (index: number) => {
+    const select = (index: number, group: number[] = index >= 0 ? [index] : []) => {
       state.selected = index;
       state.lastInput = performance.now();
       const span = tipRef.current?.firstElementChild;
-      if (span) span.textContent = index >= 0 ? (pinsRef.current[index]?.name ?? "") : "";
+      if (!span) return;
+      const people = group.map((at) => pinsRef.current[at]).filter((pin): pin is Pin => Boolean(pin?.name));
+      const lines = people.slice(0, TIP_LINES).map((pin) => (pin.place ? `${pin.name} · ${pin.place}` : pin.name));
+      if (people.length > TIP_LINES) lines.push(`+${people.length - TIP_LINES} more`);
+      span.textContent = lines.join("\n");
+      tipRef.current?.classList.toggle("many", lines.length > 1);
     };
 
     const onDown = (event: PointerEvent) => {
@@ -331,17 +302,25 @@ export function GlobeView({ pins }: { pins: Pin[] }) {
       const my = event.clientY - box.top;
       let best = -1;
       let bestDistance = event.pointerType === "touch" ? PICK_TOUCH : PICK_MOUSE;
+      const seen: { index: number; x: number; y: number }[] = [];
       pinsRef.current.forEach((pin, index) => {
-        if (!pin.name) return; // unnamed dots (book not released yet) have nothing to show
+        if (!pin.name) return; // unnamed dots have nothing to show
         const point = project(pin.lat, pin.lng, state.phi, state.theta, state.size);
         if (point.depth < 0.05) return;
+        seen.push({ index, x: point.x, y: point.y });
         const distance = Math.hypot(point.x - mx, point.y - my);
         if (distance < bestDistance) {
           bestDistance = distance;
           best = index;
         }
       });
-      select(best >= 0 && best !== state.selected ? best : -1);
+      if (best < 0 || best === state.selected) {
+        select(-1);
+        return;
+      }
+      const at = seen.find((entry) => entry.index === best)!;
+      const group = seen.filter((entry) => Math.hypot(entry.x - at.x, entry.y - at.y) <= SAME_SPOT).map((entry) => entry.index);
+      select(best, group);
     };
     const onCancel = () => {
       endDrag();
