@@ -153,32 +153,40 @@ export async function transcribeVoice(input: {
   };
 }
 
+/**
+ * Translates people's words into the book's main language (`target`, English by default).
+ * `english` in the result is the text in the target language (the name is from when books were English only).
+ * Demo mode (no AI key) can't translate into other languages: those come back unchanged with done=false.
+ */
 export async function translateBatch(
   items: { id: string; language: string; text: string }[],
   bookId: string,
-): Promise<{ translations: { id: string; english: string }[]; usage: TokenUsage; provider: string; model: string }> {
+  target = "en",
+): Promise<{ translations: { id: string; english: string; done: boolean }[]; usage: TokenUsage; provider: string; model: string }> {
   if (!(await writerLive(bookId))) {
     return {
-      translations: items.map((item) => ({
-        id: item.id,
-        english: shouldTranslate(item.language, item.text) ? knownEnglish(item.text) ?? item.text : item.text,
-      })),
+      translations: items.map((item) => {
+        if (!shouldTranslate(item.language, item.text, target)) return { id: item.id, english: item.text, done: true };
+        // Demo mode (no AI): English keeps the words; other book languages are marked so the flow can be tried.
+        if (target !== "en") return { id: item.id, english: `[${target}] ${item.text}`, done: true };
+        return { id: item.id, english: knownEnglish(item.text) ?? item.text, done: true };
+      }),
       usage: emptyUsage,
       provider: "mock",
       model: "demo-translate",
     };
   }
 
-  const pending = items.filter((item) => shouldTranslate(item.language, item.text));
+  const pending = items.filter((item) => shouldTranslate(item.language, item.text, target));
   if (pending.length === 0) {
     return {
-      translations: items.map((item) => ({ id: item.id, english: item.text })),
+      translations: items.map((item) => ({ id: item.id, english: item.text, done: true })),
       usage: emptyUsage,
       provider: "none",
       model: "",
     };
   }
-  const messages = translationMessages(pending);
+  const messages = translationMessages(pending, languageByCode(target).name);
   const result = await completeJson({
     ...messages,
     schemaName: "translations",
@@ -188,7 +196,10 @@ export async function translateBatch(
   const parsed = translationSchema.parse(extractJson(result.content));
   const byId = new Map(parsed.translations.map((item) => [item.id, item.english]));
   return {
-    translations: items.map((item) => ({ id: item.id, english: byId.get(item.id) || item.text })),
+    translations: items.map((item) => {
+      const out = byId.get(item.id)?.trim();
+      return { id: item.id, english: out || item.text, done: Boolean(out) || !shouldTranslate(item.language, item.text, target) };
+    }),
     usage: result.usage,
     provider: result.provider,
     model: result.model,
@@ -201,8 +212,9 @@ export async function writeBook(input: {
   bookType: string;
   voices: SourceVoice[];
   bookId: string;
+  language?: string;
 }): Promise<{ model: z.infer<typeof modelBookSchema>; provider: string; modelId: string; usage: TokenUsage }> {
-  const messages = bookMessages(input);
+  const messages = bookMessages({ ...input, languageName: languageByCode(input.language || "en").name });
   const result = await completeJson({
     ...messages,
     schemaName: "book",

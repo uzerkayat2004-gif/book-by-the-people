@@ -1,14 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { COUNTRIES, flagEmoji } from "@/lib/countries";
 import { LANGUAGES } from "@/lib/languages";
 import { SPEAK_LANGUAGES } from "@/lib/speak-languages";
 import { AGE_BANDS, regionsFor } from "@/lib/regions";
 import { answerLimits } from "@/lib/book/answer-limits";
+import { EN, fill, type Ui } from "@/lib/i18n";
+import { useSpeech } from "@/components/voice/use-speech";
 
-/** Write only: type or paste an answer. No microphone, no audio. */
+const LANGUAGE_KEY = "bbtp:voice-language";
+
+function mmss(seconds: number) {
+  const whole = Math.floor(seconds);
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
+}
+
+/**
+ * Add your voice: About you first, then the answer. Speak (in-browser speech to text, nothing
+ * uploaded but the words) or Write (type or paste). Only text goes to the server.
+ */
 export function VoiceForm({
   bookId,
   slug,
@@ -21,6 +33,7 @@ export function VoiceForm({
   leftToday = 3,
   defaultLanguage = "en",
   maxSeconds = 600,
+  ui = EN,
 }: {
   bookId: string;
   slug: string;
@@ -37,10 +50,13 @@ export function VoiceForm({
   leftToday?: number;
   defaultLanguage?: string;
   maxSeconds?: number;
+  /** Page words in the book's main language. */
+  ui?: Ui;
 }) {
+  const t = ui;
   const { maxChars, maxWords } = answerLimits(maxSeconds);
   const router = useRouter();
-  const [language, setLanguage] = useState(defaultLanguage);
+  const [language, setLanguageState] = useState(defaultLanguage);
   const [text, setText] = useState("");
   const [name, setName] = useState(presetName);
   const [handle, setHandle] = useState("");
@@ -53,32 +69,120 @@ export function VoiceForm({
   const [busy, setBusy] = useState(false);
   const [startedAt, setStartedAt] = useState(0);
   const [keys, setKeys] = useState(0);
+  const [tab, setTab] = useState<"speak" | "write">("speak");
+  const [caretAt, setCaretAt] = useState<number | null>(null);
+  const area = useRef<HTMLTextAreaElement | null>(null);
+  const ghost = useRef<HTMLDivElement | null>(null);
+  const caret = useRef<number | null>(null);
+  const [wave, setWave] = useState<number[]>(() => Array(28).fill(0));
 
+  const insert = useCallback(
+    (words: string) => {
+      if (!startedAt) setStartedAt(Date.now());
+      setText((previous) => {
+        const at = Math.min(caret.current ?? previous.length, previous.length);
+        const before = previous.slice(0, at);
+        const after = previous.slice(at);
+        const lead = before && !/\s$/.test(before) ? " " : "";
+        const trail = after && !/^\s/.test(after) ? " " : "";
+        const next = (before + lead + words + trail + after).slice(0, maxChars);
+        caret.current = Math.min(next.length, (before + lead + words).length);
+        setCaretAt(caret.current);
+        requestAnimationFrame(() => {
+          const element = area.current;
+          if (!element) return;
+          if (document.activeElement === element && caret.current != null) element.setSelectionRange(caret.current, caret.current);
+          if (caret.current != null && caret.current >= next.length - 1) element.scrollTop = element.scrollHeight;
+        });
+        return next;
+      });
+    },
+    [maxChars, startedAt],
+  );
+  const speech = useSpeech(insert);
+  const { setLanguage: setSpeechLanguage } = speech;
+
+  // Remember the language this person speaks or writes in.
+  useEffect(() => {
+    const id = setTimeout(() => {
+      const saved = window.localStorage.getItem(LANGUAGE_KEY);
+      if (saved && SPEAK_LANGUAGES.some((item) => item.code === saved)) setLanguageState(saved);
+    }, 0);
+    return () => clearTimeout(id);
+  }, []);
+  useEffect(() => {
+    setSpeechLanguage(language);
+  }, [language, setSpeechLanguage]);
+  function setLanguage(code: string) {
+    setLanguageState(code);
+    try {
+      window.localStorage.setItem(LANGUAGE_KEY, code);
+    } catch {
+      // private mode: just don't remember
+    }
+  }
+
+  // A moving sound line while listening, so the person sees the mic hears them.
+  const level = useRef(0);
+  useEffect(() => {
+    level.current = speech.level;
+  }, [speech.level]);
+  useEffect(() => {
+    if (speech.phase !== "listening") return;
+    const timer = setInterval(() => setWave((list) => [...list.slice(1), level.current]), 70);
+    return () => clearInterval(timer);
+  }, [speech.phase]);
+
+  useEffect(() => {
+    (window as unknown as { __voice?: unknown }).__voice = {
+      phase: speech.phase,
+      why: speech.why,
+      stage: speech.stage,
+      problem: speech.problem,
+      note: speech.note,
+      detail: speech.detail,
+      info: speech.info,
+      chunks: speech.chunks,
+      pending: speech.pending,
+      percent: speech.percent,
+      tab,
+    };
+  }, [speech.phase, speech.why, speech.stage, speech.problem, speech.note, speech.detail, speech.info, speech.chunks, speech.pending, speech.percent, tab]);
+
+  const speakable = speech.supported;
+  const shownTab = speakable || speech.checking ? tab : "write";
   const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+  const listening = speech.phase === "listening";
+  const writing = speech.pending > 0 || speech.phase === "finishing";
+  const loading = speech.phase === "downloading" || speech.phase === "preparing";
+  // "typing…" at the cursor while someone talks and while their words are being written.
+  const typingNow = writing || (listening && speech.speaking);
 
   async function submit() {
     if (closed || busy) return;
+    if (listening) await speech.stop();
     const finalText = text.trim();
     if (finalText.length < 12) {
-      setError("Add a few more words first.");
+      setError(t.errShort);
       return;
     }
     if (!name.trim()) {
-      setError("Add the name you want printed in the book.");
+      setError(t.errName);
       return;
     }
     if (!consent) {
-      setError("Tick the box to say we can quote you.");
+      setError(t.errConsent);
       return;
     }
     setBusy(true);
     setError(null);
+    const spoken = Math.round(speech.spokenMs / 1000);
     const response = await fetch(`/api/books/${bookId}/voices`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         text: finalText,
-        mode: "write",
+        mode: spoken > 0 ? "speak" : "write",
         name,
         language,
         country: country || null,
@@ -87,17 +191,22 @@ export function VoiceForm({
         region: region.trim(),
         consent,
         invite,
-        metrics: { activeMs: startedAt ? Date.now() - startedAt : 0, keys, spoken: 0 },
+        metrics: { activeMs: startedAt ? Date.now() - startedAt : 0, keys, spoken },
       }),
     }).catch(() => null);
     const data = response ? await response.json().catch(() => ({})) : {};
     setBusy(false);
     if (!response || !response.ok) {
-      setError(data.error ?? "Your words were not saved. Try again.");
+      setError(data.error ?? t.errSave);
       return;
     }
     router.push(`/b/${slug}/voice/thanks?id=${data.id}`);
     router.refresh();
+  }
+
+  function rememberCaret(element: HTMLTextAreaElement) {
+    caret.current = element.selectionStart;
+    setCaretAt(element.selectionStart);
   }
 
   if (paused) {
@@ -105,7 +214,7 @@ export function VoiceForm({
       <main className="page speak vf">
         <div className="narrow">
           <div className="done">
-            <h1>Voices are paused right now</h1>
+            <h1>{t.pausedNow}</h1>
             <p className="lead">This book reached its AI usage limit. Voices open again when the creator raises it. Nothing stored is deleted.</p>
           </div>
         </div>
@@ -113,24 +222,52 @@ export function VoiceForm({
     );
   }
 
+  const problemText =
+    speech.problem === "mic"
+      ? t.errMic
+      : speech.problem === "nomic"
+        ? t.errNoMic
+        : speech.problem === "micother"
+          ? t.errMicOther
+          : speech.problem === "model"
+            ? t.errModel
+            : speech.problem === "slow"
+              ? t.errSlow
+              : "";
+  const noteText =
+    speech.note === "ready"
+      ? t.modelReady
+      : speech.note === "done"
+        ? t.done
+        : speech.note === "nothing"
+          ? t.heardNothing
+          : speech.note === "nospeech"
+            ? t.noSpeech
+            : speech.note === "nowords"
+              ? t.noWords
+              : speech.note === "left"
+                ? t.leftPage
+                : "";
+  const typingAt = Math.min(caretAt ?? text.length, text.length);
+
   return (
     <main className="page speak vf">
       <div className="narrow vf__wrap">
         <header className="vf__head">
-          <span className="label red">Add your voice</span>
+          <span className="label red">{t.addYourVoice}</span>
           <h1 className="vf__q">{question}</h1>
-          <p className="vf__lead">Tell us a real moment, in your own words. Voices close {opens}.</p>
+          <p className="vf__lead">{fill(t.lead, { when: opens })}</p>
         </header>
 
-        <section className="vf__card" aria-label="About you">
-          <h2 className="vf__h">About you</h2>
+        <section className="vf__card" aria-label={t.aboutYou}>
+          <h2 className="vf__h">{t.aboutYou}</h2>
           <div className="vf__grid">
             <label className="field">
-              <span>Name in the book</span>
+              <span>{t.nameInBook}</span>
               <input id="name" className="input" value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Priya S." autoComplete="name" maxLength={40} />
             </label>
             <label className="field">
-              <span>Country</span>
+              <span>{t.country}</span>
               <select
                 id="country"
                 className="input"
@@ -141,7 +278,7 @@ export function VoiceForm({
                   setRegionOther(false);
                 }}
               >
-                <option value="">Prefer not to say</option>
+                <option value="">{t.preferNot}</option>
                 {COUNTRIES.map((item) => (
                   <option key={item.code} value={item.code}>
                     {flagEmoji(item.code)} {item.name}
@@ -151,7 +288,9 @@ export function VoiceForm({
             </label>
           </div>
           <details className="vf__more">
-            <summary>More about you <em>optional</em></summary>
+            <summary>
+              {t.moreAboutYou} <em>{t.optional}</em>
+            </summary>
             <AboutFields
               nameLabel=""
               name={name}
@@ -173,52 +312,172 @@ export function VoiceForm({
           </details>
           <label className="check vf__consent">
             <input data-testid="consent" type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
-            <span>I&apos;m 18+. Quote my words with my name. AI sorts them and never trains on them.</span>
+            <span>{t.consent}</span>
           </label>
         </section>
 
-        <section className="vf__card" aria-label="Your answer">
+        <section className="vf__card" aria-label={t.yourAnswer}>
           <div className="vf__answerhead">
-            <h2 className="vf__h">Your answer</h2>
-            <label className="vf__lang">
-              <span>I&apos;ll write in</span>
-              <select id="language" className="input" value={language} onChange={(event) => setLanguage(event.target.value)}>
-                {SPEAK_LANGUAGES.map((item) => (
-                  <option key={item.code} value={item.code}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <h2 className="vf__h">{t.yourAnswer}</h2>
+            {speakable || speech.checking ? (
+              <div className="vf__tabs" role="tablist" aria-label={t.yourAnswer}>
+                <button
+                  type="button"
+                  role="tab"
+                  data-testid="tab-speak"
+                  aria-selected={shownTab === "speak"}
+                  className={shownTab === "speak" ? "on" : ""}
+                  onClick={() => setTab("speak")}
+                >
+                  <MicIcon size={15} /> {t.speak}
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  data-testid="tab-write"
+                  aria-selected={shownTab === "write"}
+                  className={shownTab === "write" ? "on" : ""}
+                  onClick={() => {
+                    if (listening) void speech.stop();
+                    setTab("write");
+                  }}
+                >
+                  <PenIcon /> {t.write}
+                </button>
+              </div>
+            ) : null}
           </div>
-          <p className="vf__hint">In your own words, up to about {maxWords.toLocaleString("en-US")} words. Typing or pasting is fine. AI checks every voice before it goes in the book.</p>
+          <label className="vf__lang">
+            <span>{shownTab === "speak" ? t.speakIn : t.writeIn}</span>
+            <select id="language" className="input" data-testid="voice-language" value={language} disabled={listening || loading} onChange={(event) => setLanguage(event.target.value)}>
+              {SPEAK_LANGUAGES.map((item) => (
+                <option key={item.code} value={item.code}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="vf__hint">{shownTab === "speak" ? t.speakHint : fill(t.writeHint, { n: maxWords.toLocaleString("en-US") })}</p>
+
+          {shownTab === "speak" ? (
+            <div className={`vs vs--${speech.phase}${writing ? " is-writing" : ""}`} data-testid="speak-panel" data-phase={speech.phase}>
+              <button
+                type="button"
+                className={`vs__mic${listening ? " is-on" : ""}`}
+                data-testid="mic"
+                aria-label={listening ? t.stop : t.tapToSpeak}
+                aria-pressed={listening}
+                disabled={loading || speech.phase === "finishing" || speech.checking}
+                onClick={() => {
+                  const element = area.current;
+                  caret.current = element && document.activeElement === element ? element.selectionStart : (caret.current ?? text.length);
+                  setCaretAt(caret.current);
+                  void speech.toggle();
+                }}
+              >
+                {listening ? <span className="vs__stopsq" aria-hidden /> : <MicIcon size={26} />}
+              </button>
+              <div className="vs__side" role="status" aria-live="polite">
+                {speech.phase === "downloading" ? (
+                  <>
+                    <b className="vs__state">{t.downloading}</b>
+                    <span className="vs__bar" data-testid="download-bar">
+                      <i style={{ width: `${speech.percent}%` }} />
+                    </span>
+                    <span className="vs__sub">
+                      {speech.loadedMb ? `${speech.percent}% · ${speech.loadedMb} / ${speech.totalMb} MB` : `~${speech.totalMb} MB`}
+                      {speech.stage === "retrying" ? ` · ${t.retrying}` : ""}
+                    </span>
+                  </>
+                ) : speech.phase === "preparing" ? (
+                  <>
+                    <b className="vs__state">
+                      <span className="vs__spin" aria-hidden /> {t.gettingReady}
+                    </b>
+                    {speech.stage === "retrying" ? <span className="vs__sub">{t.retrying}</span> : null}
+                  </>
+                ) : listening ? (
+                  <>
+                    <b className="vs__state">
+                      <span className="vs__dot" aria-hidden /> {t.listening} <span className="vs__time">{mmss(speech.elapsed)}</span>
+                    </b>
+                    <span className="vs__wave" aria-hidden data-testid="wave">
+                      {wave.map((value, index) => (
+                        <i key={index} style={{ transform: `scaleY(${Math.max(0.08, Math.min(1, value * 1.4))})` }} />
+                      ))}
+                    </span>
+                    {writing ? <span className="vs__sub vs__writing">{t.writingWords}…</span> : null}
+                  </>
+                ) : speech.phase === "finishing" ? (
+                  <b className="vs__state vs__writing">
+                    <span className="vs__spin" aria-hidden /> {t.writingWords}…
+                  </b>
+                ) : (
+                  <>
+                    <b className="vs__state">{t.tapToSpeak}</b>
+                    {speech.cached === false ? <span className="vs__sub">{fill(t.firstTime, { mb: speech.totalMb })}</span> : null}
+                  </>
+                )}
+              </div>
+            </div>
+          ) : null}
 
           <div className="vf__box">
-            <textarea
-              className="vf__text"
-              data-testid="words"
-              aria-label="Your words"
-              value={text}
-              placeholder="Start typing your answer…"
-              rows={8}
-              spellCheck
-              maxLength={maxChars}
-              onKeyDown={() => {
-                if (!startedAt) setStartedAt(Date.now());
-                setKeys((count) => count + 1);
-              }}
-              onChange={(event) => {
-                if (!startedAt) setStartedAt(Date.now());
-                setText(event.target.value.slice(0, maxChars));
-              }}
-            />
+            <div className="vf__field">
+              <div className="vf__ghost" ref={ghost} aria-hidden>
+                {typingNow ? (
+                  <>
+                    <span className="vf__ghosttext">{text.slice(0, typingAt)}</span>
+                    {text.slice(0, typingAt) && !/\s$/.test(text.slice(0, typingAt)) ? " " : ""}
+                    <span className="vf__typing" data-testid="typing">
+                      {t.typing}
+                    </span>
+                  </>
+                ) : null}
+              </div>
+              <textarea
+                ref={area}
+                className="vf__text"
+                data-testid="words"
+                aria-label={t.yourWords}
+                value={text}
+                placeholder={typingNow ? "" : shownTab === "speak" ? t.wordsPlaceholderSpeak : t.wordsPlaceholderWrite}
+                rows={8}
+                spellCheck
+                maxLength={maxChars}
+                onScroll={(event) => {
+                  if (ghost.current) ghost.current.scrollTop = event.currentTarget.scrollTop;
+                }}
+                onKeyDown={() => {
+                  if (!startedAt) setStartedAt(Date.now());
+                  setKeys((count) => count + 1);
+                }}
+                onSelect={(event) => rememberCaret(event.currentTarget)}
+                onChange={(event) => {
+                  if (!startedAt) setStartedAt(Date.now());
+                  setText(event.target.value.slice(0, maxChars));
+                  rememberCaret(event.target);
+                }}
+              />
+            </div>
             <div className="vf__meta">
-              <span>
-                {words} {words === 1 ? "word" : "words"}
-              </span>
-              <span>{text.length > maxChars * 0.9 ? `${maxChars - text.length} characters left` : "Edit freely"}</span>
+              <span>{words === 1 ? t.wordCountOne : fill(t.wordCount, { n: words })}</span>
+              <span>{text.length > maxChars * 0.9 ? fill(t.charsLeft, { n: maxChars - text.length }) : t.editFreely}</span>
             </div>
           </div>
+
+          {shownTab === "speak" && problemText ? (
+            <div className="vs__problem" role="alert" data-testid="speak-error">
+              <p>{problemText}</p>
+              <button type="button" className="btn btn--ghost btn--sm" onClick={() => setTab("write")}>
+                {t.writeInstead}
+              </button>
+            </div>
+          ) : shownTab === "speak" && noteText ? (
+            <p className="vs__note" role="status" data-testid="speak-note">
+              {noteText}
+            </p>
+          ) : null}
         </section>
 
         {error ? (
@@ -231,15 +490,30 @@ export function VoiceForm({
           type="button"
           data-testid="send-words"
           onClick={() => void submit()}
-          disabled={busy || closed || text.trim().length < 12 || !consent || !name.trim()}
+          disabled={busy || closed || text.trim().length < 12 || !consent || !name.trim() || writing}
         >
-          {busy ? "Adding your words…" : "Add my words"}
+          {busy ? t.adding : t.addMyWords}
         </button>
-        <div className="under">
-          {leftToday} left today · your words stay sealed until the book is released
-        </div>
+        <div className="under">{fill(t.leftToday, { n: leftToday })}</div>
       </div>
     </main>
+  );
+}
+
+function MicIcon({ size = 20 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+    </svg>
+  );
+}
+
+function PenIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width={15} height={15} aria-hidden fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 20h4L19 9l-4-4L4 16v4z" />
+    </svg>
   );
 }
 

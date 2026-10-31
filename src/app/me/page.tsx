@@ -73,10 +73,10 @@ export default async function MePage() {
           )}
         </div>
         <div style={{ marginTop: 22 }}>
-          <Link className="btn btn--red btn--big btn--block" href={book ? `/b/${book.slug}/voice` : "/speak"}>
+          <a className="btn btn--red btn--big btn--block" href={book ? `/b/${book.slug}/voice` : "/speak"}>
             <span className="rec" />
             Add your voice
-          </Link>
+          </a>
           <div className="under">{left} left today</div>
         </div>
         <div className="meown">

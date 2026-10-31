@@ -81,10 +81,10 @@ export function OpenNow({ books, heading = "Also open now", allLink = true }: { 
                 ) : null}
               </span>
               {book.type === "OPEN" ? (
-                <Link className="btn btn--red btn--sm opencard__cta" href={`/b/${book.slug}/voice`}>
+                <a className="btn btn--red btn--sm opencard__cta" href={`/b/${book.slug}/voice`}>
                   <span className="rec" />
                   Add your voice
-                </Link>
+                </a>
               ) : (
                 <Link className="btn btn--sm btn--ghost opencard__cta" href={`/b/${book.slug}`}>
                   Open

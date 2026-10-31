@@ -15,7 +15,26 @@ const nextConfig: NextConfig = {
   devIndicators: false,
   poweredByHeader: false,
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    return [
+      { source: "/:path*", headers: securityHeaders },
+      // Speech to text runs in the browser. Cross-origin isolation lets it use several CPU threads,
+      // which makes it about three times faster. Only the voice page needs it.
+      {
+        source: "/b/:slug/voice",
+        headers: [
+          { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+          { key: "Cross-Origin-Embedder-Policy", value: "credentialless" },
+        ],
+      },
+      // The speech worker and its files must say the same, or an isolated page can't start them.
+      {
+        source: "/voice/:path*",
+        headers: [
+          { key: "Cross-Origin-Embedder-Policy", value: "credentialless" },
+          { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
+        ],
+      },
+    ];
   },
   // data/ holds the database, recordings and downloaded models (several GB). The server reads it at run
   // time, so the build must not trace or copy it.

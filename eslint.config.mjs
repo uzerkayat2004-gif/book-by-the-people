@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vendored speech runtime (transformers.js build).
+    "public/voice/transformers*.js",
+    "src/generated/**",
+    "test-results/**",
+    "playwright-report/**",
   ]),
 ]);
 

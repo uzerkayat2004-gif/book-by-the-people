@@ -12,6 +12,7 @@ import { LANGUAGES } from "../languages";
 import { SPEAK_LANGUAGES } from "../speak-languages";
 import { canStoreKeys, sealKey } from "../secret-box";
 import { parseUsageLimit } from "../ai/spend";
+import { advanceTranslations, translateUi } from "./translations";
 
 const LANGUAGE_CODES = new Set([...LANGUAGES, ...SPEAK_LANGUAGES].map((language) => language.code));
 
@@ -93,6 +94,7 @@ export async function createBook(input: {
       },
     },
   });
+  if (book.language !== "en") runAfterResponse(() => translateUi(book.id));
   return book;
 }
 
@@ -228,7 +230,9 @@ export async function updateBookSettings(input: {
     }
   }
 
-  return prisma.book.update({ where: { id: book.id }, data });
+  const saved = await prisma.book.update({ where: { id: book.id }, data });
+  if (data.language && data.language !== book.language) runAfterResponse(() => translateUi(book.id));
+  return saved;
 }
 
 export async function closeBook(bookId: string, userId: string) {
@@ -294,6 +298,9 @@ export async function publishBook(bookId: string, userId: string) {
   // Speaking a whole book takes minutes on a laptop, so the audiobook and video are made
   // in the background. The Release tab shows "Making…" until the job is done.
   runAfterResponse(() => makeMediaInBackground(book.id, document!));
+  // Extra release languages are translated in the background too (the Studio keeps nudging it on).
+  if (book.releaseLanguages) runAfterResponse(() => advanceTranslations(book.id, 250_000));
+  runAfterResponse(() => translateUi(book.id));
   try {
     await notifyReleased(book.id);
   } catch {

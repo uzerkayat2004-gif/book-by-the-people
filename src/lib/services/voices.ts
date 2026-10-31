@@ -126,6 +126,8 @@ export async function ingestWords(input: {
       originalText: text,
       englishText: text,
       translated: false,
+      // Already in the book's language? Then nothing to translate. Otherwise the pipeline translates it next.
+      bookLanguage: shouldTranslate(language, text, book.language || "en") ? "" : book.language || "en",
       turnsJson: JSON.stringify([{ turnId: 0, startMs: 0, endMs: Math.max(durationMs, 1000), transcript: text }] satisfies Turn[]),
       // No start word any more: written, pasted or spoken on the page, then judged by the AI check.
       startWordPassed: true,

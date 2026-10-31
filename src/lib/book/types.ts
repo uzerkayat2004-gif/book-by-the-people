@@ -15,6 +15,8 @@ export type SourceVoice = {
   originalText: string;
   englishText: string;
   translated: boolean;
+  /** Which language englishText is in ("" = English). */
+  bookLanguage?: string;
   turns: Turn[];
   durationMs: number;
   createdAt: number;
@@ -57,6 +59,8 @@ export type Chapter = {
 };
 
 export type BookDocument = {
+  /** The language the book is written in (missing = English). */
+  language?: string;
   title: string;
   question: string;
   bookType: BookType | string;

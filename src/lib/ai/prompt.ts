@@ -61,13 +61,17 @@ export function bookMessages(input: {
   question: string;
   bookType: string;
   voices: SourceVoice[];
+  /** The book's main language name, e.g. "Japanese". English when missing. */
+  languageName?: string;
 }): { system: string; user: string } {
+  const languageName = input.languageName || "English";
   const ceiling = Math.min(8, Math.max(1, input.voices.length));
   const system = [
     "You are the editor of a book made from real people's voices.",
     "Write the connecting narrative. Do not invent speakers, events, or quotations.",
     "Every verbatim field must be an exact substring of that voice's originalText, not the translation.",
     "Do not quote the anti-spam start word by itself.",
+    `Write the preface, every chapter title, theme, narrative, agreement and disagreement in ${languageName}. Each voice's englishText field already holds that voice's words in ${languageName}; use it to understand them.`,
     "Pick one strong sentence per voice. Keep the speaker's words, including if they are not in English.",
     `Choose the number of chapters from the variety of what was said. Do not default to 7 or to any fixed count. Use fewer chapters when people are talking about the same thing, and more when they are not. Stay between 1 and ${ceiling}.`,
     "In each chapter, say where the voices agree and where they disagree. Leave the field empty when you do not hear it.",
@@ -107,10 +111,17 @@ export function bookMessages(input: {
   return { system, user };
 }
 
-export function translationMessages(items: { id: string; language: string; text: string }[]): { system: string; user: string } {
+export function translationMessages(
+  items: { id: string; language: string; text: string }[],
+  target = "English",
+): { system: string; user: string } {
   return {
-    system:
-      "Translate each speech transcript into natural English. Preserve names, hesitation, and meaning. Do not add ideas, smooth away disagreement, or invent context. If a line is already English, return it unchanged.",
+    system: [
+      `Translate each person's words into natural ${target}.`,
+      "Preserve names, hesitation, and meaning. Do not add ideas, smooth away disagreement, or invent context.",
+      `If a line is already ${target}, return it unchanged.`,
+      `Put the ${target} text in the "english" field (the field name is fixed; the text must be ${target}).`,
+    ].join(" "),
     user: JSON.stringify({ transcripts: items }),
   };
 }

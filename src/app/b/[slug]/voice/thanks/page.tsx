@@ -6,6 +6,7 @@ import { canSeeOwnVoice } from "@/lib/privacy";
 import { getViewer } from "@/lib/viewer";
 import { DeleteMyVoice } from "@/components/delete-my-voice";
 import { releaseLabel } from "@/lib/stage";
+import { fill, langAttrs, languageName, uiFor } from "@/lib/i18n";
 
 export default async function ThanksPage({
   params,
@@ -25,33 +26,56 @@ export default async function ThanksPage({
   if (!canSeeOwnVoice(voice, book, viewer, guestKey)) notFound();
   // Waiting for the creator (or for AI) still counts as kept; only a refused voice is "not this time".
   const ready = voice.status === "READY" || voice.status === "NEEDS_YOU" || voice.status === "PROCESSING";
+  const ui = uiFor(book.language, book.uiJson);
+  const target = book.language || "en";
+  const bookName = languageName(target, target);
+  // Words in another language are put into the book's language when they are added (or soon after).
+  const translated = voice.translated && voice.bookLanguage === target && voice.englishText.trim() && voice.englishText.trim() !== voice.originalText.trim();
+  const waiting = !translated && voice.bookLanguage !== target && voice.language !== target;
   return (
-    <main className="page speak vf">
+    <main className="page speak vf" {...langAttrs(target)}>
       <div className="narrow vf__wrap">
         <div className="done">
           <div className="sealbig">
             <IconLock />
           </div>
-          <h1>{ready ? "Sealed." : "Not this time."}</h1>
+          <h1>{ready ? ui.sealed : ui.notThisTime}</h1>
           <p className="lead">
             {ready
               ? book.status === "PUBLISHED"
-                ? "You're in. Your words are kept with your name."
-                : `Voices close ${releaseLabel(book.closesAt)}. Yours stays sealed until the book is released.`
-              : voice.rejectReason || "Your words are kept, but they will not be used in the book."}
+                ? ui.youreIn
+                : fill(ui.sealedUntil, { when: releaseLabel(book.closesAt) })
+              : voice.rejectReason || ui.notUsed}
           </p>
         </div>
-        {voice.originalText ? <div className="transcript" style={{ marginTop: 18 }}>{voice.originalText}</div> : null}
+        {voice.originalText ? (
+          <section className="thanks__words" aria-label={ui.yourWords}>
+            {translated ? <h2 className="thanks__label">{ui.yourWords}</h2> : null}
+            <div className="transcript" dir="auto">{voice.originalText}</div>
+            {translated ? (
+              <>
+                <h2 className="thanks__label">{fill(ui.inTheBook, { language: bookName })}</h2>
+                <div className="transcript transcript--book" dir="auto" data-testid="book-text">
+                  {voice.englishText}
+                </div>
+              </>
+            ) : waiting && ready ? (
+              <p className="thanks__note" data-testid="translate-later">
+                {fill(ui.translateLater, { language: bookName })}
+              </p>
+            ) : null}
+          </section>
+        ) : null}
         <DeleteMyVoice voiceId={voice.id} after={`/b/${book.slug}`} />
         <div className="grow" />
         {ready ? (
           <Link className="btn btn--red btn--big btn--block" href={`/b/${book.slug}/credit/${voice.id}`}>
-            Done
+            {ui.doneBtn}
           </Link>
         ) : (
-          <Link className="btn btn--red btn--big btn--block" href={`/b/${book.slug}/voice`}>
-            Try again
-          </Link>
+          <a className="btn btn--red btn--big btn--block" href={`/b/${book.slug}/voice`}>
+            {ui.tryAgain}
+          </a>
         )}
       </div>
     </main>

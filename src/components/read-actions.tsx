@@ -14,7 +14,10 @@ export function ReadActions({
   readMins,
   listenMins,
   clips,
+  labels,
 }: {
+  /** Page words in the book's language. */
+  labels?: { read: string; listen: string; watch: string; chapter: string; chapters: string };
   href: string;
   question: string;
   chapters: number;
@@ -23,6 +26,7 @@ export function ReadActions({
   clips: Clip[];
 }) {
   const [open, setOpen] = useState<null | "audio" | "video">(null);
+  const words = labels ?? { read: "Read", listen: "Listen", watch: "Watch", chapter: "chapter", chapters: "chapters" };
   return (
     <>
       <div className="rlw in3">
@@ -31,9 +35,9 @@ export function ReadActions({
             <IconBook />
           </span>
           <span>
-            <b>Read</b>
+            <b>{words.read}</b>
             <small>
-              {chapters} {chapters === 1 ? "chapter" : "chapters"} · {readMins} min
+              {chapters} {chapters === 1 ? words.chapter : words.chapters} · {readMins} min
             </small>
           </span>
           <IconArrow />
@@ -43,7 +47,7 @@ export function ReadActions({
             <IconHeadphones />
           </span>
           <span>
-            <b>Listen</b>
+            <b>{words.listen}</b>
             <small>{listenMins} min</small>
           </span>
         </button>
@@ -52,7 +56,7 @@ export function ReadActions({
             <IconPlay />
           </span>
           <span>
-            <b>Watch</b>
+            <b>{words.watch}</b>
             <small>{Math.max(1, listenMins)} min</small>
           </span>
         </button>

@@ -225,6 +225,7 @@ export default async function StudioBookPage({
         }}
         settings={{
           language: book.language,
+          releaseLanguages: book.releaseLanguages ? book.releaseLanguages.split(",").filter(Boolean) : [],
           voiceLimitPerDay: book.voiceLimitPerDay,
           maxVoiceSeconds: book.maxVoiceSeconds,
           hasAiKey,

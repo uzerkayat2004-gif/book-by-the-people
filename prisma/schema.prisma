@@ -95,7 +95,12 @@ model Book {
   showPoll             Boolean          @default(true)
   voiceLimitPerDay     Int              @default(3)
   maxVoiceSeconds      Int              @default(600)
+  /// The book's main language: every voice is translated into it and the book is written in it.
   language             String           @default("en")
+  /// Extra languages the released book is also offered in, comma separated (e.g. "hi,ja").
+  releaseLanguages     String           @default("")
+  /// The public page's words in the main language, when it isn't one of the built-in ones (JSON, machine translated once).
+  uiJson               String           @default("")
   aiKeyCipher          String           @default("")
   /// The creator's saved AI model this book runs on ("" = their first model). aiModel overrides its model id.
   aiProviderId         String           @default("")
@@ -120,6 +125,7 @@ model Book {
   challenges           VoiceChallenge[]
   jobs                 PipelineJob[]
   backups              Backup[]
+  translations         BookTranslation[]
 
   @@index([status, type, unlisted, createdAt])
   @@index([status, unlisted, publishedAt])
@@ -145,8 +151,11 @@ model Voice {
   startWord       String   @default("")
   startWordPassed Boolean  @default(false)
   originalText    String   @default("")
+  /// The words in the book's main language (named englishText from when every book was English).
   englishText     String   @default("")
   translated      Boolean  @default(false)
+  /// Which language englishText is in ("" = English, for voices from before books had a main language).
+  bookLanguage    String   @default("")
   turnsJson       String   @default("[]")
   status          String   @default("PROCESSING")
   hidden          Boolean  @default(false)
@@ -258,4 +267,24 @@ model AiUsage {
   audioMs      Int      @default(0)
   estimatedUsd Float    @default(0)
   createdAt    DateTime @default(now())
+}
+
+/// A released book in one of its extra languages: the published draft, translated chapter by chapter.
+model BookTranslation {
+  id          String   @id @default(cuid())
+  bookId      String
+  book        Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  language    String
+  /// The draft this was translated from. A newer published draft makes it stale.
+  draftId     String
+  /// "working" | "ready" | "failed"
+  status      String   @default("working")
+  /// Chapters translated so far (the work goes a few chapters per request).
+  done        Int      @default(0)
+  contentJson String   @default("")
+  error       String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([bookId, language])
 }

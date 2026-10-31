@@ -12,6 +12,7 @@ import { BookMedia, OpenNow, type ShelfOpen } from "@/components/shelf";
 import { ShareLink } from "@/components/share-link";
 import { countryByCode } from "@/lib/countries";
 import type { Stage } from "@/lib/stage";
+import { EN, fill, type Ui } from "@/lib/i18n";
 
 export type HomePin = { name: string; lat: number; lng: number };
 export type HomeName = { name: string; countryCode: string | null; region?: string };
@@ -19,6 +20,8 @@ export type HomeChapter = { title: string; summary: string; quote: { text: strin
 export type HomePoll = { id: string; label: string; votes: number };
 export type HomeClip = { src: string; startMs: number; endMs: number; name: string; text: string };
 
+// "Add your voice" links are plain <a>: a full page load gives the voice page its own headers
+// (cross-origin isolation), which makes speech to text about three times faster.
 export function BookHome({
   stage,
   question,
@@ -46,7 +49,16 @@ export function BookHome({
   sealed = false,
   owner,
   mode = "book",
+  ui = EN,
+  lang,
+  languages,
 }: {
+  /** Page words in the book's language. */
+  ui?: Ui;
+  /** HTML lang/dir for the book's language. */
+  lang?: { lang: string; dir: "ltr" | "rtl" };
+  /** Released translations: shown as a language switch. */
+  languages?: React.ReactNode;
   title?: string;
   slug?: string;
   media?: { audio: boolean; video: boolean; audioBytes?: number; videoBytes?: number };
@@ -79,16 +91,16 @@ export function BookHome({
   mode?: "home" | "book";
 }) {
   const latest = names[names.length - 1];
-  const place = latest?.countryCode ? (countryByCode(latest.countryCode)?.name ?? "the world") : "the world";
+  const place = latest?.countryCode ? (countryByCode(latest.countryCode)?.name ?? ui.theWorld) : ui.theWorld;
   const ticker = sealed
     ? voiceCount
-      ? "Every voice stays sealed until release"
-      : "Be the first voice"
+      ? ui.sealedTicker
+      : ui.firstVoice
     : latest
-      ? `${latest.name} from ${place} just spoke`
-      : "Be the first voice";
+      ? fill(ui.justSpoke, { name: latest.name, place })
+      : ui.firstVoice;
   return (
-    <main className={stage === "after" ? "page bookflow" : "page home4 bookflow"}>
+    <main className={stage === "after" ? "page bookflow" : "page home4 bookflow"} {...lang}>
       {stage === "after" ? (
         <After
           title={title}
@@ -103,6 +115,8 @@ export function BookHome({
           listenMins={listenMins}
           clips={clips}
           owner={owner}
+          ui={ui}
+          languages={languages}
         />
       ) : (
         <Before
@@ -119,10 +133,11 @@ export function BookHome({
           ticker={ticker}
           sealed={sealed}
           owner={owner}
+          ui={ui}
         />
       )}
       {stage === "after" || sealed ? null : <NamesMarquee names={names} />}
-      {stage === "after" ? null : <How releaseLabel={releaseLabel} />}
+      {stage === "after" ? null : <How releaseLabel={releaseLabel} ui={ui} />}
       {stage === "after" && slug && media ? (
         <BookMedia slug={slug} media={media} title={title ?? question} question={question} people={voiceCount} countries={countries.length} />
       ) : null}
@@ -132,19 +147,19 @@ export function BookHome({
         {stage === "after" ? null : (
           <div className="endband">
             <div className="endband__text">
-              <span className="label red">{paused ? "Paused" : stage === "closed" ? "Closed" : "Open now"}</span>
-              <h2>Your voice belongs in this book.</h2>
-              <p>Write your answer in your own words. It takes about 5 minutes, and stays sealed until the book is released.</p>
+              <span className="label red">{paused ? ui.paused : stage === "closed" ? ui.closed : ui.openNow}</span>
+              <h2>{ui.belongs}</h2>
+              <p>{ui.belongsSub}</p>
             </div>
             {voiceHref && !paused && stage !== "closed" ? (
-              <Link className="btn btn--red btn--big cta4 endband__btn" href={voiceHref}>
+              <a className="btn btn--red btn--big cta4 endband__btn" href={voiceHref}>
                 <span className="rec" />
-                Add your voice
-              </Link>
+                {ui.addYourVoice}
+              </a>
             ) : (
               <span className="btn btn--red btn--big cta4 endband__btn is-closed" aria-disabled="true">
                 <span className="rec" />
-                {paused ? "Voices are paused right now" : "Voices are closed"}
+                {paused ? ui.pausedNow : ui.closedNow}
               </span>
             )}
           </div>
@@ -155,9 +170,9 @@ export function BookHome({
               <span className="endcard__ic" aria-hidden="true">
                 <IconShare />
               </span>
-              <span className="label">Share</span>
-              <b className="endcard__t">Invite your people</b>
-              <p>Every voice makes the book better. Send them the link.</p>
+              <span className="label">{ui.share}</span>
+              <b className="endcard__t">{ui.invite}</b>
+              <p>{ui.inviteSub}</p>
               <div className="endcard__act">
                 <ShareLink path={`/b/${slug}`} title={title ?? question} />
               </div>
@@ -181,12 +196,12 @@ export function BookHome({
             <span className="endcard__ic" aria-hidden="true">
               <IconBook />
             </span>
-            <span className="label">Explore</span>
-            <b className="endcard__t">More books</b>
-            <p>See what others are writing now, or read the released ones.</p>
+            <span className="label">{ui.explore}</span>
+            <b className="endcard__t">{ui.moreBooks}</b>
+            <p>{ui.moreBooksSub}</p>
             <div className="endcard__act">
               <Link className="btn btn--light btn--sm bookfoot__more" href="/books">
-                See other books <span aria-hidden>→</span>
+                {ui.seeOther} <span aria-hidden>→</span>
               </Link>
             </div>
           </div>
@@ -238,7 +253,9 @@ function Before({
   ticker,
   sealed,
   owner,
+  ui,
 }: {
+  ui: Ui;
   sealed?: boolean;
   owner?: string;
   title?: string;
@@ -261,7 +278,7 @@ function Before({
           <span className="live">
             <i />
           </span>
-          <b>{voiceCount.toLocaleString("en-US")}</b> voices so far
+          <b>{voiceCount.toLocaleString("en-US")}</b> {ui.voicesSoFar}
         </span>
         <h1 className="hero4__title" style={titleFit(lineA, lineB)} data-testid="hero-title">
           {lineB === "." ? (
@@ -284,8 +301,8 @@ function Before({
         </h1>
         <div className="topic in2">
           <div className="topic__label">
-            <span>The question</span>
-            {owner ? <em className="topic__by">by {owner}</em> : null}
+            <span>{ui.theQuestion}</span>
+            {owner ? <em className="topic__by">{fill(ui.by, { name: owner })}</em> : null}
           </div>
           <p className="topic__q">{question}</p>
         </div>
@@ -293,29 +310,29 @@ function Before({
           <Countdown closesAt={closesAt} frozen={closed} />
           {closed ? (
             <div className="cta6__open">
-              Voices closed. <b>The book is being written.</b>
+              {ui.voicesClosed} <b>{ui.beingWritten}</b>
             </div>
           ) : (
             <div className="cta6__open">
-              Closes <b>{releaseLabel}</b>
+              {ui.closes} <b>{releaseLabel}</b>
             </div>
           )}
           {paused ? (
             <span className="btn btn--red btn--big btn--block cta4 is-closed" aria-disabled="true">
               <span className="rec" />
-              Voices are paused right now
+              {ui.pausedNow}
             </span>
           ) : closed || !voiceHref ? (
             <span className="btn btn--red btn--big btn--block cta4 is-closed" aria-disabled="true">
               <span className="rec" />
-              Voices are closed
+              {ui.closedNow}
             </span>
           ) : (
-            <Link className="btn btn--red btn--big btn--block cta4" href={voiceHref}>
+            <a className="btn btn--red btn--big btn--block cta4" href={voiceHref}>
               <span className="rec" />
-              Add your voice
-              <span className="cta4__t">5 min</span>
-            </Link>
+              {ui.addYourVoice}
+              <span className="cta4__t">{ui.fiveMin}</span>
+            </a>
           )}
           <div className="cta6__live">
               <span className="live">
@@ -333,11 +350,12 @@ function Before({
           <div className="gpanel gpanel--sealed" data-testid="sealed-panel">
             <div className="gpanel__stats">
               <span>
-                <b>{voiceCount.toLocaleString("en-US")}</b>voices
+                <b>{voiceCount.toLocaleString("en-US")}</b>
+                {voiceCount === 1 ? ui.voiceWord : ui.voicesWord}
               </span>
             </div>
             <p className="gpanel__seal">
-              <IconShield /> Names, places and words stay sealed until the book is released.
+              <IconShield /> {ui.sealedNote}
             </p>
           </div>
         ) : (
@@ -361,7 +379,11 @@ function After({
   listenMins,
   clips,
   owner,
+  ui,
+  languages,
 }: {
+  ui: Ui;
+  languages?: React.ReactNode;
   owner?: string;
   question: string;
   voiceCount: number;
@@ -384,31 +406,43 @@ function After({
         </div>
         <div className="bookhero4__side">
           <div className="label red in1">
-            Out now · {date}
-            {owner ? <span className="bookhero4__by"> · by {owner}</span> : null}
+            {ui.outNow} · {date}
+            {owner ? <span className="bookhero4__by"> · {fill(ui.by, { name: owner })}</span> : null}
           </div>
-          <h2 className="bookhero4__h in2">The book is here.</h2>
-          <ReadActions href={readHref} question={question} chapters={chapters.length} readMins={readMins} listenMins={listenMins} clips={clips} />
+          <h2 className="bookhero4__h in2">{ui.bookHere}</h2>
+          {languages}
+          <ReadActions
+            href={readHref}
+            question={question}
+            chapters={chapters.length}
+            readMins={readMins}
+            listenMins={listenMins}
+            clips={clips}
+            labels={{ read: ui.read, listen: ui.listen, watch: ui.watch, chapter: ui.chapterWord, chapters: ui.chaptersWord }}
+          />
           <div className="bstats in5">
             <span>
-              <b>{voiceCount.toLocaleString("en-US")}</b>people
+              <b>{voiceCount.toLocaleString("en-US")}</b>
+              {ui.people}
             </span>
             {countries > 0 ? (
               <span>
-                <b>{countries}</b>countries
+                <b>{countries}</b>
+                {ui.countries}
               </span>
             ) : null}
             <span>
-              <b>{chapters.length}</b>chapters
+              <b>{chapters.length}</b>
+              {ui.chaptersWord}
             </span>
           </div>
         </div>
       </section>
       <section className="wrap section rv in">
         <div className="shead5">
-          <h2>Chapters</h2>
+          <h2>{ui.chapters}</h2>
           <span className="label">
-            {chapters.length} {chapters.length === 1 ? "chapter" : "chapters"} · {readMins} min read
+            {chapters.length} {chapters.length === 1 ? ui.chapterWord : ui.chaptersWord} · {fill(ui.minRead, { n: readMins })}
           </span>
         </div>
         <ol className="toc5" data-testid="chapter-list">
@@ -426,7 +460,7 @@ function After({
                   ) : null}
                 </span>
                 <span className="toc5__meta">
-                  <span>{chapter.voices ? `${chapter.voices} ${chapter.voices === 1 ? "voice" : "voices"}` : "Read"}</span>
+                  <span>{chapter.voices ? `${chapter.voices} ${chapter.voices === 1 ? ui.voiceWord : ui.voicesWord}` : ui.read}</span>
                   <span className="toc5__go" aria-hidden>
                     →
                   </span>
@@ -440,14 +474,14 @@ function After({
   );
 }
 
-function How({ releaseLabel }: { releaseLabel: string }) {
-  const day = releaseLabel.split(" · ")[0] || "Soon";
+function How({ releaseLabel, ui }: { releaseLabel: string; ui: Ui }) {
+  const day = releaseLabel.split(" · ")[0] || ui.soon;
   return (
     <HowSteps
       steps={[
-        { icon: <IconPen />, title: "Write", copy: "Your answer, in your own words. About 5 minutes." },
-        { icon: <IconShield />, title: "AI checks", copy: "Real people, on topic. Same views, one paragraph." },
-        { icon: <IconBook />, title: "Book drops", copy: `${day}. Read, listen, watch.` },
+        { icon: <IconPen />, title: ui.howSpeak, copy: ui.howSpeakCopy },
+        { icon: <IconShield />, title: ui.howCheck, copy: ui.howCheckCopy },
+        { icon: <IconBook />, title: ui.howDrop, copy: fill(ui.howDropCopy, { day }) },
       ]}
     />
   );

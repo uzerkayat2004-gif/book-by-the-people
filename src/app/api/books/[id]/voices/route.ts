@@ -57,7 +57,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       mode: body.mode,
       metrics: body.metrics,
     });
-    return NextResponse.json({ id: voice.id, status: voice.status });
+    // The words as they will read in the book (translated into its main language when needed).
+    return NextResponse.json({
+      id: voice.id,
+      status: voice.status,
+      bookText: voice.translated ? voice.englishText : null,
+      bookLanguage: voice.bookLanguage || null,
+    });
   } catch (error) {
     return fromError(error);
   }

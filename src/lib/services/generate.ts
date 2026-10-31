@@ -1,14 +1,14 @@
 import "server-only";
-import { writeBook, translateBatch } from "../ai";
+import { writeBook } from "../ai";
 import { assembleBook, repairModelBook } from "../book/assemble";
 import { canGenerate, statusAfterGenerationFailure } from "../book/lifecycle";
-import { shouldTranslate } from "../book/speech";
 import type { SourceVoice, Turn } from "../book/types";
 import { getConfig } from "../config";
 import { writerLive } from "../ai/providers";
 import { prisma } from "../db";
 import { AppError } from "../errors";
-import { recordMakeSteps } from "./pipeline";
+import { needsBookLanguage, recordMakeSteps, toBookLanguage } from "./pipeline";
+import { languageByCode } from "../languages";
 import { recordUsage, spendPaused } from "./spend";
 import { nextVersion } from "./books";
 
@@ -52,31 +52,14 @@ export async function generateBook(bookId: string, userId: string, engine: "auto
     const voices = rows.map(toSource);
 
     if (!useLocal) {
-      const pending = voices.filter((voice) => shouldTranslate(voice.language, voice.originalText) && !voice.translated);
-      if (pending.length > 0) {
-        log.push("Translating voices that are not already English.");
-        const translated = await translateBatch(
-          pending.map((voice) => ({ id: voice.id, language: voice.language, text: voice.originalText })),
+      const target = book.language || "en";
+      if (voices.some((voice) => needsBookLanguage({ ...voice, bookLanguage: voice.bookLanguage ?? "" }, target))) {
+        log.push(`Putting every voice into ${languageByCode(target).name}.`);
+        await toBookLanguage(
+          voices.map((voice) => Object.assign(voice, { bookLanguage: voice.bookLanguage ?? "" })),
+          target,
           book.id,
         );
-        await recordUsage({
-          kind: "translate",
-          provider: translated.provider,
-          model: translated.model,
-          bookId: book.id,
-          usage: translated.usage,
-        });
-        const english = new Map(translated.translations.map((item) => [item.id, item.english]));
-        for (const voice of voices) {
-          const next = english.get(voice.id);
-          if (!next) continue;
-          voice.englishText = next;
-          voice.translated = next.trim() !== voice.originalText.trim();
-          await prisma.voice.update({
-            where: { id: voice.id },
-            data: { englishText: voice.englishText, translated: voice.translated },
-          });
-        }
       }
       log.push("Asking the writing model to group the voices and keep their words.");
       const written = await writeBook({
@@ -85,6 +68,7 @@ export async function generateBook(bookId: string, userId: string, engine: "auto
         bookType: book.type,
         voices,
         bookId: book.id,
+        language: book.language || "en",
       });
       await recordUsage({
         kind: "compose",
@@ -143,6 +127,8 @@ async function storeDraft(
   log: string[],
 ) {
   const version = await nextVersion(bookId);
+  const owner = await prisma.book.findUnique({ where: { id: bookId }, select: { language: true } });
+  document.language = owner?.language || "en";
   const draft = await prisma.bookDraft.create({
     data: {
       bookId,
@@ -173,6 +159,7 @@ function toSource(voice: {
   originalText: string;
   englishText: string;
   translated: boolean;
+  bookLanguage: string;
   turnsJson: string;
   durationMs: number;
   createdAt: Date;
@@ -200,6 +187,7 @@ function toSource(voice: {
     originalText: voice.originalText,
     englishText: voice.englishText,
     translated: voice.translated,
+    bookLanguage: voice.bookLanguage,
     turns,
     durationMs: voice.durationMs,
     createdAt: voice.createdAt.getTime(),

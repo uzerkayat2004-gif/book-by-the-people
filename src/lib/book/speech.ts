@@ -53,11 +53,17 @@ export function isMostlyEnglish(text: string): boolean {
   return hits / words.length >= 0.45;
 }
 
-export function shouldTranslate(language: string, text: string): boolean {
+/** Whether words in `language` need translating into the book's main language (`target`, English by default). */
+export function shouldTranslate(language: string, text: string, target = "en"): boolean {
   const code = language.toLowerCase();
-  if (code === "en" || code === "english" || code === "hinglish") return false;
-  if (isMostlyEnglish(text)) return false;
-  return true;
+  const goal = (target || "en").toLowerCase();
+  if (!text.trim()) return false;
+  if (goal === "en") {
+    if (code === "en" || code === "english" || code === "hinglish") return false;
+    if (isMostlyEnglish(text)) return false;
+    return true;
+  }
+  return code !== goal;
 }
 
 export function splitSentences(text: string): string[] {

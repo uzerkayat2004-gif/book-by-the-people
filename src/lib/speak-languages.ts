@@ -1,33 +1,7 @@
-/** The 30 languages offered on the speak page, in the live order. */
-export const SPEAK_LANGUAGES: { code: string; label: string }[] = [
-  { code: "en", label: "English" },
-  { code: "hi", label: "हिन्दी Hindi" },
-  { code: "fr", label: "Français French" },
-  { code: "ar", label: "العربية Arabic" },
-  { code: "id", label: "Bahasa Indonesia" },
-  { code: "ms", label: "Bahasa Melayu" },
-  { code: "bn", label: "বাংলা Bengali" },
-  { code: "zh", label: "中文 Chinese" },
-  { code: "de", label: "Deutsch German" },
-  { code: "tr", label: "Türkçe Turkish" },
-  { code: "tl", label: "Filipino" },
-  { code: "it", label: "Italiano Italian" },
-  { code: "ja", label: "日本語 Japanese" },
-  { code: "sw", label: "Kiswahili Swahili" },
-  { code: "ko", label: "한국어 Korean" },
-  { code: "mr", label: "मराठी Marathi" },
-  { code: "nl", label: "Nederlands Dutch" },
-  { code: "ne", label: "नेपाली Nepali" },
-  { code: "es", label: "Español Spanish" },
-  { code: "fa", label: "فارسی Persian" },
-  { code: "pl", label: "Polski Polish" },
-  { code: "ru", label: "Русский Russian" },
-  { code: "pt", label: "Português Portuguese" },
-  { code: "sv", label: "Svenska Swedish" },
-  { code: "vi", label: "Tiếng Việt Vietnamese" },
-  { code: "ta", label: "தமிழ் Tamil" },
-  { code: "te", label: "తెలుగు Telugu" },
-  { code: "th", label: "ไทย Thai" },
-  { code: "uk", label: "Українська Ukrainian" },
-  { code: "ur", label: "اردو Urdu" },
-];
+import { BOOK_LANGUAGES } from "./languages";
+
+/** Languages offered for speaking or writing, most used first. Label: native name, then English. */
+export const SPEAK_LANGUAGES: { code: string; label: string }[] = BOOK_LANGUAGES.map((language) => ({
+  code: language.code,
+  label: language.native === language.name ? language.name : `${language.native} ${language.name}`,
+}));

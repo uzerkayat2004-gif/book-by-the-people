@@ -23,6 +23,8 @@ export function presentHome(input: {
   publishedAt: Date | null;
   voices: Voice[];
   slug: string;
+  /** Extra query for read links (e.g. "lang=ja" for a translated edition). */
+  readQuery?: string;
   paused: boolean;
   voiceHref: string | null;
   document: BookDocument | null;
@@ -67,7 +69,7 @@ export function presentHome(input: {
       summary: chapterSummary(chapter.title, chapter.theme, chapter.narrative),
       quote: first ? { text: clip(stripPeopleCounts(first.englishText), 140), name: first.speakerName } : null,
       voices: new Set(quotes.map((quote) => quote.voiceId)).size,
-      href: `/b/${input.slug}/read?c=${index + 1}`,
+      href: `/b/${input.slug}/read?c=${index + 1}${input.readQuery ? `&${input.readQuery}` : ""}`,
     };
   });
   const words = (input.document?.chapters ?? [])
@@ -99,7 +101,7 @@ export function presentHome(input: {
     releaseLabel: releaseLabel(input.publishedAt ?? input.closesAt),
     paused: input.paused,
     voiceHref: stage === "before" && !input.paused ? input.voiceHref : null,
-    readHref: `/b/${input.slug}/read`,
+    readHref: `/b/${input.slug}/read${input.readQuery ? `?${input.readQuery}` : ""}`,
     chapters,
     readMins: Math.max(1, Math.ceil(words / 200) || 1),
     listenMins: Math.max(1, Math.round(clips.length * 0.4) || 1),

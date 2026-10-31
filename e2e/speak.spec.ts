@@ -14,20 +14,21 @@ async function newBook(request: import("@playwright/test").APIRequestContext, ti
   return created.json();
 }
 
-test("Write only: no Speak tab, no microphone, About you first", async ({ page }) => {
+test("About you first, then Speak (default) and Write; no upload, no mic until asked", async ({ page }) => {
   let askedMic = false;
   await page.exposeFunction("__askedMic", () => (askedMic = true));
   await page.addInitScript(() => {
     const md = navigator.mediaDevices;
     if (md) md.getUserMedia = () => ((window as unknown as { __askedMic: () => void }).__askedMic(), Promise.reject(new Error("no")));
   });
-  await page.goto("/b/city-at-night/voice?guest=1");
+  await page.goto("/b/gate-check/voice?guest=1");
   await expect(page.getByTestId("words")).toBeVisible();
-  for (const id of ["mode-speak", "mode-write", "start-speaking", "speech-status"]) await expect(page.getByTestId(id)).toHaveCount(0);
-  await expect(page.getByText(/Speak|microphone/)).toHaveCount(0);
-  await expect(page.getByText(/up to about [\d,]+ words/)).toBeVisible();
   const labels = await page.locator("section.vf__card").evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label")));
-  expect(labels).toEqual(["About you", "Your answer"]);
+  expect(labels[0]).toBe("About you");
+  await expect(page.getByTestId("tab-speak")).toHaveAttribute("aria-selected", "true");
+  await page.getByTestId("tab-write").click();
+  await expect(page.getByTestId("tab-write")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByText(/[\d,]+/).filter({ hasText: /1[,.]?500/ }).first()).toBeVisible();
   expect(await page.locator("select#language option").count()).toBeGreaterThanOrEqual(30);
   await expect(page.locator("input[type=file]")).toHaveCount(0);
   expect(askedMic).toBe(false);
@@ -35,6 +36,7 @@ test("Write only: no Speak tab, no microphone, About you first", async ({ page }
 
 test("pasting and dropping are allowed, with no note", async ({ page }) => {
   await page.goto("/b/city-at-night/voice?guest=1");
+  await page.getByTestId("tab-write").click();
   const box = page.getByTestId("words");
   await box.click();
   await page.keyboard.type("Typed by me.");

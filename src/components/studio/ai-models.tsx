@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PROVIDER_PRESETS, presetFor, roleIncludes, shortLabel, type ProviderRole, type ProviderType, type ProviderView } from "@/lib/ai/provider-types";
+import { presetFor, roleIncludes, shortLabel, type ProviderRole, type ProviderType, type ProviderView } from "@/lib/ai/provider-types";
 import { formatBytes, SERVER_MODELS, type LocalStatus } from "@/lib/ai/local-catalog";
 import { OwnPcModels } from "@/components/ai/own-pc-models";
 
@@ -14,10 +14,6 @@ async function call<T>(url: string, method: string, body?: unknown): Promise<T> 
   const data = (await response.json().catch(() => ({}))) as T & { error?: string };
   if (!response.ok) throw new Error(data.error ?? "That did not work.");
   return data;
-}
-
-function canTranscribe(type: string) {
-  return type === "custom" || presetFor(type).transcribeModel !== "";
 }
 
 function statusOf(row: ProviderView): { tone: "ok" | "bad" | "idle"; text: string } {
@@ -76,8 +72,6 @@ export function AiModels({
 
   const writers = providers.filter((row) => roleIncludes(row.role, "writer"));
   const picked = writers.find((row) => row.enabled) ?? null;
-  const hearer = providers.find((row) => row.enabled && roleIncludes(row.role, "transcription")) ?? null;
-  const speechOnly = providers.filter((row) => row.role === "transcription");
 
   function pick(row: ProviderView) {
     if (picked?.id === row.id) return;
@@ -148,14 +142,6 @@ export function AiModels({
             {busy === `test-${picked.id}` ? "Testing…" : "Test"}
           </button>
         ) : null}
-        <span className="s3-speech">
-          Speech: <b>{hearer ? hearer.label : "Browser"}</b>
-          {speechOnly.map((row) => (
-            <button key={row.id} className="s2-link" type="button" onClick={() => setEditing(row)}>
-              Edit
-            </button>
-          ))}
-        </span>
       </div>
       {picked?.lastTestOk === false ? <p className="s2-err">{picked.lastTestMsg}</p> : null}
       {error ? <p className="s2-err">{error}</p> : null}
@@ -246,7 +232,8 @@ function ProviderSheet({
   const [label, setLabel] = useState(row?.label ?? preset.name);
   const [baseUrl, setBaseUrl] = useState(row?.baseUrl ?? preset.baseUrl);
   const [model, setModel] = useState(row?.model ?? preset.model);
-  const [role, setRole] = useState<ProviderRole>((row?.role as ProviderRole) ?? (canTranscribe(type) && type === "meta" ? "both" : "writer"));
+  // Speech to text runs in the browser now, so a model is always the writer (an older row keeps its role).
+  const role: ProviderRole = (row?.role as ProviderRole) ?? "writer";
   const [apiKey, setApiKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -269,8 +256,6 @@ function ProviderSheet({
     if (!label || label === was.name) setLabel(now.name);
     if (!baseUrl || baseUrl === was.baseUrl) setBaseUrl(now.baseUrl);
     if (!model || model === was.model || was.models.includes(model)) setModel(now.model);
-    if (!canTranscribe(next)) setRole("writer");
-    else if (next === "meta" && !row) setRole("both");
   }
 
   async function submit() {
@@ -373,14 +358,6 @@ function ProviderSheet({
             <label className="s2-field">
               <span>Base URL</span>
               <input className="s2-input s2-mono" value={baseUrl} disabled={local} placeholder="https://…/v1" onChange={(event) => setBaseUrl(event.target.value)} />
-            </label>
-            <label className="s2-field">
-              <span>Used for</span>
-              <select className="s2-input" value={role} onChange={(event) => setRole(event.target.value as ProviderRole)}>
-                <option value="writer">Everything except speech</option>
-                {canTranscribe(type) ? <option value="both">Everything, including speech</option> : null}
-                {canTranscribe(type) ? <option value="transcription">Speech only</option> : null}
-              </select>
             </label>
           </details>
           {error ? <p className="s2-err">{error}</p> : null}

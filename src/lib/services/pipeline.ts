@@ -93,27 +93,8 @@ async function runStep(step: (typeof VOICE_STEPS)[number], voiceId: string) {
     return;
   }
   if (step === "translate") {
-    if (voice.kind === "sourced_quote" || !shouldTranslate(voice.language, voice.originalText) || voice.translated) {
-      await prisma.voice.update({ where: { id: voice.id }, data: { pipelineStep: "translate" } });
-      return;
-    }
-    const translated = await translateBatch(
-      [{ id: voice.id, language: voice.language, text: voice.originalText }],
-      voice.bookId,
-    );
-    await recordUsage({
-      kind: "translate",
-      provider: translated.provider,
-      model: translated.model,
-      bookId: voice.bookId,
-      voiceId: voice.id,
-      usage: translated.usage,
-    });
-    const english = translated.translations[0]?.english || voice.englishText || voice.originalText;
-    await prisma.voice.update({
-      where: { id: voice.id },
-      data: { englishText: english, translated: english.trim() !== voice.originalText.trim(), pipelineStep: "translate" },
-    });
+    if (voice.kind !== "sourced_quote") await toBookLanguage([voice], voice.book.language || "en", voice.bookId);
+    await prisma.voice.update({ where: { id: voice.id }, data: { pipelineStep: "translate" } });
     return;
   }
 
@@ -214,4 +195,60 @@ export async function tickBook(bookId: string) {
     await settleVoice(job.voiceId);
   }
   return { processed: seen.size, paused: false };
+}
+
+type Translatable = {
+  id: string;
+  language: string;
+  originalText: string;
+  englishText: string;
+  translated: boolean;
+  bookLanguage: string;
+};
+
+/** Whether this voice's book-language text is missing or in another language than the book's. */
+export function needsBookLanguage(voice: Translatable, target: string): boolean {
+  if (!voice.originalText.trim()) return false;
+  if ((voice.bookLanguage || "en") !== target) return true;
+  if (!voice.englishText.trim()) return true;
+  return shouldTranslate(voice.language, voice.originalText, target) && !voice.translated;
+}
+
+/**
+ * Puts each voice's words into the book's main language (stored in englishText, with bookLanguage).
+ * The original words are never touched. If the AI fails this throws and the job retries later;
+ * the voice keeps its original words meanwhile.
+ */
+export async function toBookLanguage<T extends Translatable>(voices: T[], target: string, bookId: string): Promise<T[]> {
+  const pending = voices.filter((voice) => needsBookLanguage(voice, target));
+  const same = pending.filter((voice) => !shouldTranslate(voice.language, voice.originalText, target));
+  for (const voice of same) {
+    voice.englishText = voice.originalText;
+    voice.translated = false;
+    voice.bookLanguage = target;
+    await prisma.voice.update({ where: { id: voice.id }, data: { englishText: voice.englishText, translated: false, bookLanguage: target } });
+  }
+  const other = pending.filter((voice) => !same.includes(voice));
+  // A few at a time keeps each AI call small and fast.
+  for (let start = 0; start < other.length; start += 8) {
+    const batch = other.slice(start, start + 8);
+    const result = await translateBatch(
+      batch.map((voice) => ({ id: voice.id, language: voice.language, text: voice.originalText })),
+      bookId,
+      target,
+    );
+    await recordUsage({ kind: "translate", provider: result.provider, model: result.model, bookId, usage: result.usage });
+    for (const voice of batch) {
+      const out = result.translations.find((item) => item.id === voice.id);
+      if (!out || !out.done) continue;
+      voice.englishText = out.english;
+      voice.translated = out.english.trim() !== voice.originalText.trim();
+      voice.bookLanguage = target;
+      await prisma.voice.update({
+        where: { id: voice.id },
+        data: { englishText: voice.englishText, translated: voice.translated, bookLanguage: target },
+      });
+    }
+  }
+  return voices;
 }

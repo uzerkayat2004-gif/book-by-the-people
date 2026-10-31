@@ -31,7 +31,7 @@ const IMPERSONATED = new Set([
 export function contentWords(text: string): string[] {
   return text
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/[^\p{L}\p{M}\p{N}\s]/gu, " ")
     .split(/\s+/)
     .filter((word) => word.length > 3 && !STOP.has(word));
 }
@@ -62,7 +62,9 @@ export function reviewVoice(input: {
   const words = contentWords(input.text);
   const questionWords = contentWords(input.question);
   const overlap = words.filter((word) => questionWords.includes(word));
-  const onTopic = input.kind === "sourced_quote" ? input.text.trim().length >= 12 : overlap.length > 0 || words.length >= 6;
+  // Chinese, Japanese and Thai don't put spaces between words, so a long answer counts on its length.
+  const unspaced = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}]/u.test(input.text) && input.text.trim().length >= 30;
+  const onTopic = input.kind === "sourced_quote" ? input.text.trim().length >= 12 : overlap.length > 0 || words.length >= 6 || unspaced;
   const realPerson = input.kind === "sourced_quote" ? Boolean(input.sourceUrl) : input.startWordPassed;
   const normalized = input.text.toLowerCase().replace(/\s+/g, " ").trim();
   const copyPaste = input.others.some((other) => other.id !== input.id && other.text.toLowerCase().replace(/\s+/g, " ").trim() === normalized);

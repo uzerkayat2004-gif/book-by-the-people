@@ -8,6 +8,7 @@ import { AiModels, AudioTools, LocalModels } from "@/components/studio/ai-models
 import { isLocalType, modelChoices, modelLabel, type ProviderView } from "@/lib/ai/provider-types";
 import { releaseLabel } from "@/lib/stage";
 import { SPEAK_LANGUAGES } from "@/lib/speak-languages";
+import { ReleaseLanguages } from "@/components/studio/release-languages";
 
 const STATUS_SHORT: Record<string, string> = {
   COLLECTING: "Open",
@@ -19,6 +20,8 @@ const STATUS_SHORT: Record<string, string> = {
 
 type StudioSettings = {
   language: string;
+  /** Extra languages the released book is translated into. */
+  releaseLanguages?: string[];
   voiceLimitPerDay: number;
   maxVoiceSeconds: number;
   hasAiKey: boolean;
@@ -436,6 +439,7 @@ export function StudioDesk({
                   <MediaRow step={3} bookId={book.id} kind="video" label="Video" href={media.videoHref} name={media.videoName} bytes={media.videoBytes} />
                 </ol>
                 <MakeMedia key={`${media.status}:${media.note ?? ""}`} bookId={book.id} status={media.status} note={media.note} hasDraft={drafts.length > 0} hasAudio={Boolean(media.audioHref)} />
+                <ReleaseLanguages bookId={book.id} bookLang={settings.language || "en"} published={book.status === "PUBLISHED"} initial={settings.releaseLanguages ?? []} />
                 <p className="s4-note">
                   {media.emails
                     ? "Speakers get an email with the link when the book is out."
@@ -1308,7 +1312,7 @@ function SettingsTab({
             <div className="s2-setrow">
               <div>
                 <b>Main language</b>
-                <span>Picked first on the Add your voice page</span>
+                <span>Every voice is put into this language, and the book is written in it</span>
               </div>
               <select className="s2-input s2-sel" aria-label="Main language" value={language} onChange={(event) => setLanguage(event.target.value)}>
                 {SPEAK_LANGUAGES.map((item) => (
