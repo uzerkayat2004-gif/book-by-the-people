@@ -69,6 +69,17 @@ test("open book: names and places under the count and on the globe, words sealed
     await expect(tip).toContainText("India");
     await page.screenshot({ path: `test-results/globe-${phone ? "phone" : "desktop"}.png` });
     expect(errors).toEqual([]);
+    if (!phone) {
+      // A second voice from the same person is one row with a count.
+      const again = await page.request.post(`/api/books/${book.id}/voices`, {
+        headers: { origin: BASE },
+        data: { text: "Saying no to one meeting a week gave me a quiet afternoon to read and rest.", mode: "write", name: "Meera", country: "IN", consent: true, metrics: { activeMs: 40_000, keys: 80, spoken: 0 } },
+      });
+      expect(again.ok(), await again.text()).toBeTruthy();
+      await page.reload();
+      await expect(page.getByTestId("sealed-panel").getByTestId("person")).toHaveCount(3);
+      await expect(page.getByTestId("sealed-panel").getByTestId("person").filter({ hasText: "Meera" })).toContainText("×2");
+    }
     await context.close();
   }
 });

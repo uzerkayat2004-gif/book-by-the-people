@@ -13,3 +13,4 @@
 .gpeople__place{color:var(--muted,#8f929a);font-size:13px;margin-left:auto;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .gpeople__more{margin-top:8px;background:none;border:1px solid var(--line-strong,#f3f2ee38);color:var(--text,#f3f2ee);border-radius:999px;padding:7px 14px;font:600 13px/1 var(--sans);cursor:pointer}
 .gpanel__hint{margin:6px 0 0;color:var(--muted,#8f929a);font-size:12.5px}
+.gpeople__count{color:var(--red-text,#ff5d57);font:600 12px/1 var(--sans);flex:none}

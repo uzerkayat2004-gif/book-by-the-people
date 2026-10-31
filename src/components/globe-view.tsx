@@ -244,8 +244,14 @@ export function GlobeView({ pins }: { pins: Pin[] }) {
       const span = tipRef.current?.firstElementChild;
       if (!span) return;
       const people = group.map((at) => pinsRef.current[at]).filter((pin): pin is Pin => Boolean(pin?.name));
-      const lines = people.slice(0, TIP_LINES).map((pin) => (pin.place ? `${pin.name} · ${pin.place}` : pin.name));
-      if (people.length > TIP_LINES) lines.push(`+${people.length - TIP_LINES} more`);
+      const counts = new Map<string, number>();
+      for (const pin of people) {
+        const line = pin.place ? `${pin.name} · ${pin.place}` : pin.name;
+        counts.set(line, (counts.get(line) ?? 0) + 1);
+      }
+      const all = [...counts].map(([line, count]) => (count > 1 ? `${line} ×${count}` : line));
+      const lines = all.slice(0, TIP_LINES);
+      if (all.length > TIP_LINES) lines.push(`+${all.length - TIP_LINES} more`);
       span.textContent = lines.join("\n");
       tipRef.current?.classList.toggle("many", lines.length > 1);
     };
