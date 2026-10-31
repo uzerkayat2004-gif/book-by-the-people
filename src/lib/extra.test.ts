@@ -31,7 +31,7 @@ describe("backupAge", () => {
 describe("mergeModelReview", () => {
   it("keeps one decision and lets the model flag off-topic", () => {
     const merged = mergeModelReview(base, { onTopic: false, impersonation: false, theme: "Shortcuts" }, "voice");
-    expect(merged.decision).toBe("not_used");
+    expect(merged.decision).toBe("needs_you");
     expect(merged.notes[0]).toBe("Off the question.");
     expect(merged.theme).toBe("Shortcuts");
   });

@@ -49,6 +49,19 @@ function titleWord(word: string): string {
   return word ? word.charAt(0).toUpperCase() + word.slice(1) : "Voices";
 }
 
+/**
+ * Only an exact copy of words already in the book is left out on its own.
+ * Off the question, close to another voice, or a famous name: the voice is kept
+ * and waits for the creator to decide. People can add as many voices as the
+ * book's daily limit allows, so a second voice from the same person is welcome.
+ */
+function decide(realPerson: boolean, onTopic: boolean, copyPaste: boolean, duplicate: boolean, impersonation: boolean): Decision {
+  if (!realPerson) return "hidden";
+  if (copyPaste) return "not_used";
+  if (!onTopic || duplicate || impersonation) return "needs_you";
+  return "approved";
+}
+
 export function reviewVoice(input: {
   id: string;
   question: string;
@@ -73,16 +86,14 @@ export function reviewVoice(input: {
     input.others.some((other) => other.id !== input.id && jaccard(words, contentWords(other.text)) >= 0.72);
   const impersonation = input.kind !== "sourced_quote" && IMPERSONATED.has(input.name.trim().toLowerCase());
   const notes: string[] = [];
-  if (!onTopic) notes.push("Off the question.");
   if (!realPerson) notes.push(input.kind === "sourced_quote" ? "No public source." : "The start word was missing.");
   if (copyPaste) notes.push("Same words as another voice.");
   if (duplicate) notes.push("Too close to another voice.");
   if (impersonation) notes.push("Name matches a public figure. A person has to confirm it.");
 
-  let decision: Decision = "approved";
-  if (!realPerson) decision = "hidden";
-  else if (!onTopic || copyPaste || duplicate) decision = "not_used";
-  else if (impersonation) decision = "needs_you";
+  // The word-count topic test is only a rough guess: it never holds a voice back on its own.
+  // (With an AI model on, the model's own topic check can send a voice to the creator.)
+  const decision = decide(realPerson, true, copyPaste, duplicate, impersonation);
 
   const theme = words.length ? themeLabel([{ text: input.text }]) : titleWord(overlap[0] || "voices");
   return { onTopic, realPerson, copyPaste, impersonation, duplicate, decision, theme, notes };
@@ -103,10 +114,7 @@ export function mergeModelReview(
   const notes = base.notes.filter((note) => note !== "Off the question." && !note.startsWith("Name matches"));
   if (!onTopic) notes.unshift("Off the question.");
   if (impersonation) notes.push(model.note?.trim() || "Name matches a public figure. A person has to confirm it.");
-  let decision: Decision = "approved";
-  if (!base.realPerson) decision = "hidden";
-  else if (!onTopic || base.copyPaste || base.duplicate) decision = "not_used";
-  else if (impersonation) decision = "needs_you";
+  const decision = decide(base.realPerson, onTopic, base.copyPaste, base.duplicate, impersonation);
   const theme = model.theme.trim().slice(0, 48) || base.theme;
   return { ...base, onTopic, impersonation, decision, theme, notes };
 }

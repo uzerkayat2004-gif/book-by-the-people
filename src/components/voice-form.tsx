@@ -159,6 +159,20 @@ export function VoiceForm({
   // Speak is always shown. If this browser truly can't run it, tapping the mic says so and offers Write.
   const shownTab = tab;
   const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+  // Get the voice model ready as soon as the Speak tab shows, so it is usually ready before the tap.
+  // Already on this device: always. Not yet: on computers, and on phones unless data saving is on.
+  const { preload } = speech;
+  useEffect(() => {
+    if (tab !== "speak" || speech.phase !== "idle" || speech.info || speech.problem || speech.cached === null) return;
+    const connection = (navigator as unknown as { connection?: { saveData?: boolean; type?: string } }).connection;
+    const thrifty = Boolean(connection?.saveData) || connection?.type === "cellular";
+    // Automated test browsers only download on their own when asked (?preload=1), so tests stay quick.
+    const robot = navigator.webdriver && new URLSearchParams(window.location.search).get("preload") !== "1";
+    if (!speech.cached && (thrifty || robot)) return;
+    const id = setTimeout(() => void preload(), 0);
+    return () => clearTimeout(id);
+  }, [tab, speech.phase, speech.info, speech.problem, speech.cached, preload]);
+
   const listening = speech.phase === "listening";
   const writing = speech.pending > 0 || speech.phase === "finishing";
   const loading = speech.phase === "downloading" || speech.phase === "preparing";
@@ -397,11 +411,12 @@ export function VoiceForm({
                       {speech.loadedMb ? `${speech.percent}% · ${speech.loadedMb} / ${speech.totalMb} MB` : `~${speech.totalMb} MB`}
                       {speech.stage === "retrying" ? ` · ${t.retrying}` : ""}
                     </span>
+                    <span className="vs__sub">{t.pleaseWait}</span>
                   </>
                 ) : speech.phase === "preparing" ? (
                   <>
-                    <b className="vs__state">
-                      <span className="vs__spin" aria-hidden /> {t.gettingReady}
+                    <b className="vs__state" data-testid="warming">
+                      <span className="vs__spin" aria-hidden /> {t.warmingUp}
                     </b>
                     <span className="vs__sub" data-testid="prep-sub">
                       {speech.stage === "retrying" ? t.retrying : speech.stage === "warming" ? t.almostReady : t.openingModel}
@@ -411,7 +426,7 @@ export function VoiceForm({
                 ) : listening ? (
                   <>
                     <b className="vs__state">
-                      <span className="vs__dot" aria-hidden /> {t.listening} <span className="vs__time">{mmss(speech.elapsed)}</span>
+                      <span className="vs__dot" aria-hidden /> <span data-testid="listen-label">{speech.fresh ? t.startSpeaking : t.listening}</span> <span className="vs__time">{mmss(speech.elapsed)}</span>
                     </b>
                     <span className="vs__wave" aria-hidden data-testid="wave">
                       {wave.map((value, index) => (
@@ -426,7 +441,7 @@ export function VoiceForm({
                   </b>
                 ) : (
                   <>
-                    <b className="vs__state">{t.tapToSpeak}</b>
+                    <b className="vs__state" data-testid="mic-state">{speech.info ? t.readyTap : t.tapToSpeak}</b>
                     {speech.cached === false ? <span className="vs__sub">{fill(t.firstTime, { mb: speech.totalMb })}</span> : null}
                   </>
                 )}

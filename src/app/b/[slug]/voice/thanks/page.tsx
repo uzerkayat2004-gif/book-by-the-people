@@ -45,7 +45,9 @@ export default async function ThanksPage({
               ? book.status === "PUBLISHED"
                 ? ui.youreIn
                 : fill(ui.sealedUntil, { when: releaseLabel(book.closesAt) })
-              : voice.rejectReason || ui.notUsed}
+              : voice.rejectReason === "Same words as another voice."
+                ? ui.whySame
+                : voice.rejectReason || ui.notUsed}
           </p>
         </div>
         {voice.originalText ? (

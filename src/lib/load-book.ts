@@ -7,17 +7,26 @@ import { countryStats } from "./countries";
 import { prisma } from "./db";
 import { spendPaused } from "./services/spend";
 import { syncClosed } from "./services/books";
+import { reopenSoftRefusals } from "./services/pipeline";
+
+const SOFT = new Set(["Off the question.", "Too close to another voice."]);
 
 export async function loadBookBySlug(slug: string) {
-  const found = await prisma.book.findUnique({
-    where: { slug },
-    include: {
-      creator: true,
-      voices: { orderBy: { createdAt: "asc" } },
-      pollOptions: { orderBy: { position: "asc" }, include: { _count: { select: { votes: true } } } },
-    },
-  });
+  const query = () =>
+    prisma.book.findUnique({
+      where: { slug },
+      include: {
+        creator: true,
+        voices: { orderBy: { createdAt: "asc" } },
+        pollOptions: { orderBy: { position: "asc" }, include: { _count: { select: { votes: true } } } },
+      },
+    });
+  let found = await query();
   if (!found) return null;
+  // Voices held back by the old, stricter checks come back (see reopenSoftRefusals).
+  if (found.voices.some((voice) => voice.status === "NOT_USED" && SOFT.has(voice.rejectReason ?? ""))) {
+    if ((await reopenSoftRefusals(found.id).catch(() => 0)) > 0) found = (await query()) ?? found;
+  }
   const closed = await syncClosed(found);
   return { ...found, status: closed.status, closesAt: closed.closesAt };
 }

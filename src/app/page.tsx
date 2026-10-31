@@ -51,6 +51,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
       : [],
     bookId: featured.id,
     yourVote: vote,
+    liveGlobe: featured.type === "OPEN" && !featured.unlisted,
   });
 
   return (

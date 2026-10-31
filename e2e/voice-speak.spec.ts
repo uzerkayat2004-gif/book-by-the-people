@@ -11,7 +11,7 @@ async function speak(page: Page, language: string, seconds: number) {
   const { noIsolation } = test.info().project.metadata as { noIsolation?: boolean };
   if (noIsolation) {
     // Like iPhone Safari: the isolation headers don't take, so the model runs on one thread.
-    await page.route("**/b/gate-check/voice?guest=1", async (route) => {
+    await page.route("**/b/gate-check/voice?guest=1&preload=1", async (route) => {
       const response = await route.fetch();
       const headers = { ...response.headers() };
       delete headers["cross-origin-embedder-policy"];
@@ -20,20 +20,19 @@ async function speak(page: Page, language: string, seconds: number) {
     });
     await page.addInitScript(() => sessionStorage.setItem("bbtp:coi", String(Date.now())));
   }
-  await page.goto("/b/gate-check/voice?guest=1");
+  await page.goto("/b/gate-check/voice?guest=1&preload=1");
   await expect(page.getByTestId("tab-speak")).toHaveAttribute("aria-selected", "true");
   expect(await page.evaluate(() => window.crossOriginIsolated)).toBe(!noIsolation);
   await page.getByTestId("voice-language").selectOption(language);
   const micButton = page.getByTestId("mic");
-  await expect(micButton).toBeEnabled({ timeout: 60_000 });
+  // The model gets ready by itself as soon as the Speak tab shows; the mic waits until it truly is.
+  await expect.poll(async () => (await voice(page)).phase, { timeout: 30_000 }).toMatch(/downloading|preparing|idle/);
+  if ((await voice(page)).phase !== "idle") await expect(micButton).toBeDisabled();
+  await expect(micButton).toBeEnabled({ timeout: 240_000 });
+  await expect(page.getByTestId("mic-state")).toHaveText(/Ready|तैयार|準備完了/);
   await micButton.click();
-  // First time: the model downloads with a real progress bar, then says it's ready.
-  await expect.poll(async () => (await voice(page)).phase, { timeout: 240_000 }).toMatch(/listening|idle/);
-  if ((await voice(page)).phase === "idle") {
-    expect((await voice(page)).note).toBe("ready");
-    await micButton.click();
-  }
-  await expect.poll(async () => (await voice(page)).phase, { timeout: 30_000 }).toBe("listening");
+  // Ready means ready: listening starts at once and says so.
+  await expect.poll(async () => (await voice(page)).phase, { timeout: 10_000 }).toBe("listening");
   await expect(page.getByTestId("wave")).toBeVisible();
   const started = Date.now();
   // Words arrive while still listening.
@@ -106,14 +105,15 @@ test("a stuck start on several threads quietly restarts Whisper on one thread", 
     );
     await route.fulfill({ response, body });
   });
-  await page.goto("/b/gate-check/voice?guest=1&debug=1");
-  await page.evaluate(() => localStorage.removeItem("bbtp:voice-safe"));
-  await expect(page.getByTestId("mic")).toBeEnabled({ timeout: 60_000 });
+  await page.addInitScript(() => localStorage.removeItem("bbtp:voice-safe"));
   const started = Date.now();
-  await page.getByTestId("mic").click();
+  await page.goto("/b/gate-check/voice?guest=1&debug=1&preload=1");
   await expect(page.getByTestId("prep-sub")).toBeVisible({ timeout: 120_000 });
-  await expect.poll(async () => (await voice(page)).phase, { timeout: 180_000 }).toBe("listening");
+  await expect(page.getByTestId("mic")).toBeDisabled();
+  await expect(page.getByTestId("mic")).toBeEnabled({ timeout: 180_000 });
   const took = Date.now() - started;
+  await page.getByTestId("mic").click();
+  await expect.poll(async () => (await voice(page)).phase, { timeout: 10_000 }).toBe("listening");
   const info = await page.evaluate(() => (window as unknown as { __voice: { info?: { threads?: number } } }).__voice.info);
   expect(info?.threads).toBe(1);
   await expect(page.getByTestId("voice-diag")).toContainText("one-thread mode");
@@ -123,4 +123,26 @@ test("a stuck start on several threads quietly restarts Whisper on one thread", 
   await page.getByTestId("mic").click();
   await expect.poll(async () => (await voice(page)).phase, { timeout: 60_000 }).toBe("idle");
   await page.evaluate(() => localStorage.removeItem("bbtp:voice-safe"));
+});
+
+test("tapped before the model was ready: it says wait, keeps what was said, then says start speaking", async ({ page }) => {
+  test.skip(test.info().project.name !== "speak-en", "once is enough");
+  test.setTimeout(300_000);
+  // Data saver on and nothing downloaded yet: the model does not load before the tap.
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "connection", { value: { saveData: true }, configurable: true });
+  });
+  await page.goto("/b/gate-check/voice?guest=1");
+  await expect(page.getByTestId("mic")).toBeEnabled({ timeout: 30_000 });
+  if ((await voice(page)).phase !== "idle") test.skip(true, "model already loading");
+  await page.getByTestId("mic").click();
+  await expect(page.locator("[data-testid=warming], [data-testid=download-bar]").first()).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId("listen-label")).toHaveCount(0);
+  await expect.poll(async () => (await voice(page)).phase, { timeout: 240_000 }).toBe("listening");
+  await expect(page.getByTestId("wave")).toBeVisible();
+  // Speech heard during the warm-up is written too.
+  await expect(page.getByTestId("words")).not.toHaveValue("", { timeout: 30_000 });
+  await page.getByTestId("mic").click();
+  await expect.poll(async () => (await voice(page)).phase, { timeout: 60_000 }).toBe("idle");
+  console.log(`[tap-early] ${(await page.getByTestId("words").inputValue()).slice(0, 200)}`);
 });

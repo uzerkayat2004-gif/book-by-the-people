@@ -64,7 +64,7 @@ type Handlers = {
 const DRAIN_LIMIT_MS = 120_000;
 const PAUSE_SEC = 0.5;
 /** Time allowed from "files are here" to "ready" before trying again on one thread. */
-const READY_LIMIT_MS = 22_000;
+const READY_LIMIT_MS = 30_000;
 const SAFE_READY_LIMIT_MS = 75_000;
 const DOWNLOAD_STALL_MS = 45_000;
 const SAFE_KEY = "bbtp:voice-safe";
@@ -131,6 +131,9 @@ export class VoiceEngine {
   lastError = "";
   readyMs = 0;
   private workerDiag: { threads?: number; isolated?: boolean; cores?: number } | null = null;
+  /** Phrases heard before the model was ready: kept here and sent the moment it is. */
+  private held: { id: number; audio: Float32Array; language: string; speech: boolean }[] = [];
+  private heldSec = 0;
   private copies = new Map<number, { audio: Float32Array; language: string; speech: boolean }>(); // GPU chunks, kept for a CPU redo.
 
   // Pause-splitting state (native sample rate).
@@ -158,7 +161,14 @@ export class VoiceEngine {
     if (!this.pending.size) this.drainWaiters.splice(0).forEach((f) => f());
   }
 
+  /** The model could not start: forget phrases that were waiting for it. */
+  dropHeld(message = "the voice model did not start") {
+    this.failAll(message);
+  }
+
   private failAll(message: string) {
+    this.held = [];
+    this.heldSec = 0;
     for (const id of [...this.pending]) {
       this.h.onChunk?.({ seconds: 0, ms: 0, error: message });
       this.settle(id);
@@ -318,6 +328,7 @@ export class VoiceEngine {
         if (m.type === "ready") {
           done();
           this.info = { device: m.device, loadMs: m.loadMs, warmMs: m.warmMs, bytes: m.bytes, threads: m.threads, downloaded: m.downloaded, fellBack: this.fellBack };
+          this.flushHeld();
           resolve(this.info);
         } else if (m.type === "error") {
           if (m.gpu && this.device !== "wasm") {
@@ -332,7 +343,7 @@ export class VoiceEngine {
       const bad = (ev: ErrorEvent) => fail(new Error(ev.message || "the voice model could not start"));
       w.addEventListener("message", on);
       w.addEventListener("error", bad);
-      w.postMessage({ type: "load", device: this.device, threads: this.threads });
+      w.postMessage({ type: "load", device: this.device, threads: this.threads, language: this.language });
     });
   }
 
@@ -537,8 +548,34 @@ export class VoiceEngine {
     this.sent++;
     this.h.onPending?.(this.pending.size);
     const speech = voiced >= 0.5;
+    if (!this.info) {
+      // Still warming up: keep the phrase (up to about 90 s) and send it once the model is ready.
+      const seconds = audio.length / 16000;
+      if (this.heldSec + seconds > 90) {
+        this.settle(id);
+        return;
+      }
+      this.heldSec += seconds;
+      this.held.push({ id, audio, language: this.language, speech });
+      return;
+    }
     if (this.info?.device === "webgpu") this.copies.set(id, { audio: audio.slice(0), language: this.language, speech });
     this.getWorker().postMessage({ type: "transcribe", id, audio, language: this.language, speech }, [audio.buffer]);
+  }
+
+  private flushHeld() {
+    const list = this.held.splice(0);
+    this.heldSec = 0;
+    const w = this.getWorker();
+    for (const c of list) {
+      if (this.info?.device === "webgpu") this.copies.set(c.id, { audio: c.audio.slice(0), language: c.language, speech: c.speech });
+      w.postMessage({ type: "transcribe", id: c.id, audio: c.audio, language: c.language, speech: c.speech }, [c.audio.buffer]);
+    }
+  }
+
+  /** True once the model has loaded and a real phrase has gone through it (warm-up done). */
+  get isReady() {
+    return Boolean(this.info);
   }
 
   dispose() {

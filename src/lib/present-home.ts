@@ -32,6 +32,8 @@ export function presentHome(input: {
   poll: { id: string; label: string; votes: number }[];
   bookId: string;
   yourVote: string | null;
+  /** Open, listed books light a dot on the globe for each voice while voices are still coming in (no names). */
+  liveGlobe?: boolean;
 }) {
   const stage: Stage = stageFor(input.status, input.stageOverride);
   const counted = input.voices.filter((voice) => voice.status === "READY" && !voice.hidden);
@@ -44,14 +46,17 @@ export function presentHome(input: {
     name: country.name,
     count: country.count,
   }));
-  const pins = ready.flatMap((voice) => {
+  // Released: every voice with its name. Still collecting (open, listed books): an unnamed dot per voice,
+  // so a new voice shows on the globe right away while names and words stay sealed.
+  const dots = reveal ? ready : input.liveGlobe ? counted : [];
+  const pins = dots.flatMap((voice) => {
     const country = countryByCode(voice.countryCode);
     if (!country) return [];
     let hash = 0;
-    for (const character of voice.contributorName) hash = (hash * 33 + character.charCodeAt(0)) >>> 0;
+    for (const character of reveal ? voice.contributorName : voice.id) hash = (hash * 33 + character.charCodeAt(0)) >>> 0;
     return [
       {
-        name: voice.contributorName,
+        name: reveal ? voice.contributorName : "",
         lat: country.lat + ((hash % 21) - 10) * 0.28,
         lng: country.lng + (((hash >> 6) % 21) - 10) * 0.35,
       },

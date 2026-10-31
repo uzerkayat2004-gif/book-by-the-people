@@ -80,6 +80,7 @@ export default async function BookPage({
       : [],
     bookId: loaded.id,
     yourVote: vote,
+    liveGlobe: loaded.type === "OPEN" && !loaded.unlisted,
   });
   return (
     <BookHome

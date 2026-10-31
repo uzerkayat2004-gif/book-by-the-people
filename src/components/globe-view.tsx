@@ -332,6 +332,7 @@ export function GlobeView({ pins }: { pins: Pin[] }) {
       let best = -1;
       let bestDistance = event.pointerType === "touch" ? PICK_TOUCH : PICK_MOUSE;
       pinsRef.current.forEach((pin, index) => {
+        if (!pin.name) return; // unnamed dots (book not released yet) have nothing to show
         const point = project(pin.lat, pin.lng, state.phi, state.theta, state.size);
         if (point.depth < 0.05) return;
         const distance = Math.hypot(point.x - mx, point.y - my);

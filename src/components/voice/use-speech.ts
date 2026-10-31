@@ -21,6 +21,9 @@ export function useSpeech(insert: (words: string) => void) {
   const [level, setLevel] = useState(0);
   const [pending, setPending] = useState(0);
   const [speaking, setSpeaking] = useState(false);
+  /** Listening, and nothing heard yet in this take: the page says "Start speaking". */
+  const [fresh, setFresh] = useState(false);
+  const preloading = useRef(false);
   const [problem, setProblem] = useState<SpeechProblem>("");
   /** Each tap is one attempt; a newer one (or a failure) makes older async steps stand down. */
   const tries = useRef(0);
@@ -137,6 +140,65 @@ export function useSpeech(insert: (words: string) => void) {
     };
   }, [stop]);
 
+  const handlers = useCallback(
+    () => ({
+      onProgress: (loaded: number, total: number) => setProgress({ loaded, total }),
+      onStatus: (next: LoadStage, _device: string, error?: string) => {
+        setStage(next);
+        if (next === "loading" || next === "warming") setPhase((now) => (now === "downloading" ? "preparing" : now));
+        if (error) setDetail(error);
+      },
+      onLevel: setLevel,
+      onSpeaking: (on: boolean) => {
+        setSpeaking(on);
+        if (on) setFresh(false);
+      },
+      onText: (text: string) => {
+        words.current += 1;
+        setFresh(false);
+        insertRef.current(text);
+      },
+      onPending: setPending,
+      onChunk: (stat: ChunkStat) => setChunks((list) => [...list, stat].slice(-30)),
+      onError: (message: string) => {
+        setDetail(message);
+        if (/too long/i.test(message)) setProblem("slow");
+      },
+    }),
+    [],
+  );
+
+  /**
+   * Get the model ready before the tap (the Speak tab is showing): download if needed, load, and warm
+   * up with a real phrase. The mic stays off and its button waits until the model is truly ready.
+   */
+  const preload = useCallback(async () => {
+    const live = engine.current;
+    if (!live || live.isReady || preloading.current || phaseRef.current !== "idle") return;
+    preloading.current = true;
+    live.setHandlers(handlers());
+    setProblem("");
+    setDetail("");
+    setProgress({ loaded: 0, total: 0 });
+    setStage(cached ? "loading" : "downloading");
+    setPhase(cached ? "preparing" : "downloading");
+    try {
+      const loaded = await live.loadModel();
+      setInfo(loaded);
+      setCached(true);
+      const now = phaseRef.current as SpeechPhase;
+      if (now === "downloading" || now === "preparing") {
+        setPhase("idle");
+      }
+    } catch (error) {
+      setDetail(String((error as Error)?.message || error));
+      setProblem("model");
+      setPhase("idle");
+    } finally {
+      preloading.current = false;
+    }
+  }, [cached, handlers]);
+
   /** Call straight from the tap: the browser only allows the mic and audio inside it. */
   const toggle = useCallback(async () => {
     const live = engine.current;
@@ -153,26 +215,7 @@ export function useSpeech(insert: (words: string) => void) {
     setProblem("");
     setNote("");
     setDetail("");
-    live.setHandlers({
-      onProgress: (loaded, total) => setProgress({ loaded, total }),
-      onStatus: (next, _device, error) => {
-        setStage(next);
-        if (next === "loading" || next === "warming") setPhase((now) => (now === "downloading" ? "preparing" : now));
-        if (error) setDetail(error);
-      },
-      onLevel: setLevel,
-      onSpeaking: setSpeaking,
-      onText: (text) => {
-        words.current += 1;
-        insertRef.current(text);
-      },
-      onPending: setPending,
-      onChunk: (stat) => setChunks((list) => [...list, stat].slice(-30)),
-      onError: (message) => {
-        setDetail(message);
-        if (/too long/i.test(message)) setProblem("slow");
-      },
-    });
+    live.setHandlers(handlers());
     const { audio } = live.begin();
     const attempt = ++tries.current;
     const micProblem = (error: unknown) => {
@@ -190,33 +233,61 @@ export function useSpeech(insert: (words: string) => void) {
       micProblem(error);
       setPhase("idle");
     });
-    const first = !live.info;
-    if (first) {
+    if (!live.isReady) {
+      // Not ready yet (the model was not loaded before the tap): the page says "please wait", and
+      // anything said meanwhile is kept and written once the model is ready, so no words are lost.
       setProgress({ loaded: 0, total: 0 });
       setStage(cached ? "loading" : "downloading");
       setPhase(cached ? "preparing" : "downloading");
-    }
-    let loaded: ModelInfo;
-    try {
-      loaded = await live.loadModel();
-      setInfo(loaded);
-      setCached(true);
-      if (tries.current !== attempt) return;
-    } catch (error) {
-      if (tries.current !== attempt) return;
-      live.abort();
-      setDetail(String((error as Error)?.message || error));
-      setProblem("model");
-      setPhase("idle");
+      startedAt.current = 0;
+      let recording: Promise<void> | null = null;
+      void audio.then(() => {
+        if (tries.current !== attempt) return;
+        recording = live.record().then(() => {
+          startedAt.current = Date.now();
+        });
+        recording.catch(() => {});
+      }, () => {});
+      try {
+        const loaded = await live.loadModel();
+        setInfo(loaded);
+        setCached(true);
+        if (tries.current !== attempt) return;
+      } catch (error) {
+        if (tries.current !== attempt) return;
+        live.abort();
+        live.dropHeld();
+        setDetail(String((error as Error)?.message || error));
+        setProblem("model");
+        setPhase("idle");
+        return;
+      }
+      try {
+        await audio;
+        if (tries.current !== attempt) return;
+        if (!recording) recording = live.record();
+        await recording;
+        if (!startedAt.current) startedAt.current = Date.now();
+        setElapsed(0);
+        setFresh(words.current === 0 || !live.sent);
+        setPhase("listening");
+      } catch (error) {
+        if (tries.current !== attempt) return;
+        tries.current += 1;
+        live.abort();
+        micProblem(error);
+        setPhase("idle");
+      }
       return;
     }
-    // Straight on: once the model is ready, listening starts without a second tap.
+    // Ready: listening starts at once.
     try {
       await audio;
       if (tries.current !== attempt) return;
       await live.record();
       startedAt.current = Date.now();
       setElapsed(0);
+      setFresh(true);
       setPhase("listening");
     } catch (error) {
       if (tries.current !== attempt) return;
@@ -225,7 +296,7 @@ export function useSpeech(insert: (words: string) => void) {
       micProblem(error);
       setPhase("idle");
     }
-  }, [cached, stop]);
+  }, [cached, stop, handlers]);
 
   const expected = progress.total > 40e6 ? progress.total : Math.max(progress.total, MODEL_MB_ESTIMATE * 1e6);
   return {
@@ -239,6 +310,7 @@ export function useSpeech(insert: (words: string) => void) {
     level,
     pending,
     speaking,
+    fresh,
     problem,
     note,
     detail,
@@ -251,6 +323,7 @@ export function useSpeech(insert: (words: string) => void) {
     supported: phase !== "off" && phase !== "checking",
     checking: phase === "checking",
     toggle,
+    preload,
     stop,
     setLanguage,
     clearNote: () => setNote(""),

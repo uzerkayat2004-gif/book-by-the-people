@@ -45,7 +45,7 @@ test("Library lists released books only and opens each one", async ({ page }) =>
 });
 
 test("reader of a released book plays the audiobook inline and offers downloads", async ({ page }) => {
-  await page.goto("/library");
+  await page.goto("/library?q=smarter");
   const card = page.getByTestId("released-card").filter({ hasText: /Is AI making you smarter or lazier/i }).first();
   await card.getByRole("link", { name: "Read" }).click();
   await expect(page).toHaveURL(/\/b\/smarter-or-lazier\/read/);

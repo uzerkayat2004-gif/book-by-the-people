@@ -170,9 +170,31 @@ async function runStep(step: (typeof VOICE_STEPS)[number], voiceId: string) {
   });
 }
 
+/**
+ * Voices left out by the old, stricter rules ("off the question" or "too close to another voice")
+ * are brought back: kept in the book when no AI checks this book, otherwise put in front of the creator.
+ * Exact copies stay out.
+ */
+export async function reopenSoftRefusals(bookId: string) {
+  const soft = await prisma.voice.findMany({
+    where: { bookId, status: "NOT_USED", rejectReason: { in: ["Off the question.", "Too close to another voice."] } },
+    select: { id: true },
+  });
+  if (!soft.length) return 0;
+  const live = await writerLive(bookId).catch(() => false);
+  await prisma.voice.updateMany({
+    where: { id: { in: soft.map((voice) => voice.id) } },
+    data: live
+      ? { status: "NEEDS_YOU", decision: "needs_you", hidden: false }
+      : { status: "READY", decision: "approved", hidden: false, rejectReason: null },
+  });
+  return soft.length;
+}
+
 export async function tickBook(bookId: string) {
   const book = await prisma.book.findUnique({ where: { id: bookId } });
   if (!book) return { processed: 0, paused: false };
+  await reopenSoftRefusals(bookId).catch(() => 0);
   if (book.aiPaused) return { processed: 0, paused: true };
   const waiting = await prisma.voice.findMany({
     where: {

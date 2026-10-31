@@ -108,11 +108,42 @@ async function build(dev, t) {
   return pipeline("automatic-speech-recognition", MODEL, { device: dev, dtype: dtypeFor(dev), progress_callback: t.onProgress });
 }
 
+let warmLanguage = "en";
+let warmMs = 0;
+
+async function warmClip() {
+  try {
+    const res = await fetch("/voice/warm-16k.pcm");
+    if (!res.ok) return null;
+    const pcm = new Int16Array(await res.arrayBuffer());
+    const out = new Float32Array(pcm.length);
+    for (let i = 0; i < pcm.length; i++) out[i] = pcm[i] / 32768;
+    return out;
+  } catch {
+    return null;
+  }
+}
+
 async function warm(p) {
   post({ type: "status", stage: "warming", device });
-  // A short quiet clip compiles the kernels so the first real chunk is quick. Only a couple of
-  // tokens: on silence Whisper can ramble up to 448 tokens, which takes minutes on a slow laptop.
+  const t0 = performance.now();
+  // 1) A short quiet clip compiles the kernels. Only a couple of tokens: on silence Whisper can
+  //    ramble up to 448 tokens, which takes minutes on a slow laptop.
   await p(new Float32Array(16000), { language: "en", task: "transcribe", max_new_tokens: 2 });
+  // 2) Then a real 3-second spoken clip, decoded the same way a real phrase is (the chosen language,
+  //    its letter filter, a full run of tokens). The first real phrase used to pay this cost while the
+  //    person was already talking; now "ready" means a real phrase has already gone through.
+  const clip = await warmClip();
+  if (clip) {
+    asr = p;
+    const opts = { task: "transcribe", max_new_tokens: 24 };
+    const lang = warmLanguage && warmLanguage !== "auto" ? warmLanguage : "en";
+    opts.language = WHISPER_CODE[lang] || lang;
+    const bad = bannedFor(lang);
+    if (bad) opts.bad_words_ids = bad;
+    await p(clip, opts);
+  }
+  warmMs = performance.now() - t0;
 }
 
 async function loadOn(dev, t) {
@@ -136,7 +167,8 @@ async function inCache(dev) {
   }
 }
 
-async function load(prefer, threads) {
+async function load(prefer, threads, language) {
+  if (language) warmLanguage = language;
   if (threads) env.backends.onnx.wasm.numThreads = threads;
   const t0 = performance.now();
   const t = tracker();
@@ -164,7 +196,7 @@ async function load(prefer, threads) {
     }
   }
   const loadMs = performance.now() - t0;
-  return { device, loadMs, warmMs: 0, bytes: t.sum().total, downloaded: !cached, threads: device === "wasm" ? env.backends.onnx.wasm.numThreads : 0 };
+  return { device, loadMs, warmMs, bytes: t.sum().total, downloaded: !cached, threads: device === "wasm" ? env.backends.onnx.wasm.numThreads : 0 };
 }
 
 const NOISE = /^\s*[\[(][^\])]*[\])]\s*$/; // "[BLANK_AUDIO]", "(music)", ...
@@ -240,7 +272,7 @@ self.onmessage = async (e) => {
   const msg = e.data || {};
   if (msg.type === "load") {
     try {
-      loading ||= load(msg.device, msg.threads);
+      loading ||= load(msg.device, msg.threads, msg.language);
       const info = await loading;
       post({ type: "ready", ...info });
     } catch (err) {
