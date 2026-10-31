@@ -40,7 +40,7 @@ export default async function SignInPage({
           error={error}
           google={Boolean(cfg.googleClientId && cfg.googleClientSecret)}
           email={!(cfg.googleClientId && cfg.googleClientSecret) || canSendEmail() || cfg.exposeMagicLinks}
-          demoEmail={cfg.aiMode === "mock" ? "demo@bookbythepeople.dev" : null}
+          demoEmail={cfg.aiMode === "mock" && cfg.exposeMagicLinks ? "demo@bookbythepeople.dev" : null}
         />
       </div>
     </main>
