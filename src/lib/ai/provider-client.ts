@@ -1,6 +1,7 @@
 import type { Turn } from "../book/types";
 import { presetFor, type ProviderType } from "./provider-types";
 import { roughTokens, type TokenUsage } from "./spend";
+import { scrubSecrets } from "../scrub";
 
 /** The fields a call needs. Matches ResolvedProvider from the store. */
 export type CallTarget = {
@@ -17,7 +18,7 @@ export type ChatOut = { content: string; usage: TokenUsage; model: string };
 export class ProviderError extends Error {
   status: number;
   constructor(label: string, status: number, detail: string) {
-    super(`${label}: ${status ? `HTTP ${status} ` : ""}${detail}`.trim());
+    super(scrubSecrets(`${label}: ${status ? `HTTP ${status} ` : ""}${detail}`.trim()));
     this.status = status;
   }
 }
@@ -36,11 +37,11 @@ async function readError(response: Response): Promise<string> {
     // Gemini wraps its error in a one-item array.
     const data = (Array.isArray(parsed) ? parsed[0] : parsed) as { error?: { message?: string } | string; message?: string };
     const message = typeof data.error === "string" ? data.error : data.error?.message ?? data.message;
-    if (message) return message.slice(0, 400);
+    if (message) return scrubSecrets(message.slice(0, 400));
   } catch {
     // not JSON
   }
-  return text.slice(0, 400) || response.statusText;
+  return scrubSecrets(text.slice(0, 400)) || response.statusText;
 }
 
 function openAiHeaders(target: CallTarget): Record<string, string> {
@@ -432,7 +433,7 @@ export function explainTestError(target: CallTarget, error: unknown): string {
 }
 
 function maskKey(text: string, key: string) {
-  return key ? text.split(key).join("••••") : text;
+  return scrubSecrets(text, key);
 }
 
 /** The cheapest call that proves the key: a models list (OpenRouter's list is public, so it has /key). */

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireApiUser } from "@/lib/auth";
 import { assertSameOrigin, fromError, jsonError } from "@/lib/http";
 import { installFfmpeg, toolsStatus } from "@/lib/media/tools";
+import { localModelsOff } from "@/lib/ai/local-gate";
 
 export const maxDuration = 300;
 
@@ -21,6 +22,7 @@ export async function POST(request: Request) {
   if (origin) return origin;
   try {
     await requireApiUser();
+    if (localModelsOff()) return jsonError("Audio tools are set up on your own computer, not on the hosted site.", 400);
     try {
       await installFfmpeg();
     } catch (error) {

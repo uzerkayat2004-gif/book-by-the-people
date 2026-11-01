@@ -6,6 +6,7 @@ import { getConfig } from "../config";
 import { bookAiKey, MISSING_KEY } from "./keys";
 import { chatWithProviders, transcribeWithProviders, transcriberChain, writerChain } from "./providers";
 import { roughTokens, type TokenUsage } from "./spend";
+import { scrubSecrets } from "../scrub";
 
 export type ChatResult = {
   content: string;
@@ -64,7 +65,7 @@ class ChatError extends Error {
   provider: string;
 
   constructor(status: number, detail: string, provider: string) {
-    super(`${provider} chat failed (${status}): ${detail}`);
+    super(scrubSecrets(`${provider} chat failed (${status}): ${detail}`));
     this.status = status;
     this.provider = provider;
   }
@@ -231,7 +232,7 @@ export async function transcribeFile(input: {
   });
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(`Muse Voice Transcribe failed (${response.status}): ${text.slice(0, 700)}`);
+    throw new Error(scrubSecrets(`Muse Voice Transcribe failed (${response.status}): ${text.slice(0, 700)}`, apiKey));
   }
   const data = JSON.parse(text) as {
     transcript?: string;

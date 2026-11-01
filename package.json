@@ -31,7 +31,7 @@
     "espeak-ng": "^1.0.2",
     "lucide-react": "^1.61.0",
     "next": "16.4.3",
-    "nodemailer": "^7.0.13",
+    "nodemailer": "^10.3.1",
     "prisma": "^6.19.3",
     "react": "19.3.0",
     "react-dom": "19.3.0",
@@ -61,5 +61,13 @@
     "unrs-resolver@1.12.2": true,
     "@prisma/engines@6.19.3": true,
     "esbuild@0.28.2": true
+  },
+  "overrides": {
+    "@vercel/cli-config": {
+      "zod": "^4.6.7"
+    },
+    "@prisma/config": {
+      "deepmerge-ts": "^8.0.2"
+    }
   }
 }

@@ -173,11 +173,15 @@ model Voice {
   inputJson       String   @default("{}")
   /// A guest contributor's private key (sha256 of their browser's bbtp_guest cookie), so they can see and delete their own voice.
   guestKey        String   @default("")
+  /// A keyed hash of the sender's network address (never the address itself), used only for daily limits on guest voices.
+  ipHash          String   @default("")
   createdAt       DateTime @default(now())
 
   @@index([bookId, createdAt])
   @@index([bookId, status, hidden])
   @@index([userId])
+  @@index([ipHash, createdAt])
+  @@index([bookId, guestKey, createdAt])
 }
 
 model BookDraft {

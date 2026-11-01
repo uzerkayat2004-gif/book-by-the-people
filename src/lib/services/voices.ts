@@ -16,9 +16,10 @@ import { deleteAudio, getAudio } from "../storage";
 import { getConfig } from "../config";
 import { inputSignal, type InputMetrics, type InputMode } from "../book/typing";
 import { transcriberLive } from "../ai/providers";
-import { settleVoice, voicesLeftToday } from "./pipeline";
+import { guestNetworkFull, settleVoice, voicesLeftToday } from "./pipeline";
 import { recordUsage, spendPaused } from "./spend";
 import { syncClosed } from "./books";
+import { scrubSecrets } from "../scrub";
 
 const MAX_MS = 10 * 60 * 1000;
 
@@ -60,6 +61,8 @@ export async function ingestWords(input: {
   viewerId: string | null;
   /** Hashed guest key of a signed-out contributor's browser, so they can find and delete their own voice. */
   guestKey?: string;
+  /** Keyed hash of the sender's network address, for guest limits. */
+  ipHash?: string;
   invite: string | null;
   name: string;
   language: string;
@@ -94,10 +97,14 @@ export async function ingestWords(input: {
     paused: false,
   });
   if (!gate.ok) throw new AppError(gate.reason, 403);
-  const left = await voicesLeftToday(book.id, input.viewerId);
+  const left = await voicesLeftToday(book.id, input.viewerId, input.viewerId ? null : input.guestKey || null);
   if (left <= 0) {
     const limit = book.voiceLimitPerDay;
     throw new AppError(`You've used today's ${limit} ${limit === 1 ? "voice" : "voices"}. 0 left today.`, 429);
+  }
+  // Guests can clear cookies, so their network has a daily cap too. Signing in lifts it.
+  if (!input.viewerId && (await guestNetworkFull(book.id, input.ipHash ?? ""))) {
+    throw new AppError("Too many voices from this network today. Sign in to add yours.", 429);
   }
 
   const profile = cleanProfile(input);
@@ -134,6 +141,7 @@ export async function ingestWords(input: {
       kind: "voice",
       userId: input.viewerId ?? "",
       guestKey: input.viewerId ? "" : (input.guestKey ?? ""),
+      ipHash: input.viewerId ? "" : (input.ipHash ?? ""),
       inputJson: JSON.stringify(signal),
     },
   });
@@ -245,7 +253,7 @@ async function finishTranscript(
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Transcription failed.";
+    const message = error instanceof Error ? scrubSecrets(error.message) : "Transcription failed.";
     return prisma.voice.update({
       where: { id: voiceId },
       data: { status: "FAILED", rejectReason: message },

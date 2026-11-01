@@ -15,6 +15,17 @@ describe("per-book AI key sealing", () => {
     const sealed = sealKey("k", secret);
     expect(() => openKey(sealed, "another-secret-16chars")).toThrow();
   });
+  it("is real AES-GCM ciphertext, not an encoding of the key, and refuses tampering", () => {
+    const plain = "AIza" + "FAKEfakeFAKEfakeFAKEfakeFAKEfake12";
+    const sealed = sealKey(plain, secret);
+    expect(sealed).toMatch(/^v1\.[A-Za-z0-9_-]{16}\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]+$/);
+    expect(sealed).not.toContain(Buffer.from(plain).toString("base64").slice(0, 12));
+    expect(sealed).not.toContain(Buffer.from(plain).toString("base64url").slice(0, 12));
+    expect(sealed).not.toContain(Buffer.from(plain).toString("hex").slice(0, 12));
+    const [v, iv, tag, body] = sealed.split(".");
+    const flipped = body.slice(0, -1) + (body.endsWith("A") ? "B" : "A");
+    expect(() => openKey([v, iv, tag, flipped].join("."), secret)).toThrow();
+  });
   it("refuses a short secret", () => {
     expect(() => sealKey("k", "short")).toThrow(/AI_KEY_SECRET/);
   });

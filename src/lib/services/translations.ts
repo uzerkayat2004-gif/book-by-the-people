@@ -12,6 +12,7 @@ import { BOOK_LANGUAGE_CODES, bookLanguage } from "../languages";
 import { recordUsage, spendPaused } from "./spend";
 import { ownedBook } from "./books";
 import { EN, hasBuiltInUi } from "../i18n";
+import { scrubSecrets } from "../scrub";
 
 /** A released book can come out in more languages. Each one is a full copy of the book, translated. */
 export type TranslationState = { language: string; name: string; status: "waiting" | "working" | "ready" | "failed"; done: number; total: number; error: string };
@@ -206,7 +207,7 @@ export async function advanceTranslations(bookId: string, budgetMs = 40_000, ret
         try {
           await translateUnit(bookId, code, source, target, done, live);
         } catch (error) {
-          const message = error instanceof Error ? error.message.slice(0, 300) : "Translation failed.";
+          const message = error instanceof Error ? scrubSecrets(error.message).slice(0, 300) : "Translation failed.";
           await prisma.bookTranslation.update({ where: { id: row.id }, data: { status: "failed", error: message, contentJson: JSON.stringify(target), done } });
           return translationStates(bookId);
         }

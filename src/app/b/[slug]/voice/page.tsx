@@ -9,6 +9,7 @@ import { loadBookBySlug, pausedNow } from "@/lib/load-book";
 import { voicesLeftToday } from "@/lib/services/pipeline";
 import { releaseLabel } from "@/lib/stage";
 import { langAttrs, uiFor } from "@/lib/i18n";
+import { getViewer } from "@/lib/viewer";
 
 export const metadata = { title: "Add your voice", robots: { index: false, follow: false } };
 
@@ -52,7 +53,7 @@ export default async function VoicePage({
       preview={query.step ?? null}
       opens={opens}
       closed={!gate.ok}
-      leftToday={await voicesLeftToday(loaded.id, user?.id ?? null)}
+      leftToday={await voicesLeftToday(loaded.id, user?.id ?? null, user ? null : (await getViewer()).guestKey)}
       defaultLanguage={loaded.language}
       maxSeconds={loaded.maxVoiceSeconds}
       ui={ui}

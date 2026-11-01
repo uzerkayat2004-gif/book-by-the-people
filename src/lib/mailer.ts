@@ -18,7 +18,7 @@ export async function sendMail(mail: Mail): Promise<boolean> {
   if (cfg.smtpUrl) {
     try {
       const { createTransport } = await import("nodemailer");
-      const transport = createTransport(cfg.smtpUrl, { connectionTimeout: 15_000, greetingTimeout: 15_000, socketTimeout: 20_000 });
+      const transport = createTransport({ url: cfg.smtpUrl, connectionTimeout: 15_000, greetingTimeout: 15_000, socketTimeout: 20_000 });
       const from = cfg.emailFrom || smtpUser(cfg.smtpUrl);
       await transport.sendMail({ from, to: mail.to, subject: mail.subject, text: mail.text, html: mail.html });
       return true;

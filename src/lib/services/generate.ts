@@ -11,6 +11,7 @@ import { needsBookLanguage, recordMakeSteps, toBookLanguage } from "./pipeline";
 import { languageByCode } from "../languages";
 import { recordUsage, spendPaused } from "./spend";
 import { nextVersion } from "./books";
+import { scrubSecrets } from "../scrub";
 
 export async function generateBook(bookId: string, userId: string, engine: "auto" | "local") {
   const book = await prisma.book.findUnique({ where: { id: bookId } });
@@ -106,7 +107,7 @@ export async function generateBook(bookId: string, userId: string, engine: "auto
     await recordMakeSteps(book.id);
     return await storeDraft(book.id, previous, document, log);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "The book could not be written.";
+    const message = error instanceof Error ? scrubSecrets(error.message) : "The book could not be written.";
     log.push(message);
     await prisma.book.update({
       where: { id: book.id },

@@ -6,6 +6,9 @@ const securityHeaders = [
   { key: "X-Frame-Options", value: "SAMEORIGIN" },
   // The voice page records from the microphone on this site only.
   { key: "Permissions-Policy", value: "microphone=(self), camera=(), geolocation=()" },
+  // Only the parts of a content policy that can't break pages: no framing by other sites, no plugins,
+  // forms post only here, and no <base> tag tricks.
+  { key: "Content-Security-Policy", value: "frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self' https://accounts.google.com" },
   ...(process.env.NODE_ENV === "production"
     ? [{ key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" }]
     : []),
@@ -17,6 +20,9 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },
+      // Account and AI settings answers are never kept by browsers or shared caches.
+      { source: "/api/ai/:path*", headers: [{ key: "Cache-Control", value: "private, no-store" }] },
+      { source: "/api/me", headers: [{ key: "Cache-Control", value: "private, no-store" }] },
       // Speech to text runs in the browser. Cross-origin isolation lets it use several CPU threads,
       // which makes it about three times faster. Only the voice page needs it.
       {

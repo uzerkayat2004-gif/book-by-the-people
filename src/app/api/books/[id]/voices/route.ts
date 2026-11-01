@@ -5,6 +5,7 @@ import { assertSameOrigin, clientIp, fromError, jsonError } from "@/lib/http";
 import { rateLimit } from "@/lib/rate-limit";
 import { ingestWords } from "@/lib/services/voices";
 import { guestKeyForWrite } from "@/lib/viewer";
+import { ipHash } from "@/lib/ip-hash";
 
 /** Words only. Audio or file uploads are not accepted for contributions. */
 const schema = z.object({
@@ -45,6 +46,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       viewerId: user?.id ?? null,
       // A guest gets a private browser key so they alone (and the owner) can see or delete this voice later.
       guestKey: user ? "" : await guestKeyForWrite(),
+      ipHash: user ? "" : ipHash(ip),
       invite: body.invite || null,
       name: body.name,
       language: body.language,

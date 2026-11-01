@@ -5,6 +5,7 @@ import { prisma } from "../db";
 import { reviewWithModel, translateBatch } from "../ai";
 import { writerLive } from "../ai/providers";
 import { bookSpendPaused, recordUsage } from "./spend";
+import { scrubSecrets } from "../scrub";
 
 const VOICE_STEPS = ["transcribe", "translate", "checks", "decide", "group"] as const;
 
@@ -35,15 +36,31 @@ export async function recordMakeSteps(bookId: string) {
   }
 }
 
-export async function voicesLeftToday(bookId: string, userId: string | null) {
+/** Voices this person can still add today: by account when signed in, else by this browser's guest key. */
+export async function voicesLeftToday(bookId: string, userId: string | null, guestKey?: string | null) {
   const book = await prisma.book.findUnique({ where: { id: bookId }, select: { voiceLimitPerDay: true } });
   const limit = book?.voiceLimitPerDay ?? 3;
-  if (!userId) return limit;
+  if (!userId && !guestKey) return limit;
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const used = await prisma.voice.count({
-    where: { bookId, userId, kind: "voice", createdAt: { gte: since } },
+    where: userId
+      ? { bookId, userId, kind: "voice", createdAt: { gte: since } }
+      : { bookId, userId: "", guestKey: guestKey ?? "", kind: "voice", createdAt: { gte: since } },
   });
   return Math.max(0, limit - used);
+}
+
+/** Guest voices from one network in a day: per book, and across the whole site. Signed-in people are not counted. */
+export const GUEST_NETWORK_LIMITS = { perBook: 20, perSite: 60 };
+
+export async function guestNetworkFull(bookId: string, ipHash: string): Promise<boolean> {
+  if (!ipHash || process.env.NODE_ENV !== "production") return false;
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const [book, site] = await Promise.all([
+    prisma.voice.count({ where: { bookId, ipHash, userId: "", createdAt: { gte: since } } }),
+    prisma.voice.count({ where: { ipHash, userId: "", createdAt: { gte: since } } }),
+  ]);
+  return book >= GUEST_NETWORK_LIMITS.perBook || site >= GUEST_NETWORK_LIMITS.perSite;
 }
 
 export async function settleVoice(voiceId: string) {
@@ -75,7 +92,7 @@ export async function settleVoice(voiceId: string) {
         data: {
           status: attempts >= 4 ? "failed" : "pending",
           attempts,
-          lastError: error instanceof Error ? error.message : "This step failed.",
+          lastError: error instanceof Error ? scrubSecrets(error.message) : "This step failed.",
           runAfter: new Date(Date.now() + attempts * attempts * 15_000),
         },
       });

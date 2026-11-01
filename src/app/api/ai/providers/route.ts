@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireApiUser } from "@/lib/auth";
-import { assertSameOrigin, fromError } from "@/lib/http";
+import { assertSameOrigin, fromError, jsonError } from "@/lib/http";
 import { getFallback, providerStore, setFallback } from "@/lib/ai/providers";
+import { assertPublicModelUrl } from "@/lib/ai/net-guard";
+import { checkProviderInput } from "@/lib/ai/provider-store";
+import { isLocalType } from "@/lib/ai/provider-types";
+import { LOCAL_OFF_MESSAGE, localModelsOff } from "@/lib/ai/local-gate";
+import { hourly } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -22,7 +27,12 @@ export async function POST(request: Request) {
   if (origin) return origin;
   try {
     const user = await requireApiUser();
-    const provider = await providerStore.create(user.id, await request.json());
+    if (!hourly(`ai-provider:${user.id}`, 60)) return jsonError("Too many changes in an hour. Try again later.", 429);
+    const body = await request.json();
+    const { type, baseUrl } = checkProviderInput(body);
+    if (localModelsOff() && isLocalType(type)) return jsonError(LOCAL_OFF_MESSAGE, 400);
+    await assertPublicModelUrl(baseUrl);
+    const provider = await providerStore.create(user.id, body);
     return NextResponse.json({ provider });
   } catch (error) {
     return fromError(error);

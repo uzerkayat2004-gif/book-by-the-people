@@ -3,6 +3,7 @@ import { prisma } from "../db";
 import { getConfig } from "../config";
 import { AppError } from "../errors";
 import { canStoreKeys, keyLast4, openKey } from "../secret-box";
+import { assertPublicModelUrl } from "./net-guard";
 import { parseAiChoice, usableProvider, type AiChoice, type AiOptions, type SavedAiOption } from "./book-source";
 import { localModelsOff } from "./local-gate";
 import { checkProviderInput } from "./provider-store";
@@ -61,7 +62,7 @@ export async function checkAiChoice(userId: string, raw: unknown, legacyKey?: st
       if (localModelsOff()) throw new AppError("Local models run only on your own computer. Add an API key here.");
     } else if (!(NEW_KEY_TYPES as string[]).includes(choice.type)) throw new AppError("Pick a provider.");
     if (!canStoreKeys()) throw new AppError("The server has no AI_KEY_SECRET, so it can't store keys safely yet.", 503);
-    checkProviderInput(newProviderBody(choice));
+    await assertPublicModelUrl(checkProviderInput(newProviderBody(choice)).baseUrl);
   }
   return choice;
 }

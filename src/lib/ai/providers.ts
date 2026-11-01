@@ -7,6 +7,8 @@ import { createProviderStore, type ProviderDb, type ResolvedProvider } from "./p
 import { isLocalType, pickChain, preferBook, presetFor, shortLabel } from "./provider-types";
 import { ensureServer, LOCAL_PORT } from "./local-runtime";
 import { LOCAL_OFF_MESSAGE, localModelsOff } from "./local-gate";
+import { assertPublicModelUrl } from "./net-guard";
+import { scrubSecrets } from "../scrub";
 
 export const providerStore = createProviderStore(prisma.aiProvider as unknown as ProviderDb, {
   seal: sealKey,
@@ -82,6 +84,8 @@ export async function prepare(provider: ResolvedProvider): Promise<CallTarget & 
     await ensureServer(provider.localModel || provider.model);
     return { ...provider, baseUrl: `http://127.0.0.1:${LOCAL_PORT}/v1` };
   }
+  // A saved address is checked again at call time, so a name that later points inside the network is refused.
+  await assertPublicModelUrl(provider.baseUrl);
   return { ...provider, transcribeModel: provider.role === "transcription" ? provider.model : presetFor(provider.type).transcribeModel };
 }
 
@@ -117,7 +121,7 @@ export async function testProvider(userId: string, id: string) {
     const target = await prepare(provider);
     outcome = await testTarget(target, provider.role);
   } catch (error) {
-    outcome = { ok: false, message: error instanceof Error ? error.message : "Test failed.", ms: 0 };
+    outcome = { ok: false, message: error instanceof Error ? scrubSecrets(error.message, provider.apiKey) : "Test failed.", ms: 0 };
   }
   await providerStore.recordTest(provider.id, outcome.ok, outcome.message);
   return outcome;
