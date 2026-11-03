@@ -1,6 +1,6 @@
 import "server-only";
-import { writeBook } from "../ai";
-import { assembleBook, repairModelBook } from "../book/assemble";
+import { writeFeatureBook } from "../ai/feature-writer";
+import { assembleBook } from "../book/assemble";
 import { canGenerate, statusAfterGenerationFailure } from "../book/lifecycle";
 import type { SourceVoice, Turn } from "../book/types";
 import { getConfig } from "../config";
@@ -9,7 +9,7 @@ import { prisma } from "../db";
 import { AppError } from "../errors";
 import { needsBookLanguage, recordMakeSteps, toBookLanguage } from "./pipeline";
 import { languageByCode } from "../languages";
-import { recordUsage, spendPaused } from "./spend";
+import { spendPaused } from "./spend";
 import { nextVersion } from "./books";
 import { scrubSecrets } from "../scrub";
 
@@ -62,33 +62,19 @@ export async function generateBook(bookId: string, userId: string, engine: "auto
           book.id,
         );
       }
-      log.push("Asking the writing model to group the voices and keep their words.");
-      const written = await writeBook({
+      log.push(`Reading all ${voices.length} voices and planning the book.`);
+      const written = await writeFeatureBook({
         title: book.title,
         question: book.question,
         bookType: book.type,
         voices,
         bookId: book.id,
         language: book.language || "en",
-      });
-      await recordUsage({
-        kind: "compose",
-        provider: written.provider,
-        model: written.modelId,
-        bookId: book.id,
-        usage: written.usage,
+        log: (line) => log.push(line),
       });
       provider = written.provider;
-      model = written.modelId;
-      const document = repairModelBook({
-        title: book.title,
-        question: book.question,
-        bookType: book.type,
-        voices,
-        model: written.model,
-        provider,
-        modelId: model,
-      });
+      model = written.model;
+      const document = written;
       log.push(`Saved ${document.chapters.length} ${document.chapters.length === 1 ? "chapter" : "chapters"}.`);
       await recordMakeSteps(book.id);
       return await storeDraft(book.id, previous, document, log);
@@ -152,7 +138,7 @@ async function storeDraft(
   return { draftId: draft.id, version, log, status: book.status };
 }
 
-function toSource(voice: {
+export function toSource(voice: {
   id: string;
   contributorName: string;
   language: string;
@@ -172,7 +158,17 @@ function toSource(voice: {
   status: string;
   startWord: string;
   storageKey: string | null;
+  region?: string;
+  checkJson?: string;
 }): SourceVoice {
+  let check: { notable?: unknown; impersonation?: unknown } = {};
+  try {
+    check = JSON.parse(voice.checkJson || "{}") as typeof check;
+  } catch {
+    check = {};
+  }
+  // Notable only when verified: a sourced public quote with its link, or the creator marked it in Studio.
+  const notable = check.notable === true || (voice.kind === "sourced_quote" && Boolean(voice.sourceUrl));
   let turns: Turn[] = [];
   try {
     const parsed = JSON.parse(voice.turnsJson) as Turn[];
@@ -200,5 +196,8 @@ function toSource(voice: {
     status: voice.status,
     startWord: voice.startWord,
     hasAudio: Boolean(voice.storageKey),
+    region: voice.region ?? "",
+    notable,
+    nameUnverified: !notable && check.impersonation === true,
   };
 }

@@ -222,3 +222,105 @@ export function paceScenes<T extends PaceScene>(scenes: T[], capMs = 8000): T[] 
   });
   return out;
 }
+
+/* ---------- Feature books: a documentary with fewer, longer picture scenes ---------- */
+
+/** About one picture every half minute of narration, 1 to 6 per part. */
+export function picturesFor(ms: number, unit: number): number {
+  if (unit === 0) return ms > 20_000 ? 2 : 1;
+  return Math.max(1, Math.min(6, Math.round(ms / 30_000)));
+}
+
+export function featureBoardPrompt(input: { unit: number; bookTitle: string; question: string; sectionTitle: string; arc: string; script: ChapterScript; count: number }) {
+  const system = [
+    "You are the director of a calm documentary film made from a book of real people's voices.",
+    "The narration is recorded. Choose the pictures on screen while it plays: one picture holds for a long time with a slow camera move, like a documentary.",
+    "Rules:",
+    `- Return exactly ${input.count} scenes of kind "picture", in order. "segment" is the narration segment where the picture starts; the first starts at 0. Spread them so each holds for a similar time, and change picture where the narration moves to a new idea.`,
+    '- "prompt": one vivid sentence for a picture that fits what is being said: a place, objects, light, weather, hands, people seen from behind or far away. Keep one visual world across the film (the same kind of places, the same warm light), so the film feels like one piece.',
+    "- Never put words, signs, names, logos or recognisable real people in a picture. Do not show crowds of a given size.",
+    '- Use -1 for "quote".',
+  ].join("\n");
+  const lines = [
+    `Book: ${input.bookTitle}`,
+    `Question: ${input.question}`,
+    input.arc ? `The film's arc: ${input.arc}` : "",
+    input.unit === 0 ? "Part: the opening" : `Part: ${input.sectionTitle}`,
+    "",
+    "Narration segments:",
+    ...input.script.segments.map((segment, index) => `${index}. ${segment.text}`),
+  ].filter((line, i) => line || i > 3);
+  return { system, user: lines.join("\n") };
+}
+
+export function parseFeatureBoard(raw: unknown, segments: number, count: number): Storyboard {
+  const data = raw as { scenes?: unknown };
+  if (!data || !Array.isArray(data.scenes)) throw new Error("The storyboard came back without scenes.");
+  const scenes: Scene[] = [];
+  for (const item of data.scenes as { segment?: unknown; prompt?: unknown }[]) {
+    const segment = Math.floor(Number(item?.segment));
+    const prompt = typeof item?.prompt === "string" ? item.prompt.replace(/\s+/g, " ").trim().slice(0, 600) : "";
+    if (!prompt || !Number.isFinite(segment) || segment < 0 || segment >= segments) continue;
+    if (scenes.length && segment <= scenes[scenes.length - 1].segment) continue;
+    scenes.push({ kind: "picture", segment, prompt });
+    if (scenes.length >= count) break;
+  }
+  if (!scenes.length) throw new Error("The storyboard came back empty.");
+  scenes[0] = { ...scenes[0], segment: 0 };
+  return { scenes };
+}
+
+/** Without a model: pictures spread evenly, about the part's title. */
+export function plainFeatureBoard(segments: number, count: number, prompt: string): Storyboard {
+  const n = Math.max(1, Math.min(count, segments));
+  const scenes: Scene[] = [];
+  for (let i = 0; i < n; i += 1) {
+    const segment = Math.floor((i * segments) / n);
+    if (scenes.length && segment <= scenes[scenes.length - 1].segment) continue;
+    scenes.push({ kind: "picture", segment, prompt: i === 0 ? prompt : `${prompt}, another moment` });
+  }
+  return { scenes };
+}
+
+export type Overlay = { startMs: number; endMs: number; kind: "quote" | "count"; text: string; who?: string; sub?: string };
+
+/**
+ * The words over the pictures, timed to the narration: each standout quote as a lower-third while it is read,
+ * and how many people shared a view when the book first tells it. Overlays never overlap.
+ */
+export function featureOverlays(input: {
+  segments: { ref?: string }[];
+  timeOf: (seg: number) => { startMs: number; endMs: number } | null;
+  quoteAt: (blockIndex: number) => { text: string; who: string; sub: string } | null;
+  countAt: (blockIndex: number) => { count: number; label: string } | null;
+  minCount?: number;
+}): Overlay[] {
+  const out: Overlay[] = [];
+  input.segments.forEach((segment, seg) => {
+    const ref = segment.ref ?? "";
+    const match = /^([qc])(\d+)$/.exec(ref);
+    if (!match) return;
+    const time = input.timeOf(seg);
+    if (!time) return;
+    const block = Number(match[2]);
+    if (match[1] === "q") {
+      const quote = input.quoteAt(block);
+      if (quote) out.push({ startMs: Math.max(0, time.startMs - 250), endMs: time.endMs + 900, kind: "quote", text: quote.text, who: quote.who, sub: quote.sub });
+    } else {
+      const count = input.countAt(block);
+      if (count && count.count >= (input.minCount ?? 3)) out.push({ startMs: time.startMs + 400, endMs: time.startMs + 6400, kind: "count", text: String(count.count), sub: count.label });
+    }
+  });
+  out.sort((a, b) => a.startMs - b.startMs);
+  // Quotes (lower left) and count chips (top right) can share the screen; two of the same kind never do.
+  const kept: Overlay[] = [];
+  for (const overlay of out) {
+    const last = [...kept].reverse().find((k) => k.kind === overlay.kind);
+    if (last && overlay.startMs < last.endMs + 150) {
+      if (overlay.kind === "count") continue;
+      last.endMs = Math.max(last.startMs + 1500, overlay.startMs - 150);
+    }
+    kept.push(overlay);
+  }
+  return kept;
+}

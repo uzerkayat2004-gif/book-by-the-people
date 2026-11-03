@@ -63,6 +63,7 @@ type VoiceRow = {
   themeLabel: string;
   pipelineStep: string;
   impersonation?: boolean;
+  notable?: boolean;
   sourceTitle?: string | null;
   checks?: Checks | null;
 };
@@ -236,7 +237,7 @@ export function StudioDesk({
     return data;
   }
 
-  async function patchVoice(id: string, body: { decision?: "approved" | "hidden"; hidden?: boolean }) {
+  async function patchVoice(id: string, body: { decision?: "approved" | "hidden"; hidden?: boolean; notable?: boolean }) {
     const response = await fetch(`/api/voices/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -263,6 +264,7 @@ export function StudioDesk({
     approve: (id: string) => run(`ok-${id}`, () => patchVoice(id, { decision: "approved" })),
     hide: (id: string) => run(`hide-${id}`, () => patchVoice(id, { decision: "hidden" })),
     show: (id: string) => run(`show-${id}`, () => patchVoice(id, { hidden: false })),
+    notable: (id: string, value: boolean) => run(`star-${id}`, () => patchVoice(id, { notable: value })),
   };
 
   const writerLine = <b>{ai.writer ?? "Demo mode"}</b>;
@@ -529,7 +531,7 @@ function AiTab({
   writerLine: React.ReactNode;
   usage: Usage;
   bookId: string;
-  actions: { approve: (id: string) => void; hide: (id: string) => void; show: (id: string) => void };
+  actions: { approve: (id: string) => void; hide: (id: string) => void; show: (id: string) => void; notable: (id: string, value: boolean) => void };
   onRun: () => void;
   onDone: () => void;
 }) {
@@ -622,6 +624,7 @@ function AiTab({
                       <b>
                         {voice.name}
                         {voice.impersonation ? <span className="s2-flag" title="Name of a public figure">name check</span> : null}
+                        {voice.notable ? <span className="s2-flag s2-flag--star" title="You checked this is a well-known person">well-known</span> : null}
                       </b>
                       <span>{snippet(voice.englishText || voice.originalText, 90) || "—"}</span>
                     </div>
@@ -629,6 +632,18 @@ function AiTab({
                     {state === "hidden" ? (
                       <button className="s2-link" type="button" disabled={busy !== null} onClick={() => actions.show(voice.id)}>
                         Show
+                      </button>
+                    ) : voice.kind !== "sourced_quote" ? (
+                      <button
+                        className="s2-link s2-star"
+                        type="button"
+                        disabled={busy !== null}
+                        aria-pressed={Boolean(voice.notable)}
+                        title={voice.notable ? "Stop treating this as a well-known person" : "I checked: this is the well-known person they say. Put them up front."}
+                        onClick={() => actions.notable(voice.id, !voice.notable)}
+                        data-testid={`notable-${voice.id}`}
+                      >
+                        {voice.notable ? "★ Well-known" : "☆ Well-known?"}
                       </button>
                     ) : null}
                   </li>

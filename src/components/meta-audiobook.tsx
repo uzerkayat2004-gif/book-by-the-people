@@ -20,6 +20,7 @@ type Panel = {
   metaOnly: boolean;
   writers: Option[];
   writerPicked: string;
+  music?: boolean;
   languages: { lang: string; name: string; voices: Voice[]; picked: string }[];
   waiting: { lang: string; reason: string }[];
   progress: Progress;
@@ -103,7 +104,7 @@ export function MetaAudiobook({ bookId, slug, locked = false }: { bookId: string
     };
   }, [load, drive, locked]);
 
-  async function save(body: { writer?: string; voices?: Record<string, string> }) {
+  async function save(body: { writer?: string; voices?: Record<string, string>; music?: boolean }) {
     setError("");
     const response = await fetch(`/api/books/${bookId}/media/meta`, {
       method: "PUT",
@@ -205,6 +206,16 @@ export function MetaAudiobook({ bookId, slug, locked = false }: { bookId: string
             </select>
           </label>
         ))}
+        <label className="s5-meta__check">
+          <input
+            type="checkbox"
+            checked={panel.music !== false}
+            disabled={locked || running}
+            onChange={(event) => void save({ music: event.target.checked })}
+            data-testid="meta-music"
+          />
+          Soft music at the start and end
+        </label>
       </div>
 
       {!running && !locked ? (

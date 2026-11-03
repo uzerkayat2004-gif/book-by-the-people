@@ -155,7 +155,8 @@ async function runStep(step: (typeof VOICE_STEPS)[number], voiceId: string) {
     }
     await prisma.voice.update({
       where: { id: fresh.id },
-      data: { checkJson: JSON.stringify(checked), pipelineStep: "checks" },
+      // The creator's "well-known person" mark survives a re-check.
+      data: { checkJson: JSON.stringify(keepNotable(checked, fresh.checkJson)), pipelineStep: "checks" },
     });
     return;
   }
@@ -290,4 +291,13 @@ export async function toBookLanguage<T extends Translatable>(voices: T[], target
     }
   }
   return voices;
+}
+
+function keepNotable<T extends object>(checked: T, previous: string | null | undefined): T & { notable?: boolean } {
+  try {
+    const old = JSON.parse(previous || "{}") as { notable?: unknown };
+    return old.notable === true ? { ...checked, notable: true } : checked;
+  } catch {
+    return checked;
+  }
 }

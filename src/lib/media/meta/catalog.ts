@@ -66,7 +66,7 @@ export type ModelOption = {
   note?: string;
 };
 
-export type AudiobookPicks = { writer: string; voices: Record<string, string> };
+export type AudiobookPicks = { writer: string; voices: Record<string, string>; music?: boolean };
 export type MediaPicks = { audiobook: AudiobookPicks };
 
 export const EMPTY_PICKS: MediaPicks = { audiobook: { writer: "", voices: {} } };

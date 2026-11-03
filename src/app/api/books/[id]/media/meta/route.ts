@@ -28,6 +28,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
 const picksSchema = z.object({
   writer: z.string().max(200).optional(),
   voices: z.record(z.string().max(8), z.string().max(40)).optional(),
+  music: z.boolean().optional(),
 });
 
 /** Save the model picks for this book. */

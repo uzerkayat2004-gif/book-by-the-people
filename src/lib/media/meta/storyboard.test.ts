@@ -135,3 +135,35 @@ describe("paceScenes", () => {
     expect(paceScenes(scenes)).toEqual(scenes);
   });
 });
+
+import { featureOverlays, parseFeatureBoard, picturesFor, plainFeatureBoard } from "./storyboard";
+
+describe("documentary storyboard", () => {
+  it("uses about one picture every half minute", () => {
+    expect(picturesFor(10_000, 0)).toBe(1);
+    expect(picturesFor(150_000, 2)).toBe(5);
+    expect(picturesFor(900_000, 2)).toBe(6);
+  });
+
+  it("keeps only pictures, in order, starting at the top", () => {
+    const board = parseFeatureBoard({ scenes: [{ segment: 3, prompt: "a door" }, { segment: 2, prompt: "x" }, { segment: 6, prompt: "a field" }] }, 10, 3);
+    expect(board.scenes).toEqual([
+      { kind: "picture", segment: 0, prompt: "a door" },
+      { kind: "picture", segment: 6, prompt: "a field" },
+    ]);
+    expect(plainFeatureBoard(9, 3, "p").scenes.map((s) => s.segment)).toEqual([0, 3, 6]);
+  });
+
+  it("times quote lower-thirds and count chips to the narration", () => {
+    const overlays = featureOverlays({
+      segments: [{ ref: "c0" }, { ref: "q1" }, { ref: "p2" }, { ref: "q3" }],
+      timeOf: (seg) => ({ startMs: seg * 10_000, endMs: seg * 10_000 + 8000 }),
+      quoteAt: (i) => ({ text: `quote ${i}`, who: "Priya", sub: "Chennai, India" }),
+      countAt: () => ({ count: 46, label: "Teachers who stay" }),
+    });
+    expect(overlays.map((o) => o.kind)).toEqual(["count", "quote", "quote"]);
+    expect(overlays[1]).toMatchObject({ startMs: 9750, endMs: 18_900, who: "Priya" });
+    const quotes = overlays.filter((o) => o.kind === "quote");
+    expect(quotes[0].endMs).toBeLessThan(quotes[1].startMs);
+  });
+});

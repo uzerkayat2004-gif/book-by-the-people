@@ -77,6 +77,7 @@ async function completeOn(target: ChatTarget, input: {
   schemaName: string;
   schema: object;
   safetyId: string;
+  maxTokens?: number;
 }): Promise<ChatResult> {
   const messages = [
     { role: "developer", content: input.system },
@@ -89,7 +90,7 @@ async function completeOn(target: ChatTarget, input: {
       type: "json_schema",
       json_schema: { name: input.schemaName, schema: input.schema },
     },
-    max_completion_tokens: 8000,
+    max_completion_tokens: input.maxTokens ?? 8000,
     safety_identifier: input.safetyId,
   };
   if (target.reasoningEffort) baseBody.reasoning_effort = target.reasoningEffort;
@@ -108,7 +109,7 @@ async function completeOn(target: ChatTarget, input: {
     }
     if (detail.includes("max_completion_tokens")) {
       delete retry.max_completion_tokens;
-      retry.max_tokens = 8000;
+      retry.max_tokens = input.maxTokens ?? 8000;
       changed = true;
     }
     if (!changed) throw error;
@@ -131,6 +132,7 @@ export async function completeJson(input: {
   schemaName: string;
   schema: object;
   bookId: string;
+  maxTokens?: number;
 }): Promise<ChatResult> {
   const cfg = getConfig();
   // The creator's own AI models (Book settings → AI models) come first, in their order.

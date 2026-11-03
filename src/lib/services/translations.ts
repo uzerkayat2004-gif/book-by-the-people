@@ -1,6 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { parseDocument } from "../book/assemble";
+import { reflowBlocks } from "../book/feature";
 import type { BookDocument, Chapter } from "../book/types";
 import { completeJson } from "../ai/meta";
 import { extractJson } from "../ai";
@@ -70,7 +71,7 @@ export async function setReleaseLanguages(bookId: string, userId: string, codes:
   return clean;
 }
 
-const headSchema = z.object({ title: z.string(), question: z.string(), preface: z.string() });
+const headSchema = z.object({ title: z.string(), question: z.string(), preface: z.string(), standfirst: z.string().optional() });
 const chapterSchema = z.object({
   title: z.string(),
   theme: z.string(),
@@ -82,8 +83,8 @@ const chapterSchema = z.object({
 const HEAD_JSON = {
   type: "object",
   additionalProperties: false,
-  required: ["title", "question", "preface"],
-  properties: { title: { type: "string" }, question: { type: "string" }, preface: { type: "string" } },
+  required: ["title", "question", "preface", "standfirst"],
+  properties: { title: { type: "string" }, question: { type: "string" }, preface: { type: "string" }, standfirst: { type: "string" } },
 };
 const CHAPTER_JSON = {
   type: "object",
@@ -126,8 +127,9 @@ async function translateUnit(bookId: string, code: string, source: BookDocument,
   const languageName = bookLanguage(code).name;
   if (unit === 0) {
     const out = live
-      ? await ask(bookId, languageName, "book_head", HEAD_JSON, { title: source.title, question: source.question, preface: source.preface }, headSchema)
-      : { title: demo(source.title, code), question: demo(source.question, code), preface: demo(source.preface, code) };
+      ? await ask(bookId, languageName, "book_head", HEAD_JSON, { title: source.title, question: source.question, preface: source.preface, standfirst: source.standfirst ?? "" }, headSchema)
+      : { title: demo(source.title, code), question: demo(source.question, code), preface: demo(source.preface, code), standfirst: source.standfirst ? demo(source.standfirst, code) : "" };
+    if (source.standfirst) target.standfirst = out.standfirst?.trim() || source.standfirst;
     target.title = out.title.trim() || source.title;
     target.question = out.question.trim() || source.question;
     target.preface = out.preface.trim() || source.preface;
@@ -153,11 +155,14 @@ async function translateUnit(bookId: string, code: string, source: BookDocument,
         quotes: payload.quotes.map((quote) => ({ id: quote.id, text: demo(quote.text, code) })),
       };
   const byId = new Map(out.quotes.map((quote) => [quote.id, quote.text.trim()]));
+  const narrative = out.narrative.trim() || chapter.narrative;
   target.chapters[unit - 1] = {
     ...chapter,
     title: out.title.trim() || chapter.title,
     theme: out.theme.trim() || chapter.theme,
-    narrative: out.narrative.trim() || chapter.narrative,
+    narrative,
+    // Feature chapters: the translated paragraphs take the old ones' places between the quotes.
+    ...(chapter.blocks?.length ? { blocks: reflowBlocks(chapter.blocks, narrative) } : {}),
     agreement: chapter.agreement ? out.agreement?.trim() || chapter.agreement : null,
     disagreement: chapter.disagreement ? out.disagreement?.trim() || chapter.disagreement : null,
     // The speaker's original words stay in originalText; englishText holds the words as this edition reads them.

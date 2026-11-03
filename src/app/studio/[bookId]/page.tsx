@@ -167,9 +167,11 @@ export default async function StudioBookPage({
                 copyPaste?: boolean;
                 duplicate?: boolean;
                 impersonation?: boolean;
+                notable?: boolean;
               };
               return {
                 impersonation: Boolean(checks.impersonation),
+                notable: checks.notable === true,
                 checks: {
                   onTopic: checks.onTopic,
                   realPerson: checks.realPerson,
@@ -179,7 +181,7 @@ export default async function StudioBookPage({
                 },
               };
             } catch {
-              return { impersonation: false, checks: null };
+              return { impersonation: false, notable: false, checks: null };
             }
           })(),
         }))}

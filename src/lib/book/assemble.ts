@@ -1,3 +1,4 @@
+import { reflowBlocks } from "./feature";
 import { stripPeopleCounts } from "./checks";
 import { agreementNotes, planChapters, themeLabel } from "./plan";
 import { bestQuote, locateSpan, snapToVerbatim } from "./speech";
@@ -214,10 +215,12 @@ export function applyEdits(document: BookDocument, edits: EditorEdits): BookDocu
     if (!current || seen.has(edit.id)) continue;
     seen.add(edit.id);
     const hidden = new Set(edit.hiddenQuoteIds);
+    const narrative = edit.narrative.trim() || current.narrative;
     chapters.push({
       ...current,
       title: edit.title.trim() || current.title,
-      narrative: edit.narrative.trim() || current.narrative,
+      narrative,
+      ...(current.blocks?.length && narrative !== current.narrative ? { blocks: reflowBlocks(current.blocks, narrative) } : {}),
       quotes: current.quotes.map((quote) => ({ ...quote, hidden: hidden.has(quote.id) })),
     });
   }

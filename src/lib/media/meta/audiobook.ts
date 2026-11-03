@@ -16,14 +16,15 @@ import { wavDurationMs } from "@/lib/book/speech";
 import { mmsFor, voiceOptions } from "./catalog";
 import { mediaMetaOnly } from "./flag";
 import { MMS_RATE, mmsSpeakTimed, type Cue } from "./mms";
-import { NARRATION_SCHEMA, narrationPrompt, narrationUnits, parseNarration, plainNarration, unitSource } from "./narrate";
+import { NARRATION_SCHEMA, SPOKEN_SCHEMA, applySpoken, featureNarration, isFeatureBook, narrationPrompt, narrationUnits, parseNarration, plainNarration, spokenPrompt, unitSource } from "./narrate";
+import { crossfadeJoin, pcmToWav, toFloat, toInt16, wavToPcm, withMusicBed } from "./sound";
 import { readScript, readState, writeState, type AudioResult, type MediaState, type Run, type TimedCue, type UnitState } from "./state";
 import { safeError, writerOptions, writerTarget } from "./targets";
 import type { ChapterScript, Segment } from "./text";
 
 /** Bump when the narrator prompt changes (scripts are made again) or the voice settings change. */
-const SCRIPT_V = 1;
-const VOICE_V = 2;
+const SCRIPT_V = 2;
+const VOICE_V = 3;
 const PART_CHARS = 1800;
 export const RUNS_PER_DAY = 3;
 const LEASE_MS = 240_000;
@@ -153,6 +154,7 @@ export async function startAudiobook(bookId: string): Promise<MediaState> {
     units,
     startedAt: new Date().toISOString(),
     phase: "Getting ready",
+    music: state.picks.audiobook.music !== false,
   };
   // Nothing changed since the last finished audiobook: keep it.
   const allSame = languages.every((lang) => state.audio[lang]?.hash === runHash(run, lang));
@@ -165,7 +167,7 @@ export async function startAudiobook(bookId: string): Promise<MediaState> {
 }
 
 export function runHash(run: Run, lang: string) {
-  return hash(...run.units.filter((u) => u.lang === lang).map((u) => u.voiceHash));
+  return hash(...run.units.filter((u) => u.lang === lang).map((u) => u.voiceHash), run.music === false ? "quiet" : "music");
 }
 
 export async function takeLease(bookId: string, key = leaseKey(bookId), step = "audiobook"): Promise<boolean> {
@@ -194,7 +196,26 @@ async function makeScript(bookId: string, run: Run, unit: UnitState, doc: BookDo
   let script: ChapterScript | null = null;
   let note: string | undefined;
   const target = run.writer.value ? await writerTarget(bookId, run.writer.value).catch(() => null) : null;
-  if (target) {
+  if (isFeatureBook(doc)) {
+    // Feature books: the script follows the book block by block (so the film can follow it too);
+    // the script writer only makes each paragraph easier to hear.
+    const base = featureNarration(doc, unit.unit);
+    script = base;
+    unit.plain = !target;
+    if (target && base.segments.some((s) => !s.ref?.startsWith("q"))) {
+      const room = deadline - Date.now();
+      if (room < 25_000) return;
+      try {
+        const out = await chatJson(target, { ...spokenPrompt({ languageName: bookLanguage(unit.lang).name, bookTitle: doc.title, script: base }), schemaName: "spoken", schema: SPOKEN_SCHEMA, maxTokens: 9000, reasoningEffort: "low", timeoutMs: Math.min(100_000, room - 10_000) });
+        await recordUsage({ kind: "media-script", provider: target.tag, model: out.model, bookId, usage: out.usage }).catch(() => undefined);
+        script = applySpoken(extractJson(out.content), base);
+      } catch (error) {
+        unit.plain = true;
+        note = safeError(error, target.apiKey);
+      }
+    }
+    unit.note = unit.plain && target ? `Book text read as written: ${note ?? "the model did not answer"}` : undefined;
+  } else if (target) {
     const prompt = narrationPrompt({ unit: unit.unit, total, languageName: bookLanguage(unit.lang).name, bookTitle: doc.title, source: unitSource(doc, unit.unit).text });
     for (let attempt = 0; attempt < 3 && !script; attempt += 1) {
       const room = deadline - Date.now();
@@ -215,7 +236,7 @@ async function makeScript(bookId: string, run: Run, unit: UnitState, doc: BookDo
     script = plainNarration(doc, unit.unit);
     unit.plain = true;
     unit.note = target ? `Plain script used: ${note ?? "the model did not answer"}` : undefined;
-  } else {
+  } else if (!isFeatureBook(doc)) {
     unit.plain = false;
     unit.note = undefined;
   }
@@ -229,16 +250,16 @@ async function makeScript(bookId: string, run: Run, unit: UnitState, doc: BookDo
   unit.parts = [];
 }
 
-async function speakPart(lang: string, voiceId: string, segments: Segment[]): Promise<{ mp3: Buffer; ms: number; cues: Cue[] }> {
+async function speakPart(lang: string, voiceId: string, segments: Segment[]): Promise<{ file: Buffer; ext: "mp3" | "wav"; ms: number; cues: Cue[] }> {
   if (voiceId === "espeak") {
     const wav = await wasmSpeakToWav(segments.map((s) => s.text).join(" "));
     const mp3 = await wavToMp3(wav);
     const ms = mp3DurationMs(mp3) || (wavDurationMs(wav) ?? 0);
-    return { mp3, ms, cues: spreadCues(segments, ms) };
+    return { file: mp3, ext: "mp3", ms, cues: spreadCues(segments, ms) };
   }
+  // The Meta voice is kept as raw samples until the end, so the whole book is joined and encoded once.
   const { pcm, cues } = await mmsSpeakTimed(lang, segments);
-  const mp3 = await pcmToMp3(pcm, MMS_RATE, 48);
-  return { mp3, ms: mp3DurationMs(mp3) || Math.round((pcm.length / MMS_RATE) * 1000), cues };
+  return { file: pcmToWav(pcm, MMS_RATE), ext: "wav", ms: Math.round((pcm.length / MMS_RATE) * 1000), cues };
 }
 
 async function voicePart(bookId: string, run: Run, unit: UnitState): Promise<void> {
@@ -247,9 +268,9 @@ async function voicePart(bookId: string, run: Run, unit: UnitState): Promise<voi
   unit.partCount = parts.length;
   unit.parts = unit.parts ?? [];
   const index = unit.parts.length;
-  const { mp3, ms, cues } = await speakPart(unit.lang, run.voices[unit.lang], parts[index]);
-  const key = `book-${bookId}-mm-${unit.lang}-u${unit.unit}-v${unit.voiceHash}-p${index}.mp3`;
-  await putAudio(key, mp3, "audio/mpeg");
+  const { file, ext, ms, cues } = await speakPart(unit.lang, run.voices[unit.lang], parts[index]);
+  const key = `book-${bookId}-mm-${unit.lang}-u${unit.unit}-v${unit.voiceHash}-p${index}.${ext}`;
+  await putAudio(key, file, ext === "wav" ? "audio/wav" : "audio/mpeg");
   // Segment numbers in the cues count from the start of the chapter, not the part.
   const before = parts.slice(0, index).reduce((sum, part) => sum + part.length, 0);
   unit.parts.push({ key, ms, cues: cues.map((cue) => ({ ...cue, seg: cue.seg + before })) });
@@ -261,6 +282,9 @@ async function join(bookId: string, state: MediaState, run: Run, lang: string): 
   const chapters: { title: string; startMs: number }[] = [];
   const cues: TimedCue[] = [];
   const unitTimes: AudioResult["units"] = [];
+  const allParts = units.flatMap((u) => u.parts ?? []);
+  const raw = allParts.length > 0 && allParts.every((p) => p.key.endsWith(".wav"));
+  const music = raw && run.music !== false;
   let at = 0;
   for (const unit of units) {
     chapters.push({ title: unit.title, startMs: at });
@@ -272,7 +296,40 @@ async function join(bookId: string, state: MediaState, run: Run, lang: string): 
     }
     unitTimes!.push({ unit: unit.unit, startMs: unitStart, ms: at - unitStart, scriptKey: unit.scriptKey ?? "" });
   }
-  const audio = Buffer.concat(files);
+  let audio: Buffer;
+  if (raw) {
+    // One voice, one loudness, joined with tiny crossfades and encoded once: no seams between parts.
+    let voice = crossfadeJoin(files.map((file) => toFloat(wavToPcm(file))), MMS_RATE, 20);
+    let offset = 0;
+    if (music) {
+      const bed = withMusicBed(voice, MMS_RATE);
+      voice = bed.audio;
+      offset = bed.offsetMs;
+    }
+    audio = await pcmToMp3(toInt16(voice), MMS_RATE, 48);
+    const total = Math.round((voice.length / MMS_RATE) * 1000);
+    // Everything moves later by the music's lead-in, and 20 ms earlier at each crossfade between parts.
+    let delta = offset;
+    let cueAt = 0;
+    let first = true;
+    units.forEach((unit, index) => {
+      if (index > 0) {
+        chapters[index].startMs += delta - (unit.parts?.length ? 20 : 0);
+        unitTimes![index].startMs = chapters[index].startMs;
+      }
+      for (const part of unit.parts ?? []) {
+        if (!first) delta -= 20;
+        first = false;
+        for (let k = 0; k < (part.cues?.length ?? 0); k += 1) {
+          cues[cueAt + k].startMs += delta;
+          cues[cueAt + k].endMs += delta;
+        }
+        cueAt += part.cues?.length ?? 0;
+      }
+    });
+    for (let i = 0; i < unitTimes!.length; i += 1) unitTimes![i].ms = (i + 1 < unitTimes!.length ? unitTimes![i + 1].startMs : total) - unitTimes![i].startMs;
+    at = total;
+  } else audio = Buffer.concat(files);
   const runKey = runHash(run, lang);
   const key = `book-${bookId}-mm-audiobook-${lang}-${runKey}.mp3`;
   await putAudio(key, audio, "audio/mpeg");
@@ -286,6 +343,7 @@ async function join(bookId: string, state: MediaState, run: Run, lang: string): 
     chapters,
     writer: run.writer.label,
     voice: voiceOptions(lang, false).find((v) => v.id === run.voices[lang])?.label ?? run.voices[lang],
+    music,
     plainUnits: units.filter((u) => u.plain).length,
     madeAt: new Date().toISOString(),
     hash: runKey,
@@ -414,8 +472,9 @@ export async function advanceAudiobook(bookId: string, budgetMs = 150_000): Prom
   return progressOf(state);
 }
 
-export async function savePicks(bookId: string, picks: { writer?: string; voices?: Record<string, string> }): Promise<MediaState> {
+export async function savePicks(bookId: string, picks: { writer?: string; voices?: Record<string, string>; music?: boolean }): Promise<MediaState> {
   const state = await readState(bookId);
+  if (typeof picks.music === "boolean") state.picks.audiobook.music = picks.music;
   if (typeof picks.writer === "string") state.picks.audiobook.writer = picks.writer.slice(0, 200);
   if (picks.voices) {
     for (const [lang, voice] of Object.entries(picks.voices)) {
@@ -450,6 +509,7 @@ export async function audiobookPanel(bookId: string) {
     metaOnly,
     writers,
     writerPicked: state.picks.audiobook.writer,
+    music: state.picks.audiobook.music !== false,
     languages,
     waiting: skipped,
     progress: progressOf(state),

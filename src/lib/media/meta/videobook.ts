@@ -11,7 +11,7 @@ import { bookSpendPaused, recordUsage } from "@/lib/services/spend";
 import { isMetaMediaKey, isUploadedKey } from "../render";
 import { voiceOptions } from "./catalog";
 import { mediaMetaOnly } from "./flag";
-import { narrationUnits, unitSource } from "./narrate";
+import { isFeatureBook, narrationUnits, unitSource } from "./narrate";
 import { readScript, readState, type AudioResult, type MediaState, type TimedCue } from "./state";
 import {
   PICTURE_STYLE,
@@ -21,6 +21,12 @@ import {
   plainStoryboard,
   paceScenes,
   withPicture,
+  featureBoardPrompt,
+  featureOverlays,
+  parseFeatureBoard,
+  picturesFor,
+  plainFeatureBoard,
+  type Overlay,
   storyboardPrompt,
   unitQuotes,
   type QuoteRef,
@@ -42,12 +48,12 @@ import {
 } from "./audiobook";
 
 /** Bump when the storyboard prompt, picture style or the film's look changes. */
-const SB_V = 2;
+const SB_V = 3;
 const IMG_V = 1;
-const FILM_V = 2;
+const FILM_V = 3;
 const CARD_MS = 8000;
 export const VIDEO_RUNS_PER_DAY = 3;
-export const MAX_PICTURES = 18;
+export const MAX_PICTURES = 24;
 const PICTURE_USD = 0.01;
 export const CHUNK_BYTES = 3 * 1024 * 1024;
 const MAX_FILM_BYTES = 400 * 1024 * 1024;
@@ -181,7 +187,7 @@ function setupUnits(run: VideoRun, audio: AudioResult, doc: BookDocument) {
     unit: u.unit,
     title: unitSource(doc, u.unit).title,
     scriptKey: u.scriptKey,
-    hash: hash(u.scriptKey, run.writer.value, pictures ? 1 : 0, SB_V),
+    hash: hash(u.scriptKey, run.writer.value, pictures ? 1 : 0, SB_V, isFeatureBook(doc) ? picturesFor(u.ms, u.unit) : 0),
   }));
 }
 
@@ -197,7 +203,27 @@ async function makeBoard(bookId: string, run: VideoRun, unit: UnitBoard, doc: Bo
   let board: Storyboard | null = null;
   let note: string | undefined;
   const target = run.writer.value ? await writerTarget(bookId, run.writer.value).catch(() => null) : null;
-  if (target) {
+  const feature = isFeatureBook(doc);
+  const ms = run.audio?.units.find((u) => u.unit === unit.unit)?.ms ?? 60_000;
+  const count = picturesFor(ms, unit.unit);
+  if (feature && pictures && target) {
+    const prompt = featureBoardPrompt({ unit: unit.unit, bookTitle: doc.title, question: doc.question, sectionTitle: unit.title, arc: doc.outline?.arc ?? "", script, count });
+    for (let attempt = 0; attempt < 3 && !board; attempt += 1) {
+      const room = deadline - Date.now();
+      if (room < 25_000) return;
+      try {
+        const out = await chatJson(target, { ...prompt, schemaName: "storyboard", schema: STORYBOARD_SCHEMA, maxTokens: 5000, reasoningEffort: "low", timeoutMs: Math.min(90_000, room - 10_000) });
+        await recordUsage({ kind: "media-storyboard", provider: target.tag, model: out.model, bookId, usage: out.usage }).catch(() => undefined);
+        board = parseFeatureBoard(extractJson(out.content), script.segments.length, count);
+      } catch (error) {
+        note = safeError(error, target.apiKey);
+        if (!retryable(error) && !(error instanceof Error && /storyboard came back/.test(error.message))) break;
+        if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, [2000, 6000][attempt]));
+      }
+    }
+  } else if (feature) {
+    // nothing to ask: pictures are off, or there is no model (the plain board below).
+  } else if (target) {
     const prompt = storyboardPrompt({ unit: unit.unit, total: narrationUnits(doc), bookTitle: doc.title, question: doc.question, script, quotes, pictures });
     for (let attempt = 0; attempt < 3 && !board; attempt += 1) {
       const room = deadline - Date.now();
@@ -215,9 +241,13 @@ async function makeBoard(bookId: string, run: VideoRun, unit: UnitBoard, doc: Bo
   }
   const plain = !board;
   const chapter = unit.unit > 0 ? doc.chapters[unit.unit - 1] : null;
+  if (!board && feature) {
+    const about = unit.unit === 0 ? `An evocative scene about the question: ${doc.question}` : `An evocative scene about "${unit.title}"`;
+    board = pictures ? plainFeatureBoard(script.segments.length, count, about) : { scenes: [{ kind: "card", segment: 0 }] };
+  }
   if (!board) board = plainStoryboard({ unit: unit.unit, script, quotes, pictures, title: unit.title, theme: chapter?.theme, question: doc.question });
   // Every chapter gets at least one picture when pictures are on.
-  if (pictures) {
+  if (pictures && !feature) {
     const fallback = unit.unit === 0 ? `An evocative scene about the question: ${doc.question}` : `An evocative scene about "${unit.title}"${chapter?.theme ? `: ${chapter.theme}` : ""}`;
     board = withPicture(board, script.segments.length, fallback);
   }
@@ -429,6 +459,8 @@ export type PlanScene = {
   chapter?: string;
   /** Which part of the book (0 is the opening). */
   unit?: number;
+  /** End credits, one line each. */
+  credits?: string[];
 };
 
 export type FilmPlan = {
@@ -443,6 +475,9 @@ export type FilmPlan = {
   lang: string;
   scenes: PlanScene[];
   captions: { startMs: number; endMs: number; text: string }[];
+  /** Feature books: quotes as lower-thirds and "how many said this" chips, over the pictures. */
+  overlays?: Overlay[];
+  style?: "documentary";
   credit: string;
   uploadId: string;
   chunkBytes: number;
@@ -460,6 +495,7 @@ export async function filmPlan(bookId: string): Promise<FilmPlan> {
   const audio = run.audio;
   let cues: TimedCue[] = [];
   if (audio.cuesKey) cues = JSON.parse((await getAudio(audio.cuesKey).catch(() => Buffer.from("[]"))).toString("utf8")) as TimedCue[];
+  if (isFeatureBook(doc)) return documentaryPlan(bookId, run, doc, cues);
   const scenes: PlanScene[] = [];
   const captions: FilmPlan["captions"] = [];
   const pictures = new Map(run.pictures.filter((p) => p.key).map((p) => [p.id, p.key!]));
@@ -531,6 +567,114 @@ export async function filmPlan(bookId: string): Promise<FilmPlan> {
     scenes,
     captions: captions.filter((c) => c.endMs > c.startMs),
     credit,
+    uploadId: run.id,
+    chunkBytes: CHUNK_BYTES,
+  };
+}
+
+/** A documentary: long picture scenes that follow the outline, quotes and counts over the pictures, then credits. */
+async function documentaryPlan(bookId: string, run: VideoRun, doc: BookDocument, cues: TimedCue[]): Promise<FilmPlan> {
+  const audio = run.audio!;
+  const scenes: PlanScene[] = [];
+  const captions: FilmPlan["captions"] = [];
+  const overlays: Overlay[] = [];
+  const pictures = new Map(run.pictures.filter((p) => p.key).map((p) => [p.id, p.key!]));
+  const outline = doc.outline;
+  const clusters = new Map((outline?.clusters ?? []).map((c) => [c.id, c]));
+  const standouts = new Map((outline?.standouts ?? []).map((s) => [s.voiceId, s]));
+  let narrationEnd = 0;
+  for (const unit of run.units) {
+    const times = audio.units.find((u) => u.unit === unit.unit);
+    if (!times || !unit.key) continue;
+    const script = await readScript(unit.scriptKey);
+    const board = await readBoard(unit.key);
+    const unitCues = cues.filter((c) => c.unit === unit.unit);
+    for (const cue of unitCues) captions.push(...captionChunks(cue));
+    if (unitCues.length) narrationEnd = Math.max(narrationEnd, unitCues[unitCues.length - 1].endMs);
+    const timeOf = (seg: number) => {
+      const mine = unitCues.filter((c) => c.seg === seg);
+      return mine.length ? { startMs: mine[0].startMs, endMs: mine[mine.length - 1].endMs } : null;
+    };
+    const segmentStart = (segment: number) => {
+      const cue = unitCues.find((c) => c.seg >= segment);
+      return cue ? cue.startMs : times.startMs + (times.ms * segment) / Math.max(1, script.segments.length);
+    };
+    const chapter = unit.unit > 0 ? doc.chapters[unit.unit - 1] : null;
+    overlays.push(
+      ...featureOverlays({
+        segments: script.segments,
+        timeOf,
+        quoteAt: (index) => {
+          const block = chapter?.blocks?.[index];
+          const quote = block?.kind === "quote" ? chapter!.quotes.find((q) => q.id === block.quoteId && !q.hidden) : undefined;
+          if (!quote) return null;
+          const standout = standouts.get(quote.voiceId);
+          return { text: quote.englishText, who: standout?.name || quote.speakerName, sub: standout?.name ? standout.place : "" };
+        },
+        countAt: (index) => {
+          const block = chapter?.blocks?.[index];
+          const cluster = block?.kind === "p" && block.cluster ? clusters.get(block.cluster) : undefined;
+          return cluster ? { count: cluster.count, label: cluster.label } : null;
+        },
+      }),
+    );
+    board.scenes.forEach((scene, index) => {
+      const startMs = index === 0 ? times.startMs : Math.max(times.startMs, Math.round(segmentStart(scene.segment)));
+      const next = board.scenes[index + 1];
+      const endMs = next ? Math.max(startMs + 4000, Math.round(segmentStart(next.segment))) : times.startMs + times.ms;
+      const key = scene.kind === "picture" && scene.prompt ? pictures.get(pictureId(fullPrompt(scene.prompt), run.image.value)) : undefined;
+      const chapterTitle = index === 0 && unit.unit > 0 && doc.form !== "continuous" ? unit.title : undefined;
+      if (!key) {
+        // A missing picture: the one before it holds on, so the film never drops to a blank card mid-story.
+        const last = scenes[scenes.length - 1];
+        if (last && last.kind === "picture") {
+          last.endMs = endMs;
+          if (chapterTitle) scenes.push({ ...last, startMs, endMs, chapter: chapterTitle });
+          return;
+        }
+        scenes.push({ startMs, endMs, unit: unit.unit, kind: "card", title: chapterTitle ?? doc.title, subtitle: chapterTitle ? doc.title : doc.standfirst || doc.question });
+        return;
+      }
+      if (unit.unit === 0 && index === 0 && endMs - startMs > 10_000) {
+        scenes.push({ startMs, endMs: startMs + 6500, kind: "opening", title: doc.title, subtitle: doc.standfirst || doc.question });
+        scenes.push({ startMs: startMs + 6500, endMs, unit: 0, kind: "picture", image: assetUrl(bookId, key) });
+        return;
+      }
+      scenes.push({ startMs, endMs, unit: unit.unit, kind: "picture", image: assetUrl(bookId, key), chapter: chapterTitle });
+    });
+  }
+  if (!scenes.length || scenes[0].kind !== "opening") scenes.unshift({ startMs: 0, endMs: Math.min(6500, scenes[0]?.endMs ?? 6500), kind: "opening", title: doc.title, subtitle: doc.standfirst || doc.question });
+  scenes.sort((a, b) => a.startMs - b.startMs);
+  for (let i = 1; i < scenes.length; i += 1) if (scenes[i].startMs < scenes[i - 1].startMs + 500) scenes[i].startMs = scenes[i - 1].startMs + 500;
+  for (let i = 0; i < scenes.length - 1; i += 1) scenes[i].endMs = scenes[i + 1].startMs;
+  // How many took part, once, while the title is up.
+  const total = outline?.total ?? 0;
+  const countries = outline?.countries ?? 0;
+  if (total > 1) overlays.unshift({ startMs: 1800, endMs: 6200, kind: "count", text: String(total), sub: countries > 1 ? `voices from ${countries} countries` : "voices" });
+  const creditsAt = Math.max(1000, Math.min(audio.ms, (narrationEnd || audio.ms) + 1200));
+  if (scenes.length) scenes[scenes.length - 1].endMs = creditsAt;
+  const totalMs = Math.max(audio.ms, creditsAt + 8000);
+  const named = [...new Set((outline?.standouts ?? []).map((s) => s.name).filter(Boolean))];
+  const credits = [
+    total > 1 ? `Made from the voices of ${total} people${countries > 1 ? ` in ${countries} countries` : ""}` : "Made from the voices of real people",
+    named.length ? `Quoted: ${named.slice(0, 8).join(" · ")}${named.length > 8 ? " and others" : ""}` : "",
+  ].filter(Boolean);
+  scenes.push({ startMs: creditsAt, endMs: totalMs, kind: "end", title: doc.title, credits });
+  return {
+    hash: run.planHash ?? planHashOf(run),
+    width: 1280,
+    height: 720,
+    fps: 24,
+    audio: { src: assetUrl(bookId, audio.key), ms: audio.ms },
+    totalMs,
+    title: doc.title,
+    question: doc.question,
+    lang: run.lang,
+    scenes,
+    captions: captions.filter((c) => c.endMs > c.startMs),
+    overlays: overlays.filter((o) => o.startMs < creditsAt).map((o) => ({ ...o, endMs: Math.min(o.endMs, creditsAt) })),
+    style: "documentary",
+    credit: filmCredit(run),
     uploadId: run.id,
     chunkBytes: CHUNK_BYTES,
   };
@@ -650,7 +794,7 @@ export async function videoPanel(bookId: string) {
   const listenMin = narration ? narration.ms / 60_000 : words / 150;
   const pictureUse = images.find((o) => o.value === state.picks.images && o.usable) ?? images.find((o) => o.recommended);
   const picturesOn = Boolean(pictureUse && pictureUse.value !== "none");
-  const pictures = picturesOn ? Math.min(MAX_PICTURES, units * 2) : 0;
+  const pictures = picturesOn ? Math.min(MAX_PICTURES, doc && isFeatureBook(doc) ? Math.max(units, Math.round((listenMin * 60_000) / 30_000)) : units * 2) : 0;
   const usd = (picturesOn ? pictures * PICTURE_USD : 0) + (words * 1.3 * 1.25 + units * 450 * 1.25 + units * 1100 * 4.25) / 1e6 + (narration ? 0 : ((words * 1.4 + units * 350) * 1.25 + (words * 1.6 + units * 1300) * 4.25) / 1e6);
   return {
     metaOnly,

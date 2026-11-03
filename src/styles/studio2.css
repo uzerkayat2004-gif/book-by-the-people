@@ -139,6 +139,9 @@ body:has(.page.s2) .foot4 { display: none; }
 .s2-voices__main b { font-size: 14.5px; display: flex; align-items: center; gap: 8px; }
 .s2-voices__main > span { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .s2-flag { padding: 2px 7px; border-radius: 999px; background: rgba(229,56,59,.12); color: var(--red-soft, #ff7a6e); font: 600 10.5px/1.2 var(--mono); }
+.s2-flag--star { background: rgba(214,170,90,.14); color: #e2c07a; margin-left: 6px; }
+.s2-star { white-space: nowrap; font-size: 12px; }
+.s2-star[aria-pressed="true"] { color: #e2c07a; }
 .s2-state { flex: none; padding: 5px 10px; border-radius: 999px; font: 600 11.5px/1 var(--sans); background: rgba(255,255,255,.05); color: var(--soft); white-space: nowrap; }
 .s2-state--approved { background: rgba(62,207,142,.12); color: var(--ok, #3ecf8e); }
 .s2-state--needs { background: rgba(229,56,59,.15); color: #ff8f88; }

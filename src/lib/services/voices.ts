@@ -321,6 +321,24 @@ export async function setVoiceHidden(voiceId: string, userId: string, hidden: bo
   });
 }
 
+/**
+ * The creator marks a voice as a well-known person they have checked themselves. Only then may the book name
+ * them up front as notable. Kept in checkJson (no schema change). Approving a held voice does not do this.
+ */
+export async function setVoiceNotable(voiceId: string, userId: string, notable: boolean) {
+  const voice = await prisma.voice.findUnique({ include: { book: true }, where: { id: voiceId } });
+  if (!voice || voice.book.creatorId !== userId) throw new AppError("That voice is not in your studio.", 404);
+  let checks: Record<string, unknown> = {};
+  try {
+    checks = JSON.parse(voice.checkJson || "{}") as Record<string, unknown>;
+  } catch {
+    checks = {};
+  }
+  if (notable) checks.notable = true;
+  else delete checks.notable;
+  return prisma.voice.update({ where: { id: voiceId }, data: { checkJson: JSON.stringify(checks) } });
+}
+
 /** The creator's call on a "needs you" voice: use it in the book. */
 export async function approveVoice(voiceId: string, userId: string) {
   const voice = await prisma.voice.findUnique({ include: { book: true }, where: { id: voiceId } });

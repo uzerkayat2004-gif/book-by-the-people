@@ -28,7 +28,10 @@ export type PlanScene = {
   quote?: { text: string; speaker: string; country: string | null };
   chapter?: string;
   unit?: number;
+  credits?: string[];
 };
+
+export type Overlay = { startMs: number; endMs: number; kind: "quote" | "count"; text: string; who?: string; sub?: string };
 
 export type FilmPlan = {
   hash: string;
@@ -42,6 +45,8 @@ export type FilmPlan = {
   lang: string;
   scenes: PlanScene[];
   captions: { startMs: number; endMs: number; text: string }[];
+  overlays?: Overlay[];
+  style?: "documentary";
   credit: string;
   uploadId: string;
   chunkBytes: number;
@@ -51,7 +56,10 @@ export type FilmProgress = { stage: "load" | "encode" | "upload"; percent: numbe
 
 const RED = "#c92e34";
 const FADE_MS = 500;
+/** Documentary films: slow crossfades between long scenes. */
+const DOC_FADE_MS = 900;
 const CHAPTER_MS = 3500;
+const CHAPTER_DOC_MS = 5000;
 
 function cssFont(name: string, fallback: string) {
   if (typeof document === "undefined") return fallback;
@@ -154,23 +162,144 @@ function drawCard(ctx: Ctx, w: number, h: number, scene: PlanScene, local: numbe
   }
 }
 
-function drawPicture(ctx: Ctx, w: number, h: number, image: ImageBitmap, local: number, duration: number, index: number) {
+function drawPicture(ctx: Ctx, w: number, h: number, image: ImageBitmap, local: number, duration: number, index: number, documentary = false) {
   const p = Math.min(1, Math.max(0, local / Math.max(1, duration)));
-  const scale = 1.04 + 0.08 * (index % 2 ? 1 - p : p);
+  // Ken Burns: a slow push in or pull out with a gentle pan; slower and smoother on long documentary scenes.
+  const ease = documentary ? p * p * (3 - 2 * p) * 0.35 + p * 0.65 : p;
+  const scale = documentary ? 1.05 + 0.09 * (index % 2 ? 1 - ease : ease) : 1.04 + 0.08 * (index % 2 ? 1 - p : p);
   const cover = Math.max(w / image.width, h / image.height) * scale;
   const dw = image.width * cover;
   const dh = image.height * cover;
   const dir = index % 3 === 0 ? 1 : index % 3 === 1 ? -1 : 0;
-  const x = (w - dw) / 2 + dir * (dw - w) * 0.35 * (p - 0.5);
-  const y = (h - dh) / 2 + (index % 2 ? 1 : -1) * (dh - h) * 0.25 * (p - 0.5);
+  const x = (w - dw) / 2 + dir * (dw - w) * 0.35 * (ease - 0.5);
+  const y = (h - dh) / 2 + (index % 2 ? 1 : -1) * (dh - h) * 0.25 * (ease - 0.5);
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, w, h);
-  ctx.drawImage(image, x, y, dw, dh);
+  if (documentary) {
+    // One grade for every picture: a little less colour, a little more contrast, a warm tint.
+    ctx.filter = "saturate(0.88) contrast(1.05) sepia(0.1) brightness(0.97)";
+    ctx.drawImage(image, x, y, dw, dh);
+    ctx.filter = "none";
+    ctx.fillStyle = "rgba(60,30,10,0.07)";
+    ctx.fillRect(0, 0, w, h);
+    const vignette = ctx.createRadialGradient(w / 2, h / 2, h * 0.35, w / 2, h / 2, w * 0.72);
+    vignette.addColorStop(0, "rgba(0,0,0,0)");
+    vignette.addColorStop(1, "rgba(0,0,0,0.42)");
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, w, h);
+  } else ctx.drawImage(image, x, y, dw, dh);
   const shade = ctx.createLinearGradient(0, h * 0.55, 0, h);
   shade.addColorStop(0, "rgba(0,0,0,0)");
   shade.addColorStop(1, "rgba(0,0,0,0.55)");
   ctx.fillStyle = shade;
   ctx.fillRect(0, 0, w, h);
+}
+
+/** A quote over the picture, lower left, while the narrator reads it. */
+function drawLowerThird(ctx: Ctx, w: number, h: number, overlay: Overlay, t: number, fonts: Fonts) {
+  const alpha = Math.max(0, Math.min(1, (t - overlay.startMs) / 450, (overlay.endMs - t) / 450));
+  if (alpha <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  const rise = (1 - Math.min(1, (t - overlay.startMs) / 450)) * 14;
+  const maxW = w * 0.62;
+  const body = fitText(ctx, `\u201C${overlay.text.replace(/^["\u201C]+|["\u201D]+$/g, "")}\u201D`, (s) => `italic ${s}px ${fonts.serif}`, maxW, 4, 31, 21);
+  const lineH = body.size * 1.32;
+  const who = [overlay.who, overlay.sub].filter(Boolean).join(", ");
+  const boxH = body.lines.length * lineH + (who ? 44 : 14) + 26;
+  const x = 64;
+  const y = h - 64 - boxH + rise;
+  ctx.font = `italic ${body.size}px ${fonts.serif}`;
+  const textW = Math.max(...body.lines.map((l) => ctx.measureText(l).width));
+  const g = ctx.createLinearGradient(x, 0, x + textW + 120, 0);
+  g.addColorStop(0, "rgba(12,10,10,0.84)");
+  g.addColorStop(0.8, "rgba(12,10,10,0.72)");
+  g.addColorStop(1, "rgba(12,10,10,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(x, y, textW + 120, boxH);
+  ctx.fillStyle = RED;
+  ctx.fillRect(x, y, 5, boxH);
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  ctx.fillStyle = "#f6efe6";
+  body.lines.forEach((line, i) => ctx.fillText(line, x + 30, y + 22 + body.size + i * lineH));
+  if (who) {
+    ctx.fillStyle = "rgba(246,239,230,0.78)";
+    ctx.font = `600 21px ${fonts.sans}`;
+    ctx.fillText(`\u2014 ${who}`, x + 30, y + boxH - 22, maxW);
+  }
+  ctx.restore();
+}
+
+/** "46 voices": how many people shared the view being told, top right. */
+function drawCount(ctx: Ctx, w: number, overlay: Overlay, t: number, fonts: Fonts) {
+  const alpha = Math.max(0, Math.min(1, (t - overlay.startMs) / 500, (overlay.endMs - t) / 600));
+  if (alpha <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.font = `600 46px ${fonts.display}`;
+  const numW = ctx.measureText(overlay.text).width;
+  ctx.font = `600 17px ${fonts.sans}`;
+  const label = (overlay.sub ?? "voices").slice(0, 46);
+  const top = overlay.sub && overlay.sub.startsWith("voices") ? overlay.sub : "voices";
+  const bottom = top === overlay.sub ? "" : label;
+  const textW = Math.max(ctx.measureText(top.toUpperCase()).width, bottom ? ctx.measureText(bottom).width : 0);
+  const boxW = numW + textW + 64;
+  const x = w - 56 - boxW;
+  const y = 48;
+  ctx.fillStyle = "rgba(12,10,10,0.74)";
+  ctx.fillRect(x, y, boxW, 74);
+  ctx.fillStyle = RED;
+  ctx.fillRect(x, y + 70, boxW, 4);
+  ctx.textAlign = "left";
+  ctx.fillStyle = "#f6efe6";
+  ctx.font = `600 46px ${fonts.display}`;
+  ctx.fillText(overlay.text, x + 22, y + 54);
+  ctx.font = `700 15px ${fonts.sans}`;
+  ctx.fillStyle = "rgba(246,239,230,0.9)";
+  ctx.fillText(top.toUpperCase(), x + 40 + numW, y + (bottom ? 32 : 44));
+  if (bottom) {
+    ctx.font = `italic 17px ${fonts.serif}`;
+    ctx.fillStyle = "rgba(246,239,230,0.72)";
+    ctx.fillText(bottom, x + 40 + numW, y + 54);
+  }
+  ctx.restore();
+}
+
+function drawCredits(ctx: Ctx, w: number, h: number, scene: PlanScene, local: number, fonts: Fonts, credit: string) {
+  backdrop(ctx, w, h, local);
+  const rise = Math.min(1, local / 1200);
+  ctx.globalAlpha = rise;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  const title = fitText(ctx, scene.title ?? "", (s) => `600 ${s}px ${fonts.display}`, w * 0.8, 2, 60, 30);
+  let y = h * 0.3 + (1 - rise) * 10;
+  ctx.fillStyle = RED;
+  ctx.fillRect(w / 2 - 36, y - title.size - 30, 72, 4);
+  ctx.fillStyle = "#f6efe6";
+  ctx.font = `600 ${title.size}px ${fonts.display}`;
+  for (const line of title.lines) {
+    ctx.fillText(line, w / 2, y);
+    y += title.size * 1.15;
+  }
+  y += 26;
+  for (const [i, line] of (scene.credits ?? []).entries()) {
+    const fit = fitText(ctx, line, (s) => `${i === 0 ? "500 " : "italic "}${s}px ${i === 0 ? fonts.sans : fonts.serif}`, w * 0.78, 2, i === 0 ? 27 : 23, 16);
+    ctx.fillStyle = i === 0 ? "rgba(246,239,230,0.9)" : "rgba(246,239,230,0.72)";
+    ctx.font = `${i === 0 ? "500 " : "italic "}${fit.size}px ${i === 0 ? fonts.sans : fonts.serif}`;
+    for (const l of fit.lines) {
+      ctx.fillText(l, w / 2, y);
+      y += fit.size * 1.4;
+    }
+    y += 10;
+  }
+  ctx.fillStyle = "rgba(246,239,230,0.55)";
+  const small = fitText(ctx, credit, (s) => `${s}px ${fonts.sans}`, w * 0.85, 2, 18, 14);
+  small.lines.forEach((line, i) => ctx.fillText(line, w / 2, h - 84 + i * 24));
+  ctx.fillStyle = RED;
+  ctx.font = `700 20px ${fonts.sans}`;
+  ctx.fillText("BOOK BY THE PEOPLE", w / 2, h - 34);
+  ctx.globalAlpha = 1;
 }
 
 function drawQuote(ctx: Ctx, w: number, h: number, scene: PlanScene, local: number, fonts: Fonts, lang: string) {
@@ -195,8 +324,8 @@ function drawQuote(ctx: Ctx, w: number, h: number, scene: PlanScene, local: numb
   ctx.fillText(`\u2014 ${quote.speaker}${country ? `, ${country}` : ""}`, 190, Math.min(h - 50, y + 26));
 }
 
-function drawChapter(ctx: Ctx, w: number, h: number, title: string, local: number, fonts: Fonts) {
-  const alpha = Math.min(1, local / 400, (CHAPTER_MS - local) / 500);
+function drawChapter(ctx: Ctx, w: number, h: number, title: string, local: number, fonts: Fonts, length = CHAPTER_MS) {
+  const alpha = Math.min(1, local / 500, (length - local) / 600);
   if (alpha <= 0) return;
   ctx.globalAlpha = alpha;
   ctx.font = `600 34px ${fonts.display}`;
@@ -226,15 +355,19 @@ function drawCaption(ctx: Ctx, w: number, h: number, text: string, fonts: Fonts)
 /** Draws the frame at time t (ms). Exported for tests and the preview. */
 export function drawFrame(ctx: Ctx, plan: FilmPlan, images: Map<string, ImageBitmap>, t: number, fonts: Fonts) {
   const { width: w, height: h } = plan;
-  const index = Math.max(0, plan.scenes.findIndex((s) => t >= s.startMs && t < s.endMs) === -1 ? plan.scenes.length - 1 : plan.scenes.findIndex((s) => t >= s.startMs && t < s.endMs));
+  const documentary = plan.style === "documentary";
+  const fade = documentary ? DOC_FADE_MS : FADE_MS;
+  const found = plan.scenes.findIndex((s) => t >= s.startMs && t < s.endMs);
+  const index = found === -1 ? plan.scenes.length - 1 : found;
   const paint = (i: number) => {
     const scene = plan.scenes[i];
     const local = t - scene.startMs;
     const image = scene.image ? images.get(scene.image) : undefined;
-    if (scene.kind === "picture" && image) drawPicture(ctx, w, h, image, local, scene.endMs - scene.startMs + FADE_MS, i);
+    if (scene.kind === "picture" && image) drawPicture(ctx, w, h, image, local, scene.endMs - scene.startMs + fade, i, documentary);
+    else if (scene.kind === "end" && scene.credits) drawCredits(ctx, w, h, scene, local, fonts, plan.credit);
     else {
       // Cards and quotes drift in slowly so they never sit still.
-      const p = Math.min(1, Math.max(0, local / Math.max(1, scene.endMs - scene.startMs + FADE_MS)));
+      const p = Math.min(1, Math.max(0, local / Math.max(1, scene.endMs - scene.startMs + fade)));
       const zoom = 1 + 0.035 * p;
       ctx.fillStyle = "#0e0c0c";
       ctx.fillRect(0, 0, w, h);
@@ -249,16 +382,35 @@ export function drawFrame(ctx: Ctx, plan: FilmPlan, images: Map<string, ImageBit
   };
   const scene = plan.scenes[index];
   const local = t - scene.startMs;
-  if (index > 0 && local < FADE_MS) {
+  if (index > 0 && local < fade) {
+    // Crossfade: the scene before stays underneath while the new one comes up. Never a hard cut.
     paint(index - 1);
-    ctx.globalAlpha = Math.max(0, local / FADE_MS);
+    ctx.globalAlpha = Math.max(0, local / fade);
     paint(index);
     ctx.globalAlpha = 1;
   } else paint(index);
-  if (scene.chapter && local < CHAPTER_MS && !(scene.kind === "card" && scene.title === scene.chapter)) drawChapter(ctx, w, h, scene.chapter, local, fonts);
-  if (scene.kind !== "quote" && scene.kind !== "end") {
+  const chapterMs = documentary ? CHAPTER_DOC_MS : CHAPTER_MS;
+  if (scene.chapter && local < chapterMs && !(scene.kind === "card" && scene.title === scene.chapter)) drawChapter(ctx, w, h, scene.chapter, local, fonts, chapterMs);
+  const active = (plan.overlays ?? []).filter((o) => t >= o.startMs && t < o.endMs);
+  const quote = active.find((o) => o.kind === "quote");
+  if (scene.kind !== "end") {
+    for (const overlay of active) {
+      if (overlay.kind === "count") drawCount(ctx, w, overlay, t, fonts);
+      else drawLowerThird(ctx, w, h, overlay, t, fonts);
+    }
+  }
+  // Captions follow the narration, but step aside while a quote is on screen (the quote is the caption then).
+  if (scene.kind !== "quote" && scene.kind !== "end" && !quote) {
     const caption = plan.captions.find((c) => t >= c.startMs && t < c.endMs);
     if (caption) drawCaption(ctx, w, h, caption.text, fonts);
+  }
+  if (documentary) {
+    // Fade up from black at the start, down to black at the very end.
+    const edge = Math.max(0, 1 - t / 1000, 1 - (plan.totalMs - t) / 1500);
+    if (edge > 0) {
+      ctx.fillStyle = `rgba(0,0,0,${Math.min(1, edge)})`;
+      ctx.fillRect(0, 0, w, h);
+    }
   }
 }
 

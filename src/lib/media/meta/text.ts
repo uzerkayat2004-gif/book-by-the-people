@@ -1,7 +1,8 @@
 /** Plain text helpers for the Meta voice. No server imports, so tests and Studio can use them. */
 
 export type Pause = "none" | "short" | "long";
-export type Segment = { text: string; pause: Pause };
+/** ref ties a spoken piece to the book: "t" title, "p3" paragraph block 3, "q3" quote block 3, "c3" a count to show. */
+export type Segment = { text: string; pause: Pause; ref?: string };
 export type ChapterScript = { title: string; segments: Segment[] };
 
 const ONES = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
@@ -85,4 +86,5 @@ export function tokenize(tok: VitsTokenizer, text: string): number[] {
   return ids.length > 1 ? ids : [];
 }
 
-export const PAUSE_MS: Record<Pause, number> = { none: 220, short: 450, long: 900 };
+/** Between sentences, between paragraphs, between sections. */
+export const PAUSE_MS: Record<Pause, number> = { none: 340, short: 720, long: 1400 };

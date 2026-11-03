@@ -96,7 +96,7 @@ export function providerTag(provider: { type: string }): string {
 
 export async function chatWithProviders(
   chain: ResolvedProvider[],
-  input: { system: string; user: string; schemaName: string; schema: object },
+  input: { system: string; user: string; schemaName: string; schema: object; maxTokens?: number },
 ): Promise<ChatOut & { provider: string; label: string; skipped: string[] }> {
   const reasoning = getConfig().writerReasoningEffort || null;
   const { result, provider, skipped } = await firstThatWorks(chain, async (item) =>

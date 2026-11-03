@@ -82,7 +82,7 @@ export function presentHome(input: {
       title: chapter.title,
       summary: chapterSummary(chapter.title, chapter.theme, chapter.narrative),
       quote: first ? { text: clip(stripPeopleCounts(first.englishText), 140), name: first.speakerName } : null,
-      voices: new Set(quotes.map((quote) => quote.voiceId)).size,
+      voices: chapter.voices ?? new Set(quotes.map((quote) => quote.voiceId)).size,
       href: `/b/${input.slug}/read?c=${index + 1}${input.readQuery ? `&${input.readQuery}` : ""}`,
     };
   });

@@ -41,6 +41,7 @@ export type AudioResult = {
   cuesKey?: string;
   /** Where each chapter sits in the file, and its script. */
   units?: { unit: number; startMs: number; ms: number; scriptKey: string }[];
+  music?: boolean;
 };
 
 export type Run = {
@@ -56,6 +57,8 @@ export type Run = {
   finishedAt?: string;
   error?: string;
   phase: string;
+  /** Soft music under the start and end (made from sine tones, nothing to license). */
+  music?: boolean;
 };
 
 export type MediaState = {

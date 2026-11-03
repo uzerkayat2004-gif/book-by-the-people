@@ -22,3 +22,16 @@
 .toc8 .chrow.cur{background:rgba(229,56,59,.08);box-shadow:inset 2px 0 0 var(--red);padding-left:12px}
 .toc8 .chrow.cur .chrow__n{color:var(--red-text)}
 @media (prefers-reduced-motion:reduce){.read8 .read3__body{transition:none}}
+
+/* Feature books: a quiet break between movements, and the standout's name under the quote. */
+.read8 .brk8 {
+  text-align: center;
+  letter-spacing: 0.4em;
+  color: var(--muted, #8a8178);
+  margin: 2.2em 0;
+  font-size: 1.1em;
+}
+.read8 .pq .pq__who {
+  font-weight: 600;
+  font-style: normal;
+}

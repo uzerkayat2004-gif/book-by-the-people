@@ -2,6 +2,7 @@ import "server-only";
 import path from "node:path";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "@/lib/runtime-fs";
 import { mmsFor } from "./catalog";
+import { fadeEdges, level, toInt16, trimSilence } from "./sound";
 import { PAUSE_MS, sentencePieces, speakableEnglish, tokenize, tokenizerFrom, type Segment, type VitsTokenizer } from "./text";
 
 /**
@@ -112,9 +113,10 @@ export async function mmsSpeakTimed(lang: string, segments: Segment[]): Promise<
   const cues: Cue[] = [];
   let total = 0;
   for (const piece of pieces) {
-    const audio = await mmsSpeak(voice, piece.text);
+    // Every piece: trimmed to the same air, brought to one loudness, soft edges, then an even pause.
+    const audio = fadeEdges(level(trimSilence(await mmsSpeak(voice, piece.text), MMS_RATE), MMS_RATE), MMS_RATE);
     const pcm = new Int16Array(audio.length + Math.round((piece.gapMs / 1000) * MMS_RATE));
-    for (let i = 0; i < audio.length; i += 1) pcm[i] = Math.max(-32768, Math.min(32767, Math.round(audio[i] * 32767 * 0.92)));
+    pcm.set(toInt16(audio));
     const startMs = Math.round((total / MMS_RATE) * 1000);
     cues.push({ seg: piece.seg, startMs, endMs: startMs + Math.round((audio.length / MMS_RATE) * 1000), text: piece.text });
     chunks.push(pcm);
