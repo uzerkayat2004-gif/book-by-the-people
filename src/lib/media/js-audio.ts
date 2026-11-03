@@ -84,3 +84,41 @@ export async function pcmToMp3(mono: Int16Array, rate: number, kbps = 48): Promi
   if (tail.length) parts.push(Buffer.from(tail));
   return Buffer.concat(parts);
 }
+/**
+ * The playing time of an MP3 from its frames (each frame is 1152 samples, or 576 for 16–24 kHz).
+ * Joined parts are timed with this, so chapter marks and captions line up with what is heard.
+ */
+export function mp3DurationMs(mp3: Buffer): number {
+  const rates: Record<number, number[]> = { 3: [44100, 48000, 32000], 2: [22050, 24000, 16000], 0: [11025, 12000, 8000] };
+  const v1 = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320];
+  const v2 = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160];
+  let i = 0;
+  // Skip an ID3v2 tag.
+  if (mp3.length > 10 && mp3.toString("latin1", 0, 3) === "ID3") {
+    i = 10 + ((mp3[6] & 0x7f) << 21) + ((mp3[7] & 0x7f) << 14) + ((mp3[8] & 0x7f) << 7) + (mp3[9] & 0x7f);
+  }
+  let seconds = 0;
+  while (i + 4 <= mp3.length) {
+    if (mp3[i] !== 0xff || (mp3[i + 1] & 0xe0) !== 0xe0) {
+      i += 1;
+      continue;
+    }
+    const version = (mp3[i + 1] >> 3) & 3;
+    const layer = (mp3[i + 1] >> 1) & 3;
+    const bitIndex = mp3[i + 2] >> 4;
+    const rateIndex = (mp3[i + 2] >> 2) & 3;
+    const padding = (mp3[i + 2] >> 1) & 1;
+    if (version === 1 || layer !== 1 || bitIndex === 0 || bitIndex === 15 || rateIndex === 3) {
+      i += 1;
+      continue;
+    }
+    const rate = rates[version][rateIndex];
+    const kbps = (version === 3 ? v1 : v2)[bitIndex];
+    const samples = version === 3 ? 1152 : 576;
+    const size = Math.floor(((samples / 8) * kbps * 1000) / rate) + padding;
+    if (size < 4) break;
+    seconds += samples / rate;
+    i += size;
+  }
+  return Math.round(seconds * 1000);
+}

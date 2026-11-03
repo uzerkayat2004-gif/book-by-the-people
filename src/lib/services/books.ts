@@ -5,6 +5,7 @@ import { selectRollback, slugify } from "../book/lifecycle";
 import type { EditorEdits } from "../book/types";
 import { after } from "next/server";
 import { mediaVersionKey, isUploadedKey, isMetaMediaKey, renderReleaseMedia } from "../media/render";
+import { mediaMetaOnly } from "../media/meta/flag";
 import { notifyReleased } from "../notify";
 import { prisma } from "../db";
 import { AppError } from "../errors";
@@ -297,7 +298,8 @@ export async function publishBook(bookId: string, userId: string) {
   });
   // Speaking a whole book takes minutes on a laptop, so the audiobook and video are made
   // in the background. The Release tab shows "Making…" until the job is done.
-  runAfterResponse(() => makeMediaInBackground(book.id, document!));
+  // In Meta-only mode nothing is voiced automatically: the creator makes the Meta audiobook and video book in Studio.
+  if (!mediaMetaOnly()) runAfterResponse(() => makeMediaInBackground(book.id, document!));
   // Extra release languages are translated in the background too (the Studio keeps nudging it on).
   if (book.releaseLanguages) runAfterResponse(() => advanceTranslations(book.id, 250_000));
   runAfterResponse(() => translateUi(book.id));
@@ -329,7 +331,7 @@ export function runAfterResponse(work: () => Promise<unknown>) {
  * narrated again once, in the background, the first time someone opens them.
  */
 export async function refreshStaleMedia(bookId: string) {
-  if (mediaRuns.has(bookId)) return;
+  if (mediaRuns.has(bookId) || mediaMetaOnly()) return;
   const book = await prisma.book.findUnique({
     where: { id: bookId },
     select: { status: true, audiobookKey: true, publishedDraftId: true },

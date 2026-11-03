@@ -48,6 +48,8 @@ export async function recordUsage(input: {
   voiceId?: string;
   audioMs?: number;
   usage?: TokenUsage;
+  /** A known price for this call (pictures are priced per image, not per token). */
+  usd?: number;
 }) {
   const prices = getConfig().prices;
   const usage = input.usage ?? { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
@@ -65,7 +67,7 @@ export async function recordUsage(input: {
       cachedTokens: usage.cachedTokens,
       outputTokens: usage.outputTokens,
       // Models on this computer (built-in or Ollama) and demo mode cost nothing.
-      estimatedUsd: input.provider === "local" || input.provider === "mock" ? 0 : audioUsd + tokenUsd,
+      estimatedUsd: input.provider === "local" || input.provider === "mock" ? 0 : (input.usd ?? audioUsd + tokenUsd),
     },
   });
 }

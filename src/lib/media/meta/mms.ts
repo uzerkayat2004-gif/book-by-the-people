@@ -97,23 +97,28 @@ export async function mmsSpeak(voice: Loaded, text: string): Promise<Float32Arra
   return Float32Array.from(wave.data as Float32Array);
 }
 
-/** Speaks segments with pauses between them. Returns 16-bit samples ready for the mp3 encoder. */
-export async function mmsSpeakSegments(lang: string, segments: Segment[], onPiece?: (done: number, total: number) => void): Promise<Int16Array> {
+/** A caption: one spoken piece, timed from the start of the part. `seg` is the segment index within the part. */
+export type Cue = { seg: number; startMs: number; endMs: number; text: string };
+
+/** Speaks segments with pauses between them. Returns 16-bit samples and when each piece is spoken. */
+export async function mmsSpeakTimed(lang: string, segments: Segment[]): Promise<{ pcm: Int16Array; cues: Cue[] }> {
   const voice = await mmsVoice(lang);
-  const pieces: { text: string; gapMs: number }[] = [];
-  for (const segment of segments) {
+  const pieces: { text: string; gapMs: number; seg: number }[] = [];
+  segments.forEach((segment, seg) => {
     const parts = sentencePieces(segment.text);
-    parts.forEach((text, index) => pieces.push({ text, gapMs: index === parts.length - 1 ? PAUSE_MS[segment.pause] : PAUSE_MS.none }));
-  }
+    parts.forEach((text, index) => pieces.push({ text, seg, gapMs: index === parts.length - 1 ? PAUSE_MS[segment.pause] : PAUSE_MS.none }));
+  });
   const chunks: Int16Array[] = [];
+  const cues: Cue[] = [];
   let total = 0;
-  for (const [index, piece] of pieces.entries()) {
+  for (const piece of pieces) {
     const audio = await mmsSpeak(voice, piece.text);
     const pcm = new Int16Array(audio.length + Math.round((piece.gapMs / 1000) * MMS_RATE));
     for (let i = 0; i < audio.length; i += 1) pcm[i] = Math.max(-32768, Math.min(32767, Math.round(audio[i] * 32767 * 0.92)));
+    const startMs = Math.round((total / MMS_RATE) * 1000);
+    cues.push({ seg: piece.seg, startMs, endMs: startMs + Math.round((audio.length / MMS_RATE) * 1000), text: piece.text });
     chunks.push(pcm);
     total += pcm.length;
-    onPiece?.(index + 1, pieces.length);
   }
   const all = new Int16Array(total);
   let at = 0;
@@ -121,7 +126,11 @@ export async function mmsSpeakSegments(lang: string, segments: Segment[], onPiec
     all.set(chunk, at);
     at += chunk.length;
   }
-  return all;
+  return { pcm: all, cues };
+}
+
+export async function mmsSpeakSegments(lang: string, segments: Segment[]): Promise<Int16Array> {
+  return (await mmsSpeakTimed(lang, segments)).pcm;
 }
 
 /** Frees the cached model files (tests and low disk). */

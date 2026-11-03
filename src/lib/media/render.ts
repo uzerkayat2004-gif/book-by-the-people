@@ -168,7 +168,7 @@ export async function renderReleaseMedia(bookId: string, document: BookDocument,
     data.audiobookName = "";
     wroteAudio = true;
   }
-  if (video && (options.force || !isUploadedKey(current?.videoKey))) {
+  if (video && (options.force || !(isUploadedKey(current?.videoKey) || isMetaMediaKey(current?.videoKey)))) {
     const videoKey = `book-${bookId}-video.mp4`;
     await putAudio(videoKey, video, "video/mp4");
     data.videoKey = videoKey;
@@ -176,7 +176,7 @@ export async function renderReleaseMedia(bookId: string, document: BookDocument,
     data.videoName = "";
     wroteVideo = true;
   }
-  if (!video && current?.videoKey && !isUploadedKey(current.videoKey)) {
+  if (!video && current?.videoKey && !isUploadedKey(current.videoKey) && !isMetaMediaKey(current.videoKey)) {
     // An old auto-made video no longer matches the new narration; drop it rather than show the wrong length.
     data.videoKey = null;
     data.videoBytes = 0;

@@ -7,7 +7,7 @@ const LINES = [
 ];
 
 test.describe("no model", () => {
-  test.skip(Boolean(process.env.E2E_FAKE_META));
+  test.skip(Boolean(process.env.E2E_FAKE_META || process.env.E2E_REAL_META));
   test("Studio: make the Meta audiobook, then play it with chapters on the book page", async ({ page }) => {
   test.setTimeout(420_000);
   await signIn(page, `meta-audio-${Date.now()}@example.com`);
@@ -58,9 +58,10 @@ test.describe("no model", () => {
 // Run with E2E_FAKE_META=1 E2E_BASE=<server whose META_API_BASE_URL points at a fake Meta server>.
 // The book is made on the dev server (mock AI) and then voiced on that second server, which shares its database.
 test.describe("with the Meta writer", () => {
-  test.skip(!process.env.E2E_FAKE_META);
+  // E2E_REAL_META=1: the second server has the real key in its own environment (AI_MODE=live); the test never sees it.
+  test.skip(!process.env.E2E_FAKE_META && !process.env.E2E_REAL_META);
   test("Studio: Meta audiobook written by muse-spark (fake Meta server)", async ({ page, playwright }) => {
-    test.setTimeout(420_000);
+    test.setTimeout(900_000);
     const DEV = "http://localhost:43123";
     const email = `meta-writer-${Date.now()}@example.com`;
     const dev = await playwright.request.newContext({ baseURL: DEV });
@@ -88,8 +89,10 @@ test.describe("with the Meta writer", () => {
     await signIn(page, email);
     const api = page.request;
     // A pretend key for the fake server; it is sealed like a real one.
-    const keyed = await api.patch(`/api/books/${book.id}`, { headers: { origin: BASE }, data: { aiKey: "fake-meta-key-for-tests-0000" } });
-    expect(keyed.ok(), await keyed.text()).toBeTruthy();
+    if (process.env.E2E_FAKE_META) {
+      const keyed = await api.patch(`/api/books/${book.id}`, { headers: { origin: BASE }, data: { aiKey: "fake-meta-key-for-tests-0000" } });
+      expect(keyed.ok(), await keyed.text()).toBeTruthy();
+    }
     await page.goto(`/studio/${book.slug}?tab=release`);
     await expect(page.getByTestId("meta-writer")).toContainText("muse-spark-1.3 · Recommended", { timeout: 30_000 });
     await page.getByTestId("meta-make").click();

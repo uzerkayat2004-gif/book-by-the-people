@@ -66,6 +66,11 @@ const nextConfig: NextConfig = {
       "./node_modules/onnxruntime-node/bin/napi-v3/linux/x64/libonnxruntime.so.1",
       "./node_modules/onnxruntime-node/bin/napi-v3/linux/x64/libonnxruntime_providers_shared.so",
     ],
+    // The video book records its narration with the same voice when the audiobook is missing.
+    "/api/books/*/media/meta/video": [
+      "./node_modules/onnxruntime-node/bin/napi-v3/linux/x64/libonnxruntime.so.1",
+      "./node_modules/onnxruntime-node/bin/napi-v3/linux/x64/libonnxruntime_providers_shared.so",
+    ],
   },
   outputFileTracingExcludes: {
     "*": [

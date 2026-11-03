@@ -48,6 +48,8 @@ Limits to say out loud:
   script (short sentences, pauses, no symbols) makes it sound much better.
 - The licence is CC-BY-NC 4.0 (non-commercial). That fits a free hobby project and the hackathon. The book page
   credits "Voice: Meta MMS-TTS".
+- **Pre-commercial TODO:** before Book by the People earns money in any way (paid plans, ads, sponsorship), replace
+  MMS-TTS with a voice whose licence allows commercial use, or get a licence from Meta. Approved for the hackathon only.
 
 ## 2. Switches
 
@@ -57,6 +59,10 @@ Limits to say out loud:
   `mediaMetaOnly()`, reads it, and every option list goes through `filterOptions()`.
 - NotebookLM stays: the creator can still upload an audio or video file, or paste a NotebookLM link, in the same Studio card.
   An upload always wins over a made file until the creator deletes it.
+- While `HACKATHON_META_ONLY` is on, **Publish no longer makes the built-in eSpeak audiobook and video** on its own,
+  stale media is not refreshed by eSpeak, and the old "Make audiobook" (eSpeak) endpoint answers 409. The creator
+  makes the Meta audiobook and video book from Release. With the switch off, the old behaviour comes back unchanged.
+  The built-in voice never replaces a Meta file (`-mm-` keys) or an upload.
 
 ## 3. Model pickers (per book, per step)
 
@@ -135,33 +141,48 @@ Release → Studio "Make audiobook" → plan → script (Muse Spark) → voice c
 - Input cap: the existing 50,000-character narration cap per language (about one hour).
 - Prompts carry only the book text, never keys or emails.
 
-## 5. Video book flow (after the audiobook)
+## 5. Video book flow (as built)
 
 ```
-script (reuse audiobook script) → storyboard (Muse Spark) → scene pictures (Muse Image) → voice (reuse audio chunks)
-→ assemble MP4 in the creator's browser → upload → ready
+narration (the audiobook, made first if missing or out of date) → storyboard per chapter (Muse Spark)
+→ pictures (Muse Image) → film plan → MP4 put together in the creator's browser → uploaded in parts → ready
 ```
 
-1. **Storyboard** (Muse Spark, JSON): 8–14 scenes, each with:
-   - the narration segment ids it covers;
-   - a picture prompt (no real people's faces, no text in the picture);
-   - a caption (at most 12 words) and an on-screen title.
-2. **Pictures** (Muse Image): `size: "1792x1024"`, `output_format: "jpeg"`, `reasoning_strength: "low"`,
-   `response_format: "b64_json"`, one call per scene, at most 4 at a time (well under 150 RPM). Stored in Blob.
-   Fallback for each scene: if refused or failing after 3 tries, the scene becomes a typography title card
-   in the book's cover colours, so the video still finishes.
-3. **Voice**: reuses the audiobook's chapter MP3s, so making a video after an audiobook costs no new speech.
-4. **Assembly** happens in the creator's browser (Vercel has no ffmpeg, and video encoding would burn the CPU budget):
-   - a canvas at 1280×720 and 30 fps;
-   - each picture gets a slow pan and zoom; captions are burned in (the book's font); a title card at the start;
-     credits at the end ("Written from N voices · Words: Muse Spark · Pictures: Muse Image · Voice: Meta MMS-TTS");
-   - WebCodecs `VideoEncoder` (H.264) and `AudioEncoder` (AAC), muxed with `mp4-muxer` (MIT, about 30 kB);
-   - encoding runs faster than real time on a laptop, with a progress bar.
+State lives in `book-<id>-mm-video-state.json` (separate from the audiobook state, so the two never race).
+It keeps the picks, the current run, the finished film and a cache of storyboards and pictures, so a changed pick
+only redoes what it touches. Book language only. 3 runs a day. Leases (PipelineJob) stop two steps running at once.
 
-   The finished MP4 goes straight to Blob (client upload with a short-lived token for that one file name).
-   Captions are also saved as a `.vtt` file, so the player can switch them on or off.
-   Browsers without WebCodecs (old Safari, Firefox before 130) are told to "Open Studio in Chrome or Edge to make the video".
-5. If the tab closes during assembly, the pictures and voice are already saved; "Make again" only re-assembles.
+1. **Narration**: the audiobook in the book's language. Starting the video starts the audiobook too (it keeps the
+   audio when nothing changed), and the video steps drive it until it is current. If the audiobook fails, the video
+   stops with its reason. The audiobook now also saves, per sentence, when it is spoken (`…-cues.json`) and where
+   each chapter starts, timed from the real MP3 frames so nothing drifts.
+2. **Storyboard** (Muse Spark, JSON schema, one call per chapter, 4 at a time, 3 tries): the model gets the numbered
+   narration segments and numbered visible quotes, and returns 1–5 scenes: `picture` (one-sentence prompt, at most
+   3 per chapter) or `quote` (shows a contributor's quote card when it is read). The server checks every scene
+   (valid, in order, real quotes, each once). Fallback: a built-in storyboard (title card, then each quote as it is read).
+3. **Pictures** (Muse Image): `size 1792x1024`, `output_format jpeg`, `reasoning_strength low`, `b64_json`;
+   a shared style line is added (painterly, ember red, no text, no real people). 3 at a time, at most 18 per film,
+   3 tries, about $0.01 each (logged in Usage). The spend guard is checked before each batch: when it trips,
+   the rest become styled cards. A refused or failed picture becomes a styled card. Pictures are reused across runs.
+   "No pictures (styled cards)" is a picker choice and the fallback when there is no key.
+4. **Film plan** (`GET …/media/meta/video?plan=1`, owner only): scene times from the sentence timings, captions
+   (at most 84 characters a line), chapter titles, credit line, and owner-only links to the narration and pictures
+   (`…/media/meta/asset`, only `book-<id>-mm-` files).
+5. **Assembly in the browser** (`src/lib/media/meta/film-client.ts`, mediabunny, MPL-2.0): canvas 1280×720 at 24 fps;
+   slow pan and zoom on pictures; styled title cards; quote cards (red quotation mark, the quote, "— Name, Country");
+   chapter title for the first 3.5 s; captions in a box at the bottom (not on quote cards); 0.5 s cross-fades;
+   a 4 s end card with credits (never how many people took part). Video H.264 (VP9/AV1 fallback) through WebCodecs.
+   The narration MP3 is copied into the MP4 as it is (no re-encoding; Chromium has no AAC encoder);
+   if the browser can't, it is re-encoded (AAC or Opus).
+6. **Upload**: 3 MB parts (`PUT …/video/upload`, under Vercel's 4.5 MB body limit), then `finish`: the server joins
+   them, checks it is an MP4, saves `book-<id>-mm-video-<hash>.mp4` and points `Book.videoKey` at it unless the
+   creator uploaded a video (an upload always wins).
+7. **Resume**: everything made is saved on the server. If the tab closes, opening Release carries on, including
+   the browser step ("Finish the film"). Making again with nothing changed is instant.
+
+Studio card "Video book with Meta": Scene writer (muse-spark-1.3 Recommended), Pictures (muse-image-1.0
+Recommended, or No pictures), Voice (shared with the audiobook). Estimate: minutes of film, pictures, Meta cost,
+time to make, runs left today.
 
 ## 6. What readers see
 
@@ -227,7 +248,39 @@ Audiobook built locally (not deployed). Checked:
 - Whisper listened to the finished MP3 and got the words back.
 - `next build` trace: the Meta route is about 142 MB (limit 250 MB); the CUDA/TensorRT libraries are left out and
   the runtime loads from the traced files alone.
-- Still needed before any deploy: one run with the real Meta key on a local or preview copy.
+- Real-key runs done on a local copy (see below).
+
+Video book built locally (not deployed). Checked:
+- Unit tests for storyboard parsing, limits, plain storyboard, prompt and caption splitting; MP3 frame timing.
+- End to end with no model: styled cards, quote cards, captions, the MP4 (H.264 + MP3, 1280×720) made in Chromium,
+  uploaded in parts, played on the book page; Make again with nothing changed is instant; working files are owner only.
+- End to end with the fake Meta server: storyboards from muse-spark-1.3, pictures from muse-image-1.0 (a 503 retried),
+  the exact request fields checked, the key never in any response, credits on the book page.
+- `e2e/studio-release.spec.ts` now expects no automatic media in Meta-only mode.
+
+Fake-server video test: same setup, `npx playwright test e2e/meta-video.spec.ts`.
 
 How to run the fake-server test: start the fake Meta server (`node e2e/fixtures/fake-meta.mjs`, port 43999), run `next start` on 43124 with
 `META_API_BASE_URL` pointing at it, then `E2E_FAKE_META=1 E2E_BASE=http://127.0.0.1:43124 npx playwright test e2e/meta-audiobook.spec.ts`.
+
+### Real Meta key runs (Nov 3 2026, local copy, key only in the server process)
+
+Both end-to-end tests passed with the real key (`E2E_REAL_META=1`, server on 43125 started with `AI_MODE=live`):
+- Audiobook: 3 scripts written by muse-spark-1.3, none fell back to plain, 61 s of audio. Cost about $0.018.
+- Video book: 3 storyboards from muse-spark-1.3 (none plain), 4 pictures from muse-image-1.0, 2 quote cards,
+  a 59–62 s H.264 + MP3 film at 1280×720 (about 4.9 MB). Cost about $0.074 (scripts $0.018, storyboards $0.015, pictures $0.04).
+- The key never showed up in server logs, test output, state files or screenshots (checked by matching, never printed).
+
+How the real API differs from the docs we built against:
+- `/v1/models` also lists `muse-wonder-1.0` and `sam-3.1` (not documented; not offered in the pickers).
+- Muse Spark 1.3 reasons by default and the reasoning tokens count against `max_completion_tokens`. With a small
+  limit the reply is all reasoning: `content` is null and `finish_reason` is `length`. Fix: `reasoning_effort: "low"`,
+  narration limit 8000, storyboard limit 6000. Real runs use about 1,000–1,350 output tokens per chapter.
+- Images: a `1792x1024` request returns a 2016×1152 JPEG (size sets the shape, not the pixels), about 400–700 KB,
+  in about 9 s. The reply also has `output_format`, `background` and `usage` (in tokens, not money).
+- Price estimates were raised to include reasoning tokens.
+
+Fixes from the real run: a picture planned for the opening now shows after the 5 s title card (it was made but
+never shown); the film records how many quote cards it has.
+
+Still to note before commercial use: the MMS-TTS voices are CC-BY-NC (see §9).

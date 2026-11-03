@@ -10,6 +10,7 @@ import { releaseLabel } from "@/lib/stage";
 import { SPEAK_LANGUAGES } from "@/lib/speak-languages";
 import { ReleaseLanguages } from "@/components/studio/release-languages";
 import { MetaAudiobook } from "@/components/meta-audiobook";
+import { MetaVideobook } from "@/components/meta-videobook";
 
 const STATUS_SHORT: Record<string, string> = {
   COLLECTING: "Open",
@@ -443,6 +444,7 @@ export function StudioDesk({
                   <MakeMedia key={`${media.status}:${media.note ?? ""}`} bookId={book.id} status={media.status} note={media.note} hasDraft={drafts.length > 0} hasAudio={Boolean(media.audioHref)} />
                 )}
                 {book.status === "PUBLISHED" ? <MetaAudiobook bookId={book.id} slug={book.slug} /> : null}
+                {book.status === "PUBLISHED" ? <MetaVideobook bookId={book.id} slug={book.slug} /> : null}
                 <ReleaseLanguages bookId={book.id} bookLang={settings.language || "en"} published={book.status === "PUBLISHED"} initial={settings.releaseLanguages ?? []} />
                 <p className="s4-note">
                   {media.emails

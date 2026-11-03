@@ -5,18 +5,18 @@ import { openKey } from "@/lib/secret-box";
 import { scrubSecrets } from "@/lib/scrub";
 import { providerStore, prepare } from "@/lib/ai/providers";
 import type { ResolvedProvider } from "@/lib/ai/provider-store";
-import type { CallTarget } from "@/lib/ai/provider-client";
+import { ProviderError, type CallTarget } from "@/lib/ai/provider-client";
 import type { ProviderType } from "@/lib/ai/provider-types";
-import { META_WRITER_RECOMMENDED, META_WRITERS, isMetaWriter, type ModelOption } from "./catalog";
+import { META_IMAGE_MODELS, META_WRITER_RECOMMENDED, META_WRITERS, isMetaImage, isMetaWriter, type ModelOption } from "./catalog";
 import { mediaMetaOnly } from "./flag";
 
 /**
  * Where the media pipeline's model calls can go: the creator's saved models, the Meta key pasted in this book's
  * settings, or the server's own Meta key. Keys are opened here, on the server, and never leave it.
  */
-type Target = { id: string; label: string; type: ProviderType; baseUrl: string; model: string; apiKey: string; providerId?: string; resolved?: ResolvedProvider };
+export type Target = { id: string; label: string; type: ProviderType; baseUrl: string; model: string; apiKey: string; providerId?: string; resolved?: ResolvedProvider };
 
-async function targetsFor(bookId: string): Promise<Target[]> {
+export async function targetsFor(bookId: string): Promise<Target[]> {
   const book = await prisma.book.findUnique({ where: { id: bookId }, select: { creatorId: true, aiKeyCipher: true } });
   if (!book) return [];
   const cfg = getConfig();
@@ -44,7 +44,7 @@ async function targetsFor(bookId: string): Promise<Target[]> {
 const modelCache = new Map<string, { at: number; ids: string[] | null }>();
 
 /** The model ids this key's team can use (GET /models), cached for 10 minutes. null = could not ask. */
-async function keyModels(target: Target): Promise<string[] | null> {
+export async function keyModels(target: Target): Promise<string[] | null> {
   const cacheKey = `${target.id}:${target.apiKey.slice(-4)}`;
   const hit = modelCache.get(cacheKey);
   if (hit && Date.now() - hit.at < 600_000) return hit.ids;
@@ -123,3 +123,82 @@ export function safeError(error: unknown, key?: string): string {
   return scrubSecrets(error instanceof Error ? error.message : String(error ?? "error"), key).slice(0, 300);
 }
 
+
+/** Picture model choices: Meta's image models on the book's key, and "no pictures" (styled cards), which always works. */
+export async function imageOptions(bookId: string): Promise<ModelOption[]> {
+  const targets = (await targetsFor(bookId)).filter((t) => t.type === "meta");
+  const options: ModelOption[] = [];
+  for (const target of targets) {
+    const live = await keyModels(target);
+    const ids = live ? Array.from(new Set([...META_IMAGE_MODELS.filter((m) => live.includes(m)), ...live.filter(isMetaImage)])) : META_IMAGE_MODELS;
+    for (const model of ids) {
+      options.push({ value: `${target.id}::${model}`, targetId: target.id, model, label: model, provider: target.label, recommended: false, usable: true, note: live ? undefined : "Could not check this key's models" });
+    }
+    if (live) {
+      for (const model of META_IMAGE_MODELS.filter((m) => !live.includes(m))) {
+        options.push({ value: `${target.id}::${model}`, targetId: target.id, model, label: model, provider: target.label, recommended: false, usable: false, note: "Not on your key" });
+      }
+    }
+  }
+  options.push({ value: "none", targetId: "", model: "No pictures (styled cards)", label: "No pictures (styled cards)", provider: "Built in", recommended: false, usable: true });
+  const best = options.find((o) => o.usable && o.model === META_IMAGE_MODELS[0]) ?? options.find((o) => o.usable);
+  if (best) best.recommended = true;
+  return [...options.filter((o) => o.recommended), ...options.filter((o) => !o.recommended)];
+}
+
+/** The picture target for a saved pick ("" = Recommended). null = no pictures. */
+export async function imageTarget(bookId: string, pick: string): Promise<(CallTarget & { tag: string }) | null> {
+  if (pick === "none") return null;
+  const options = await imageOptions(bookId);
+  const chosen = options.find((o) => o.value === pick && o.usable) ?? options.find((o) => o.recommended);
+  if (!chosen || chosen.value === "none") return null;
+  const target = (await targetsFor(bookId)).find((t) => t.id === chosen.targetId);
+  if (!target) return null;
+  return { label: target.label, type: target.type, baseUrl: target.baseUrl, model: chosen.model, apiKey: target.apiKey, tag: "meta" };
+}
+
+/** One picture from Meta's images endpoint, as JPEG bytes. */
+export async function makePicture(target: CallTarget, prompt: string, timeoutMs: number): Promise<{ bytes: Buffer; mime: string }> {
+  const body: Record<string, unknown> = {
+    model: target.model,
+    prompt: prompt.slice(0, 3800),
+    n: 1,
+    size: "1792x1024",
+    response_format: "b64_json",
+    output_format: "jpeg",
+    reasoning_strength: "low",
+  };
+  const send = () =>
+    fetch(`${target.baseUrl.replace(/\/$/, "")}/images/generations`, {
+      method: "POST",
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${target.apiKey}` },
+      body: JSON.stringify(body),
+    });
+  let response = await send();
+  if (response.status === 400) {
+    // An older model may not know the optional fields: ask again with the basics only.
+    const text = await response.text().catch(() => "");
+    if (/reasoning_strength|output_format|size/i.test(text)) {
+      delete body.reasoning_strength;
+      delete body.output_format;
+      delete body.size;
+      response = await send();
+    } else {
+      throw new ProviderError(target.label, 400, text.slice(0, 300));
+    }
+  }
+  if (!response.ok) throw new ProviderError(target.label, response.status, (await response.text().catch(() => "")).slice(0, 300));
+  const data = (await response.json()) as { data?: { b64_json?: string; url?: string }[]; output_format?: string };
+  const first = data.data?.[0];
+  let bytes: Buffer | null = null;
+  if (first?.b64_json) bytes = Buffer.from(first.b64_json, "base64");
+  else if (first?.url && /^https:\/\//.test(first.url)) {
+    const image = await fetch(first.url, { signal: AbortSignal.timeout(30_000) });
+    if (image.ok) bytes = Buffer.from(await image.arrayBuffer());
+  }
+  if (!bytes || bytes.length < 500) throw new ProviderError(target.label, 0, "returned no picture.");
+  const mime = bytes[0] === 0xff && bytes[1] === 0xd8 ? "image/jpeg" : bytes[0] === 0x89 && bytes[1] === 0x50 ? "image/png" : bytes.toString("latin1", 8, 12) === "WEBP" ? "image/webp" : "";
+  if (!mime) throw new ProviderError(target.label, 0, "returned a file that is not a picture.");
+  return { bytes, mime };
+}

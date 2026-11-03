@@ -178,7 +178,7 @@ export function BookMedia({
   countries,
 }: {
   slug: string;
-  media: { audio: boolean; video: boolean; audioBytes?: number; videoBytes?: number; tracks?: AudioTrack[]; credit?: string };
+  media: { audio: boolean; video: boolean; audioBytes?: number; videoBytes?: number; tracks?: AudioTrack[]; credit?: string; film?: { sub: string; credit: string } | null };
   title: string;
   question: string;
   people: number;
@@ -213,7 +213,7 @@ export function BookMedia({
         ) : null}
         {media.video ? (
           <div className="bmedia__item bmedia__item--film" id="watch">
-            <FilmCard src={videoSrc} title={title} question={question} people={people} bytes={media.videoBytes} downloadHref={`/api/media/${slug}/video?download=1`} />
+            <FilmCard src={videoSrc} title={title} question={question} people={people} bytes={media.videoBytes} downloadHref={`/api/media/${slug}/video?download=1`} sub={media.film?.sub} credit={media.film?.credit} />
           </div>
         ) : null}
       </div>

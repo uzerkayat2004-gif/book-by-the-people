@@ -266,6 +266,8 @@ export function FilmCard({
   people,
   bytes,
   downloadHref,
+  sub,
+  credit,
 }: {
   src: string;
   title: string;
@@ -273,6 +275,9 @@ export function FilmCard({
   people: number;
   bytes?: number;
   downloadHref?: string;
+  /** What the film is made of, when it is not the plain narration over the cover. */
+  sub?: string;
+  credit?: string;
 }) {
   const [open, setOpen] = useState(false);
   const duration = useDuration(src);
@@ -297,7 +302,8 @@ export function FilmCard({
       <div className="film__foot">
         <div className="film__meta">
           <span className="label red">Film</span>
-          <span className="film__sub">The narration over the cover{duration ? ` · ${formatTime(duration)}` : ""}</span>
+          <span className="film__sub">{sub || "The narration over the cover"}{duration ? ` · ${formatTime(duration)}` : ""}</span>
+          {credit ? <span className="film__credit">{credit}</span> : null}
         </div>
         {downloadHref ? <DownloadButton href={downloadHref} label="Download MP4" bytes={bytes} /> : null}
       </div>

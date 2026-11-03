@@ -6,6 +6,9 @@ const LINES = [
   "On a night shift the hours stretch. I keep awake with tea, the radio, and the people who come in needing help at three in the morning.",
 ];
 
+// Matches the dev server's HACKATHON_META_ONLY (on unless set to 0).
+const META_ONLY = !["0", "false", "off", "no"].includes((process.env.HACKATHON_META_ONLY ?? "1").trim().toLowerCase());
+
 test("Studio: voices in, make the book, release audiobook + video, read it", async ({ page }) => {
   test.setTimeout(150_000);
   await signIn(page, `release-${Date.now()}@example.com`);
@@ -37,18 +40,26 @@ test("Studio: voices in, make the book, release audiobook + video, read it", asy
   await page.getByRole("button", { name: /^Publish v\d+$/ }).click();
   await expect(page.getByRole("link", { name: "Read the book" })).toBeVisible({ timeout: 90_000 });
 
-  // The audiobook and video are spoken in the background after Publish; Release shows them when done.
   await page.goto(`/studio/${book.slug}?tab=release`);
-  await expect(page.getByText(/\.mp3/)).toBeVisible({ timeout: 90_000 });
-  await expect(page.getByText(/\.mp4/)).toBeVisible();
   await expect(page.getByText("Emails to speakers are off.", { exact: false })).toBeVisible();
-
-  const audio = await api.get(`/api/media/${book.slug}/audiobook?download=1`);
-  expect(audio.ok()).toBeTruthy();
-  expect((await audio.body()).length).toBeGreaterThan(5_000);
-  const video = await api.get(`/api/media/${book.slug}/video?download=1`);
-  expect(video.ok()).toBeTruthy();
-  expect(video.headers()["content-type"]).toContain("video/mp4");
+  if (META_ONLY) {
+    // Meta-only (the hackathon default): nothing is spoken by the built-in voice; Release offers the Meta audiobook and video book.
+    await expect(page.getByTestId("meta-make")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("meta-video-make")).toBeVisible();
+    await page.waitForTimeout(3000);
+    expect((await api.get(`/api/media/${book.slug}/audiobook?download=1`)).status()).toBe(404);
+    expect((await api.get(`/api/media/${book.slug}/video?download=1`)).status()).toBe(404);
+  } else {
+    // The audiobook and video are spoken in the background after Publish; Release shows them when done.
+    await expect(page.getByText(/\.mp3/)).toBeVisible({ timeout: 90_000 });
+    await expect(page.getByText(/\.mp4/)).toBeVisible();
+    const audio = await api.get(`/api/media/${book.slug}/audiobook?download=1`);
+    expect(audio.ok()).toBeTruthy();
+    expect((await audio.body()).length).toBeGreaterThan(5_000);
+    const video = await api.get(`/api/media/${book.slug}/video?download=1`);
+    expect(video.ok()).toBeTruthy();
+    expect(video.headers()["content-type"]).toContain("video/mp4");
+  }
 
   await page.goto(`/b/${book.slug}/read`);
   await expect(page.getByTestId("quote-text").first()).toBeVisible();

@@ -64,7 +64,7 @@ export function BookHome({
   languages?: React.ReactNode;
   title?: string;
   slug?: string;
-  media?: { audio: boolean; video: boolean; audioBytes?: number; videoBytes?: number; tracks?: AudioTrack[]; credit?: string };
+  media?: { audio: boolean; video: boolean; audioBytes?: number; videoBytes?: number; tracks?: AudioTrack[]; credit?: string; film?: { sub: string; credit: string } | null };
   stage: Stage;
   question: string;
   voiceCount: number;

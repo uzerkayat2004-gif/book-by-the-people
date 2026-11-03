@@ -3,6 +3,7 @@ import { requireApiUser } from "@/lib/auth";
 import { parseDocument } from "@/lib/book/assemble";
 import { prisma } from "@/lib/db";
 import { assertSameOrigin, fromError, jsonError } from "@/lib/http";
+import { mediaMetaOnly } from "@/lib/media/meta/flag";
 import { makeMediaInBackground, runAfterResponse } from "@/lib/services/books";
 
 export const maxDuration = 300;
@@ -16,6 +17,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const { id } = await context.params;
     const book = await prisma.book.findFirst({ where: { id, creatorId: user.id } });
     if (!book) return jsonError("That book is not in your studio.", 404);
+    if (mediaMetaOnly()) return jsonError("The built-in voice is off for now. Make the Meta audiobook or video book in Release.", 409);
     const draftId = book.currentDraftId ?? book.publishedDraftId;
     const draft = draftId ? await prisma.bookDraft.findUnique({ where: { id: draftId } }) : null;
     const document = draft ? parseDocument(draft.contentJson) : null;

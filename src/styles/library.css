@@ -191,6 +191,7 @@
 .film__foot { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 22px; }
 .film__meta { display: grid; gap: 5px; min-width: 0; }
 .film__sub { font-size: 14px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.film__credit { display: block; font-size: 12px; color: var(--muted); opacity: .8; margin-top: 2px; }
 @media (max-width: 560px) {
   .film__poster { padding-right: 90px; }
   .film__play { width: 58px; height: 58px; }

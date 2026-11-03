@@ -4,7 +4,9 @@ import { EMPTY_PICKS, type MediaPicks } from "./catalog";
 import type { ChapterScript } from "./text";
 
 /** One stored piece of a chapter's narration. */
-export type PartFile = { key: string; ms: number };
+export type PartFile = { key: string; ms: number; cues?: { seg: number; startMs: number; endMs: number; text: string }[] };
+/** A caption on the whole audiobook's clock. */
+export type TimedCue = { unit: number; seg: number; startMs: number; endMs: number; text: string };
 
 export type UnitState = {
   lang: string;
@@ -33,6 +35,12 @@ export type AudioResult = {
   plainUnits: number;
   madeAt: string;
   hash: string;
+  /** Hash of the chapter scripts only (a new voice keeps the same scripts, so storyboards stay). */
+  scriptsHash?: string;
+  /** Captions for the whole file (see TimedCue). */
+  cuesKey?: string;
+  /** Where each chapter sits in the file, and its script. */
+  units?: { unit: number; startMs: number; ms: number; scriptKey: string }[];
 };
 
 export type Run = {

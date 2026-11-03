@@ -11,24 +11,24 @@ import { deleteAudio, getAudio, putAudio } from "@/lib/storage";
 import { bookSpendPaused, recordUsage } from "@/lib/services/spend";
 import { parseLanguages, translatedDocument } from "@/lib/services/translations";
 import { isMetaMediaKey, isUploadedKey } from "../render";
-import { pcmToMp3, wasmSpeakToWav, wavToMp3 } from "../js-audio";
+import { mp3DurationMs, pcmToMp3, wasmSpeakToWav, wavToMp3 } from "../js-audio";
 import { wavDurationMs } from "@/lib/book/speech";
 import { mmsFor, voiceOptions } from "./catalog";
 import { mediaMetaOnly } from "./flag";
-import { MMS_RATE, mmsSpeakSegments } from "./mms";
+import { MMS_RATE, mmsSpeakTimed, type Cue } from "./mms";
 import { NARRATION_SCHEMA, narrationPrompt, narrationUnits, parseNarration, plainNarration, unitSource } from "./narrate";
-import { readScript, readState, writeState, type AudioResult, type MediaState, type Run, type UnitState } from "./state";
+import { readScript, readState, writeState, type AudioResult, type MediaState, type Run, type TimedCue, type UnitState } from "./state";
 import { safeError, writerOptions, writerTarget } from "./targets";
 import type { ChapterScript, Segment } from "./text";
 
 /** Bump when the narrator prompt changes (scripts are made again) or the voice settings change. */
 const SCRIPT_V = 1;
-const VOICE_V = 1;
+const VOICE_V = 2;
 const PART_CHARS = 1800;
 export const RUNS_PER_DAY = 3;
 const LEASE_MS = 240_000;
 
-const hash = (...parts: (string | number)[]) => createHash("sha256").update(parts.join("|")).digest("hex").slice(0, 16);
+export const hash = (...parts: (string | number)[]) => createHash("sha256").update(parts.join("|")).digest("hex").slice(0, 16);
 const leaseKey = (bookId: string) => `${bookId}:mm:audiobook`;
 export { isMetaMediaKey };
 
@@ -50,7 +50,7 @@ export function scriptParts(script: ChapterScript): Segment[][] {
   return parts;
 }
 
-async function documentsFor(bookId: string) {
+export async function documentsFor(bookId: string) {
   const book = await prisma.book.findUnique({
     where: { id: bookId },
     select: { id: true, status: true, language: true, releaseLanguages: true, publishedDraftId: true, title: true },
@@ -71,8 +71,20 @@ async function documentsFor(bookId: string) {
   return { book, mainLang, docs, skipped, draftId: book.publishedDraftId };
 }
 
-function today() {
+export function today() {
   return new Date().toISOString().slice(0, 10);
+}
+
+/** Without timings (the built-in voice), captions are spread over the part by length. */
+function spreadCues(segments: Segment[], ms: number): Cue[] {
+  const total = segments.reduce((sum, s) => sum + s.text.length, 0) || 1;
+  let at = 0;
+  return segments.map((segment, seg) => {
+    const length = Math.round((segment.text.length / total) * ms);
+    const cue = { seg, startMs: at, endMs: at + length, text: segment.text };
+    at += length;
+    return cue;
+  });
 }
 
 /** Starts (or restarts) the audiobook with the saved picks. Work already done with the same inputs is reused. */
@@ -152,15 +164,14 @@ export async function startAudiobook(bookId: string): Promise<MediaState> {
   return state;
 }
 
-function runHash(run: Run, lang: string) {
+export function runHash(run: Run, lang: string) {
   return hash(...run.units.filter((u) => u.lang === lang).map((u) => u.voiceHash));
 }
 
-async function takeLease(bookId: string): Promise<boolean> {
-  const key = leaseKey(bookId);
+export async function takeLease(bookId: string, key = leaseKey(bookId), step = "audiobook"): Promise<boolean> {
   const until = new Date(Date.now() + LEASE_MS);
   await prisma.pipelineJob
-    .create({ data: { bookId, step: "audiobook", key, status: "idle", runAfter: new Date(0) } })
+    .create({ data: { bookId, step, key, status: "idle", runAfter: new Date(0) } })
     .catch(() => undefined);
   const taken = await prisma.pipelineJob.updateMany({
     where: { key, OR: [{ status: { not: "running" } }, { runAfter: { lt: new Date() } }] },
@@ -169,13 +180,13 @@ async function takeLease(bookId: string): Promise<boolean> {
   return taken.count === 1;
 }
 
-async function dropLease(bookId: string, error: string | null = null) {
+export async function dropLease(bookId: string, error: string | null = null, key = leaseKey(bookId)) {
   await prisma.pipelineJob
-    .update({ where: { key: leaseKey(bookId) }, data: { status: error ? "failed" : "idle", runAfter: new Date(), lastError: error } })
+    .update({ where: { key }, data: { status: error ? "failed" : "idle", runAfter: new Date(), lastError: error } })
     .catch(() => undefined);
 }
 
-const retryable = (error: unknown) =>
+export const retryable = (error: unknown) =>
   !(error instanceof ProviderError) || error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500;
 
 async function makeScript(bookId: string, run: Run, unit: UnitState, doc: BookDocument, deadline: number): Promise<void> {
@@ -190,7 +201,7 @@ async function makeScript(bookId: string, run: Run, unit: UnitState, doc: BookDo
       // Out of time for this request: leave the unit for the next step rather than settle for the plain script.
       if (room < 25_000) return;
       try {
-        const out = await chatJson(target, { ...prompt, schemaName: "narration", schema: NARRATION_SCHEMA, maxTokens: 6000, timeoutMs: Math.min(100_000, room - 10_000) });
+        const out = await chatJson(target, { ...prompt, schemaName: "narration", schema: NARRATION_SCHEMA, maxTokens: 8000, reasoningEffort: "low", timeoutMs: Math.min(100_000, room - 10_000) });
         await recordUsage({ kind: "media-script", provider: target.tag, model: out.model, bookId, usage: out.usage }).catch(() => undefined);
         script = parseNarration(extractJson(out.content));
       } catch (error) {
@@ -218,13 +229,16 @@ async function makeScript(bookId: string, run: Run, unit: UnitState, doc: BookDo
   unit.parts = [];
 }
 
-async function speakPart(lang: string, voiceId: string, segments: Segment[]): Promise<{ mp3: Buffer; ms: number }> {
+async function speakPart(lang: string, voiceId: string, segments: Segment[]): Promise<{ mp3: Buffer; ms: number; cues: Cue[] }> {
   if (voiceId === "espeak") {
     const wav = await wasmSpeakToWav(segments.map((s) => s.text).join(" "));
-    return { mp3: await wavToMp3(wav), ms: wavDurationMs(wav) ?? 0 };
+    const mp3 = await wavToMp3(wav);
+    const ms = mp3DurationMs(mp3) || (wavDurationMs(wav) ?? 0);
+    return { mp3, ms, cues: spreadCues(segments, ms) };
   }
-  const pcm = await mmsSpeakSegments(lang, segments);
-  return { mp3: await pcmToMp3(pcm, MMS_RATE, 48), ms: Math.round((pcm.length / MMS_RATE) * 1000) };
+  const { pcm, cues } = await mmsSpeakTimed(lang, segments);
+  const mp3 = await pcmToMp3(pcm, MMS_RATE, 48);
+  return { mp3, ms: mp3DurationMs(mp3) || Math.round((pcm.length / MMS_RATE) * 1000), cues };
 }
 
 async function voicePart(bookId: string, run: Run, unit: UnitState): Promise<void> {
@@ -233,28 +247,37 @@ async function voicePart(bookId: string, run: Run, unit: UnitState): Promise<voi
   unit.partCount = parts.length;
   unit.parts = unit.parts ?? [];
   const index = unit.parts.length;
-  const { mp3, ms } = await speakPart(unit.lang, run.voices[unit.lang], parts[index]);
+  const { mp3, ms, cues } = await speakPart(unit.lang, run.voices[unit.lang], parts[index]);
   const key = `book-${bookId}-mm-${unit.lang}-u${unit.unit}-v${unit.voiceHash}-p${index}.mp3`;
   await putAudio(key, mp3, "audio/mpeg");
-  unit.parts.push({ key, ms });
+  // Segment numbers in the cues count from the start of the chapter, not the part.
+  const before = parts.slice(0, index).reduce((sum, part) => sum + part.length, 0);
+  unit.parts.push({ key, ms, cues: cues.map((cue) => ({ ...cue, seg: cue.seg + before })) });
 }
 
 async function join(bookId: string, state: MediaState, run: Run, lang: string): Promise<void> {
   const units = run.units.filter((u) => u.lang === lang).sort((a, b) => a.unit - b.unit);
   const files: Buffer[] = [];
   const chapters: { title: string; startMs: number }[] = [];
+  const cues: TimedCue[] = [];
+  const unitTimes: AudioResult["units"] = [];
   let at = 0;
   for (const unit of units) {
     chapters.push({ title: unit.title, startMs: at });
+    const unitStart = at;
     for (const part of unit.parts ?? []) {
       files.push(await getAudio(part.key));
+      for (const cue of part.cues ?? []) cues.push({ unit: unit.unit, seg: cue.seg, startMs: at + cue.startMs, endMs: at + cue.endMs, text: cue.text });
       at += part.ms;
     }
+    unitTimes!.push({ unit: unit.unit, startMs: unitStart, ms: at - unitStart, scriptKey: unit.scriptKey ?? "" });
   }
   const audio = Buffer.concat(files);
   const runKey = runHash(run, lang);
   const key = `book-${bookId}-mm-audiobook-${lang}-${runKey}.mp3`;
   await putAudio(key, audio, "audio/mpeg");
+  const cuesKey = `book-${bookId}-mm-audiobook-${lang}-${runKey}-cues.json`;
+  await putAudio(cuesKey, Buffer.from(JSON.stringify(cues)), "application/json");
   const old = state.audio[lang];
   const result: AudioResult = {
     key,
@@ -266,6 +289,9 @@ async function join(bookId: string, state: MediaState, run: Run, lang: string): 
     plainUnits: units.filter((u) => u.plain).length,
     madeAt: new Date().toISOString(),
     hash: runKey,
+    scriptsHash: hash(...units.map((u) => u.scriptHash)),
+    cuesKey,
+    units: unitTimes,
   };
   state.audio[lang] = result;
   const book = await prisma.book.findUnique({ where: { id: bookId }, select: { language: true, audiobookKey: true } });
@@ -276,6 +302,7 @@ async function join(bookId: string, state: MediaState, run: Run, lang: string): 
   } else if (old && old.key !== key) {
     await deleteAudio(old.key).catch(() => undefined);
   }
+  if (old?.cuesKey && old.cuesKey !== cuesKey) await deleteAudio(old.cuesKey).catch(() => undefined);
   // The joined file holds everything; the pieces are not needed any more.
   for (const unit of units) for (const part of unit.parts ?? []) await deleteAudio(part.key).catch(() => undefined);
 }
@@ -421,7 +448,7 @@ export async function audiobookPanel(bookId: string) {
     waiting: skipped,
     progress: progressOf(state),
     audio: state.audio,
-    estimate: { units, minutes: Math.round(words / 150), usd: Math.round(((words * 1.4 * 1.25 + words * 1.6 * 4.25) / 1e6) * 100) / 100 },
+    estimate: { units, minutes: Math.round(words / 150), usd: Math.round((((words * 1.4 + units * 350) * 1.25 + (words * 1.6 + units * 1300) * 4.25) / 1e6) * 100) / 100 },
     runsLeftToday: RUNS_PER_DAY - (state.starts?.day === today() ? state.starts.count : 0),
   };
 }
