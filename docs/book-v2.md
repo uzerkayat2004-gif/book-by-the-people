@@ -145,8 +145,8 @@ The book is saved with `form`, a `standfirst` (the one-line summary under the ti
 - MMS-TTS is a research voice. It is clear but flat, and its licence is CC-BY-NC, so it is fine for
   this free, non-commercial project only. Meta has no TTS or video-generation API for us yet, so the
   film is put together in the browser from stills.
-- A very large book (thousands of voices) can take longer than the 300 s generate limit on Vercel.
-  The map cache lets a second press pick up where the first one stopped.
+- A very large book is written over several requests (see v3 below), so no single request runs past
+  the Vercel limit.
 - Picture cost is about $0.01 each. The writer used about 44k tokens for a 92-voice book.
 
 ## Files
@@ -157,4 +157,34 @@ The book is saved with `form`, a `standfirst` (the one-line summary under the ti
 | Reader | `src/components/reader.tsx` (blocks, breaks, standfirst) |
 | Audio | `src/lib/media/meta/sound.ts`, `narrate.ts` (featureNarration, spoken polish), `mms.ts`, `audiobook.ts` |
 | Film | `src/lib/media/meta/storyboard.ts` (feature boards, overlays), `videobook.ts` (documentaryPlan), `film-client.ts` |
+| v3 | `phrases.ts`, `flag-codes.ts`, `public/flags/`, `e2e/fixtures/fake-meta-feature.mjs` |
 | Well-known mark | `src/app/api/voices/[id]/route.ts`, `src/lib/services/voices.ts`, `src/components/live-studio.tsx` |
+
+## v3 polish
+
+- **Remake fix.** After a join the voice pieces are deleted, so the next run marks them `joined` and
+  records again; if older pieces are missing at join time, those chapters are recorded again instead of failing.
+- **Big books.** Writing saves a checkpoint after each step (read the voices, merge, plan, each part,
+  edit) in a storage JSON, no schema change. When a request runs short of time it stops cleanly and
+  answers `continue: true`; Make in the Studio presses again by itself until the book is done.
+  `GENERATE_BUDGET_MS` sets the time per request (default 240 s). Tested with 1,500 voices from 45
+  countries on a fake Meta server: two requests, no step repeated.
+- **Pictures.** Muse Spark first picks one look for the whole film (style, palette, light) from the
+  outline. Every picture prompt is a concrete scene from the narration, plus that look and a list of
+  things to avoid (text, logos, watermarks, broken hands or faces). Muse Image runs with
+  `reasoning_strength: high` and its tools off. Muse Spark then looks at each picture and scores it;
+  a clear fault (text, a bad hand or face, a score of 2 or less) gets one redraw with the fix, within
+  the spend guard.
+- **Voice.** The MMS model has no knobs we can reach (the ONNX export takes only the text), so the
+  gains come around it: each sentence is read phrase by phrase with a short breath at commas, colons
+  and dashes, then a light EQ (rumble cut, less boxiness, a little presence) and a gentle compressor,
+  at the same loudness, encoded at 64 kbps.
+- **Captions** break after sentences and clauses, never more than two even lines.
+- **Narrator lines** (quote lead-ins, the opening "A book written by 92 people from 10 countries." and
+  the closing thanks) exist in every language a Meta voice can read: `src/lib/media/meta/phrases.ts`.
+- **Opening scene.** Every film opens on a 7.5 s branded scene: the logo and name, the title and the
+  question, "92 voices · from 10 countries", over a softly blurred wall of every participating
+  country's flag that drifts and pushes in, then a slow crossfade into the first picture. Flags are
+  the bundled flag-icons SVGs (MIT, `public/flags/`), drawn in code, never by the image model. The
+  layout fills the frame for 1 to 250 countries. The film card on the book page uses the same flag
+  wall as its poster.

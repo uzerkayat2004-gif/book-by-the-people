@@ -176,6 +176,7 @@ export function BookMedia({
   question,
   people,
   countries,
+  flags,
 }: {
   slug: string;
   media: { audio: boolean; video: boolean; audioBytes?: number; videoBytes?: number; tracks?: AudioTrack[]; credit?: string; film?: { sub: string; credit: string } | null };
@@ -183,6 +184,8 @@ export function BookMedia({
   question: string;
   people: number;
   countries: number;
+  /** Country codes, most voices first. */
+  flags?: string[];
 }) {
   if (!media.audio && !media.video) return null;
   // The size changes whenever the files are made again, so it doubles as a cache key.
@@ -213,7 +216,7 @@ export function BookMedia({
         ) : null}
         {media.video ? (
           <div className="bmedia__item bmedia__item--film" id="watch">
-            <FilmCard src={videoSrc} title={title} question={question} people={people} bytes={media.videoBytes} downloadHref={`/api/media/${slug}/video?download=1`} sub={media.film?.sub} credit={media.film?.credit} />
+            <FilmCard src={videoSrc} title={title} question={question} people={people} bytes={media.videoBytes} downloadHref={`/api/media/${slug}/video?download=1`} sub={media.film?.sub} credit={media.film?.credit} flags={flags} countries={countries} />
           </div>
         ) : null}
       </div>

@@ -87,7 +87,7 @@ async function readStream(response: Response): Promise<{ content: string; usage:
 /** Chat completion that should return JSON. Falls back through looser request shapes when a host rejects one. */
 export async function chatJson(
   target: CallTarget,
-  input: { system: string; user: string; schemaName: string; schema: object; maxTokens?: number; timeoutMs?: number; reasoningEffort?: string | null },
+  input: { system: string; user: string; schemaName: string; schema: object; maxTokens?: number; timeoutMs?: number; reasoningEffort?: string | null; images?: string[] },
   fetcher: Fetch = fetch,
 ): Promise<ChatOut> {
   const maxTokens = input.maxTokens ?? 8000;
@@ -129,7 +129,11 @@ export async function chatJson(
     model: target.model,
     messages: [
       { role: strictRole ? "developer" : "system", content: `${input.system}\nAnswer with JSON only.` },
-      { role: "user", content: input.user },
+      {
+        role: "user",
+        // Pictures go in as data URLs next to the text (OpenAI-style vision input).
+        content: input.images?.length ? [{ type: "text", text: input.user }, ...input.images.map((url) => ({ type: "image_url", image_url: { url } }))] : input.user,
+      },
     ],
     [tokenField]: maxTokens,
   };

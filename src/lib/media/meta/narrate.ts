@@ -1,3 +1,4 @@
+import { phrasesFor } from "./phrases";
 import type { BookDocument } from "@/lib/book/types";
 import { stripPeopleCounts } from "@/lib/book/checks";
 import type { ChapterScript, Pause, Segment } from "./text";
@@ -127,10 +128,12 @@ export function featureNarration(document: BookDocument, unit: number): ChapterS
     const value = clean(text);
     if (value) segments.push({ text: sentenceEnd(value), pause, ref });
   };
-  const english = (document.language || "en") === "en";
+  const say = phrasesFor(document.language);
   if (unit === 0) {
     add(document.title, "long", "t");
     if (document.standfirst) add(document.standfirst, "short", "s");
+    // "A book written by 92 people from 10 countries." The same opening the film shows.
+    if (document.outline?.total) add(say.intro(document.outline.total, document.outline.countries ?? 0), "long", "n");
     add(document.preface, "long", "pf");
     return { title: clean(document.title), segments };
   }
@@ -160,12 +163,12 @@ export function featureNarration(document: BookDocument, unit: number): ChapterS
     const city = cityOf(standout?.place ?? "");
     // The book usually leads into the quote already; if it did not, the narrator does ("As Priya from Chennai put it").
     const led = (name && previous.includes(name.split(" ")[0])) || (city && previous.includes(city));
-    const lead = !led && english ? (name ? `As ${name}${city ? ` from ${city}` : ""} put it: ` : city ? `As one person in ${city} put it: ` : "") : "";
+    const lead = !led ? (name ? say.named(name, city) : city ? say.anon(city) : "") : "";
     add(`${lead}${text}`, "short", `q${index}`);
     previous = "";
   });
-  if (unit === document.chapters.length && english && document.outline) {
-    add(`This book was made from the voices of ${document.outline.total} ${document.outline.total === 1 ? "person" : "people"}. Thank you for listening.`, "long", "end");
+  if (unit === document.chapters.length && document.outline) {
+    add(say.end(document.outline.total), "long", "end");
   }
   if (segments.length) segments[segments.length - 1].pause = "long";
   return { title: document.form === "continuous" ? clean(document.title) : clean(chapter.title), segments };

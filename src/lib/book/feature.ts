@@ -32,6 +32,16 @@ export type Ask = (input: {
   schema: object;
   maxTokens: number;
 }) => Promise<unknown>;
+/** Thrown when the time for this request is nearly up. Everything done so far is saved: call again to go on. */
+export class NeedsMore extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "NeedsMore";
+  }
+}
+
+type RunState = { groups?: LocalGroup[]; plan?: unknown; sections?: (Block[] | null)[] };
+
 export type FeatureCache = {
   get(key: string): Promise<unknown | null>;
   put(key: string, value: unknown): Promise<void>;
@@ -1332,8 +1342,14 @@ export async function writeFeature(input: {
   concurrency?: number;
   provider: string;
   model: string;
+  /** When this request must stop (ms since epoch). Work is saved in steps, so the next request goes on. */
+  deadline?: number;
 }): Promise<BookDocument> {
   const log = input.log ?? (() => undefined);
+  const startedAt = Date.now();
+  const room = () => (input.deadline ? input.deadline - Date.now() : Number.POSITIVE_INFINITY);
+  // "Too little time left to start this step": at most a quarter of this request's time, so a short budget still moves on.
+  const low = (ms: number) => room() < Math.min(ms, input.deadline ? (input.deadline - startedAt) / 4 : ms);
   const voices = input.voices.filter(
     (v) =>
       v.status === "READY" &&
@@ -1359,6 +1375,9 @@ export async function writeFeature(input: {
   };
   const width = input.concurrency ?? 6;
   const ask = input.ask;
+  const runKey = `run-${stableId(cards.map((c) => `${c.id}:${c.text}`).join("|"))}-${input.language}`;
+  const saved: RunState = ((await input.cache?.get(runKey).catch(() => null)) as RunState | null) ?? {};
+  const save = () => input.cache?.put(runKey, saved).catch(() => undefined);
 
   // 1. map
   const parts = batches(cards);
@@ -1373,6 +1392,8 @@ export async function writeFeature(input: {
         LocalGroup[] | null;
       if (cached && Array.isArray(cached))
         return cached.map((g, gi) => ({ ...g, gid: `b${index}g${gi}` }));
+      // Not enough time left in this request: leave the batch for the next one.
+      if (ask && low(75_000)) return null;
       let groups: LocalGroup[];
       if (ask) {
         try {
@@ -1398,15 +1419,21 @@ export async function writeFeature(input: {
       } else groups = plainMap(batch, byId, index);
       return groups;
     })
-  ).flat();
+  );
+  const unread = local.filter((g) => !g).length;
+  if (unread) throw new NeedsMore(`Read ${parts.length - unread} of ${parts.length} batches of voices.`);
+  const localGroups = (local as LocalGroup[][]).flat();
   steps.push(
-    `map: ${parts.length} batches, ${local.length} groups${fallbackBatches ? `, ${fallbackBatches} grouped by word overlap` : ""}`,
+    `map: ${parts.length} batches, ${localGroups.length} groups${fallbackBatches ? `, ${fallbackBatches} grouped by word overlap` : ""}`,
   );
 
   // 2. reduce, in rounds, until one call can see every group.
-  let groups = local;
+  let groups = localGroups;
   let level = 0;
-  if (ask && parts.length > 1) {
+  let reduceFell = false;
+  if (saved.groups?.length) groups = saved.groups;
+  else if (ask && parts.length > 1) {
+    if (low(60_000)) throw new NeedsMore("Read every voice. Merging them next.");
     while (level < 4) {
       const chunks: LocalGroup[][] = [];
       for (let i = 0; i < groups.length; i += 160)
@@ -1430,6 +1457,7 @@ export async function writeFeature(input: {
             );
           } catch (error) {
             why("reduce", error);
+            reduceFell = true;
             return chunk;
           }
         })
@@ -1440,6 +1468,10 @@ export async function writeFeature(input: {
       groups = merged;
       if (done) break;
     }
+  }
+  if (!saved.groups && ask && parts.length > 1 && !reduceFell) {
+    saved.groups = groups;
+    await save();
   }
   const clusters = toClusters(groups, byId, total);
   steps.push(
@@ -1453,7 +1485,9 @@ export async function writeFeature(input: {
   // 3. plan
   log("Planning the book's shape and order.");
   let plan: ReturnType<typeof parsePlan>;
-  if (ask) {
+  if (saved.plan) plan = saved.plan as ReturnType<typeof parsePlan>;
+  else if (ask) {
+    if (low(50_000)) throw new NeedsMore("Merged the voices. Planning the book next.");
     try {
       plan = await tryTwice(async () =>
         parsePlan(
@@ -1477,6 +1511,8 @@ export async function writeFeature(input: {
           total,
         ),
       );
+      saved.plan = plan;
+      await save();
     } catch (error) {
       why("plan", error);
       plan = plainPlan(clusters, standoutCandidates);
@@ -1507,10 +1543,18 @@ export async function writeFeature(input: {
   );
   const clusterIds = new Set(clusters.map((c) => c.id));
   let plainSections = 0;
+  const done = saved.sections ?? [];
+  let skipped = 0;
   const written = await pool(plan.sections, width, async (section, index) => {
+    const kept = done[index];
+    if (kept) return kept;
+    if (ask && low(45_000)) {
+      skipped += 1;
+      return [] as Block[];
+    }
     if (ask) {
       try {
-        return await tryTwice(async () =>
+        const blocks = await tryTwice(async () =>
           parseSection(
             await ask({
               step: "write",
@@ -1535,6 +1579,8 @@ export async function writeFeature(input: {
             clusterIds,
           ),
         );
+        done[index] = blocks;
+        return blocks;
       } catch (error) {
         why("write", error);
         plainSections += 1;
@@ -1542,6 +1588,11 @@ export async function writeFeature(input: {
     }
     return plainSection(section, clusters, outline.standouts, total);
   });
+  if (ask) {
+    saved.sections = plan.sections.map((_, index) => done[index] ?? null);
+    await save();
+  }
+  if (skipped) throw new NeedsMore(`Wrote ${plan.sections.length - skipped} of ${plan.sections.length} parts.`);
   const sections = plan.sections.map((s, index) => ({
     id: s.id,
     title: s.title,
@@ -1552,6 +1603,7 @@ export async function writeFeature(input: {
   );
 
   // 5. editor pass over the whole book.
+  if (ask && low(50_000)) throw new NeedsMore("Wrote every part. The editor reads it next.");
   if (ask) {
     log("Editor pass: reading it through for flow.");
     try {
@@ -1577,6 +1629,8 @@ export async function writeFeature(input: {
     }
   }
 
+  // Finished: the next Make writes afresh (the grouping stays cached per batch).
+  if (ask && (saved.groups || saved.plan || saved.sections)) await input.cache?.put(runKey, {}).catch(() => undefined);
   const preface =
     plan.preface ||
     `This book was written from the words of ${total} ${total === 1 ? "person" : "people"}${countries ? ` in ${countries} ${countries === 1 ? "country" : "countries"}` : ""}. The narrator's sentences connect them; every quotation is exact.`;

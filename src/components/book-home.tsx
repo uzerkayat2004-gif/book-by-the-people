@@ -145,7 +145,7 @@ export function BookHome({
       {stage === "after" || sealed ? null : <NamesMarquee names={names} />}
       {stage === "after" ? null : <How releaseLabel={releaseLabel} ui={ui} />}
       {stage === "after" && slug && media ? (
-        <BookMedia slug={slug} media={media} title={title ?? question} question={question} people={voiceCount} countries={countries.length} />
+        <BookMedia slug={slug} media={media} title={title ?? question} question={question} people={voiceCount} countries={countries.length} flags={[...countries].sort((a, b) => b.count - a.count).map((c) => c.code.toLowerCase())} />
       ) : null}
       {mode === "home" ? <OpenNow books={openNow} heading="More books being written" /> : null}
       {bookId && poll.length ? <PollCard bookId={bookId} question={pollQuestion} options={poll} yourVote={yourVote} /> : null}

@@ -3,7 +3,7 @@ import path from "node:path";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "@/lib/runtime-fs";
 import { mmsFor } from "./catalog";
 import { fadeEdges, level, toInt16, trimSilence } from "./sound";
-import { PAUSE_MS, sentencePieces, speakableEnglish, tokenize, tokenizerFrom, type Segment, type VitsTokenizer } from "./text";
+import { PAUSE_MS, PHRASE_MS, phrasePieces, sentencePieces, speakableEnglish, tokenize, tokenizerFrom, type Segment, type VitsTokenizer } from "./text";
 
 /**
  * Meta MMS-TTS on the server (onnxruntime-node, CPU, fp32). The quantised copy sounds broken, so it is never used.
@@ -105,9 +105,14 @@ export type Cue = { seg: number; startMs: number; endMs: number; text: string };
 export async function mmsSpeakTimed(lang: string, segments: Segment[]): Promise<{ pcm: Int16Array; cues: Cue[] }> {
   const voice = await mmsVoice(lang);
   const pieces: { text: string; gapMs: number; seg: number }[] = [];
+  const phrases = process.env.MMS_PHRASES !== "0";
   segments.forEach((segment, seg) => {
     const parts = sentencePieces(segment.text);
-    parts.forEach((text, index) => pieces.push({ text, seg, gapMs: index === parts.length - 1 ? PAUSE_MS[segment.pause] : PAUSE_MS.none }));
+    parts.forEach((text, index) => {
+      const gapMs = index === parts.length - 1 ? PAUSE_MS[segment.pause] : PAUSE_MS.none;
+      const bits = phrases ? phrasePieces(text) : [text];
+      bits.forEach((bit, b) => pieces.push({ text: bit, seg, gapMs: b === bits.length - 1 ? gapMs : PHRASE_MS }));
+    });
   });
   const chunks: Int16Array[] = [];
   const cues: Cue[] = [];

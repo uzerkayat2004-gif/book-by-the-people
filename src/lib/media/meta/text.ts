@@ -88,3 +88,21 @@ export function tokenize(tok: VitsTokenizer, text: string): number[] {
 
 /** Between sentences, between paragraphs, between sections. */
 export const PAUSE_MS: Record<Pause, number> = { none: 340, short: 720, long: 1400 };
+/** The breath at a comma, colon or dash inside a sentence. */
+export const PHRASE_MS = 190;
+
+/**
+ * Splits a sentence at commas, colons, semicolons and dashes into phrases the voice reads one by one,
+ * so it breathes where a reader would (MMS reads punctuation as nothing). Short bits stay joined.
+ */
+export function phrasePieces(sentence: string, minWords = 4): string[] {
+  const bits = sentence.split(/(?<=[,;:，、؛])\s+|\s+[—–]\s+/u).map((b) => b.trim()).filter(Boolean);
+  const out: string[] = [];
+  for (const bit of bits) {
+    const words = bit.split(/\s+/).length;
+    const last = out[out.length - 1];
+    if (last !== undefined && (words < minWords || last.split(/\s+/).length < minWords)) out[out.length - 1] = `${last} ${bit}`;
+    else out.push(bit);
+  }
+  return out;
+}

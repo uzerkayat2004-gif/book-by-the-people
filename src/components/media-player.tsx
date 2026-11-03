@@ -268,11 +268,16 @@ export function FilmCard({
   downloadHref,
   sub,
   credit,
+  flags,
+  countries,
 }: {
   src: string;
   title: string;
   question: string;
   people: number;
+  /** Country codes, most voices first: the poster shows their flags behind the title, like the film's opening. */
+  flags?: string[];
+  countries?: number;
   bytes?: number;
   downloadHref?: string;
   /** What the film is made of, when it is not the plain narration over the cover. */
@@ -281,17 +286,31 @@ export function FilmCard({
 }) {
   const [open, setOpen] = useState(false);
   const duration = useDuration(src);
+  // Every country at least once; a few countries repeat to fill the wall.
+  const codes = (flags ?? []).filter((code) => /^[a-z]{2}$/.test(code));
+  const wall = codes.length ? Array.from({ length: Math.min(260, Math.max(codes.length, 40)) }, (_, i) => codes[i % codes.length]) : [];
   return (
     <div className="film" data-testid="film">
       <div className="film__frame">
         {open ? (
           <video className="film__video" src={src} controls autoPlay playsInline preload="metadata" aria-label={`${title} film`} />
         ) : (
-          <button className="film__poster" type="button" onClick={() => setOpen(true)} aria-label={`Play the film of ${title}`}>
+          <button className={`film__poster${wall.length ? " film__poster--flags" : ""}`} type="button" onClick={() => setOpen(true)} aria-label={`Play the film of ${title}`}>
+            {wall.length ? (
+              <span className="film__flags" aria-hidden>
+                {wall.map((code, i) => (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img key={i} src={`/flags/${code}.svg`} alt="" loading="lazy" decoding="async" />
+                ))}
+              </span>
+            ) : null}
             <span className="film__brand">Book by the People</span>
             <span className="film__title">{title}</span>
             <span className="film__q">{question}</span>
-            <span className="film__by">Read aloud · {people.toLocaleString("en-US")} {people === 1 ? "voice" : "voices"}</span>
+            <span className="film__by">
+              {people.toLocaleString("en-US")} {people === 1 ? "voice" : "voices"}
+              {countries ? ` · from ${countries.toLocaleString("en-US")} ${countries === 1 ? "country" : "countries"}` : " · read aloud"}
+            </span>
             <span className="film__play" aria-hidden>
               <IconPlay />
             </span>

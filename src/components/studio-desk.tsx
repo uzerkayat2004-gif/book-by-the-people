@@ -401,8 +401,12 @@ export function StudioDesk({
             disabled={busy !== null || ready.length === 0 || !closedEnough}
             onClick={() =>
               run("make", async () => {
-                const data = await post(`/api/books/${book.id}/generate`);
-                setLog(data.log ?? []);
+                for (let round = 0; round < 40; round += 1) {
+                  const data = await post(`/api/books/${book.id}/generate`);
+                  setLog(data.log ?? []);
+                  if (!data.continue) return;
+                }
+                throw new Error("The book is still being written. Press Make again to go on.");
               })
             }
           >

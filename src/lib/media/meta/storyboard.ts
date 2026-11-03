@@ -45,6 +45,94 @@ export const STORYBOARD_SCHEMA = {
   },
 };
 
+/** One look for every picture in a book's film, chosen from the book itself. */
+export type ArtDirection = { style: string; palette: string; lighting: string; world: string };
+
+/** What no picture may contain. Sent with every picture prompt. */
+export const PICTURE_AVOID =
+  "Avoid: any text, letters, numbers, captions, signs, book pages with readable writing, logos, watermarks, signatures, frames or borders, split panels, recognisable real or famous people, distorted or extra fingers, malformed hands, deformed or blurred faces, crowds with copied faces.";
+
+export const ART_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["style", "palette", "lighting", "world"],
+  properties: { style: { type: "string" }, palette: { type: "string" }, lighting: { type: "string" }, world: { type: "string" } },
+};
+
+/** Asks for one art direction from the book's outline: style, palette, lighting and the visual world. */
+export function artPrompt(document: BookDocument) {
+  const outline = document.outline;
+  const system = [
+    "You are the art director of a calm, documentary-style film made from a book of real people's voices. Choose ONE look for every picture in the film.",
+    "style: the medium and finish in one phrase (for example painterly cinematic illustration with soft film grain, or 35mm documentary photograph look). Always calm, human and warm; never cartoonish.",
+    "palette: 3 to 5 colours that suit the book's mood, as plain colour words.",
+    "lighting: one phrase (time of day, quality of light).",
+    "world: one sentence on the kinds of places and objects that recur, drawn from where the voices come from and what they talk about.",
+    "Write short phrases, no names of real people, no words to show in the picture.",
+  ].join("\n");
+  const user = JSON.stringify({
+    title: document.title,
+    question: document.question,
+    arc: outline?.arc ?? "",
+    views: (outline?.clusters ?? []).slice(0, 8).map((c) => `${c.label} (${c.count})`),
+    places: [...new Set((outline?.clusters ?? []).flatMap((c) => c.countries.map((x) => x.code)))].slice(0, 12),
+  });
+  return { system, user };
+}
+
+const phrase = (value: unknown, max: number) => (typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, max) : "");
+
+export function parseArt(raw: unknown): ArtDirection {
+  const data = (raw ?? {}) as Record<string, unknown>;
+  const art = { style: phrase(data.style, 160), palette: phrase(data.palette, 160), lighting: phrase(data.lighting, 120), world: phrase(data.world, 260) };
+  if (!art.style || !art.palette || !art.lighting) throw new Error("The art direction came back incomplete.");
+  return art;
+}
+
+/** Without a model: the house look. */
+export const PLAIN_ART: ArtDirection = {
+  style: "painterly cinematic editorial illustration, soft film grain, 16:9 wide frame",
+  palette: "deep ember red, charcoal, warm amber, muted cream",
+  lighting: "warm low light, late afternoon or lamp light",
+  world: "everyday places where people live, learn and work",
+};
+
+/** The art direction as one line added to every picture prompt. */
+export function artLine(art: ArtDirection | undefined): string {
+  const a = art ?? PLAIN_ART;
+  return `Style: ${a.style}. Palette: ${a.palette}. Lighting: ${a.lighting}. Calm, human, documentary mood; leave the lower third of the frame quiet and uncluttered.`;
+}
+
+export const CHECK_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["score", "problems", "fix"],
+  properties: { score: { type: "integer" }, problems: { type: "array", items: { type: "string" } }, fix: { type: "string" } },
+};
+
+/** Asks the writer model to look at one picture and say how well it fits its brief. */
+export function checkPrompt(brief: string) {
+  return {
+    system: [
+      "You check pictures for a documentary film. Look at the picture and compare it with its brief.",
+      "score 1 to 5: 5 fits the brief with no defects; 3 is usable; 1 or 2 must be redrawn.",
+      'problems: short phrases, only real ones, from: "readable text", "watermark or logo", "distorted hands", "deformed face", "off-brief subject", "wrong mood", "cluttered".',
+      "fix: one sentence telling the painter what to change, or empty.",
+    ].join("\n"),
+    user: `Brief: ${brief.slice(0, 1200)}`,
+  };
+}
+
+/** Should a checked picture be drawn once more? Only for clear faults, never for taste. */
+export function needsRedraw(raw: unknown): { redo: boolean; score: number; fix: string; problems: string[] } {
+  const data = (raw ?? {}) as { score?: unknown; problems?: unknown; fix?: unknown };
+  const score = Math.max(1, Math.min(5, Math.round(Number(data.score) || 3)));
+  const problems = (Array.isArray(data.problems) ? data.problems : []).map(String).slice(0, 6);
+  const fix = phrase(data.fix, 300);
+  const defect = problems.some((p) => /text|letter|watermark|logo|hand|finger|face|deform|distort/i.test(p));
+  return { redo: score <= 2 || defect, score, fix, problems };
+}
+
 /** The look every picture shares, so a film feels like one piece. */
 export const PICTURE_STYLE =
   "Cinematic editorial illustration, painterly, soft film grain, warm low light with deep ember red and charcoal tones, 16:9 wide shot, calm and human. No text, no letters, no logos, no watermarks, no recognisable real people.";
@@ -129,16 +217,33 @@ export function plainStoryboard(input: { unit: number; script: ChapterScript; qu
 
 /** Splits a long caption into lines of at most `max` characters, timed by length. */
 export function captionChunks(cue: { startMs: number; endMs: number; text: string }, max = 84): { startMs: number; endMs: number; text: string }[] {
-  const words = cue.text.split(/\s+/).filter(Boolean);
-  const chunks: string[] = [];
-  let line = "";
-  for (const word of words) {
-    if (line && (line + " " + word).length > max) {
-      chunks.push(line);
-      line = word;
-    } else line = line ? `${line} ${word}` : word;
+  // Break where a reader would breathe: after a sentence first, then a comma, colon or dash; words only as a last resort.
+  const clauses = cue.text
+    .split(/(?<=[.!?。！？।,;:，،؛])\s+|\s+(?=[—–]\s)/u)
+    .map((c) => c.trim())
+    .filter(Boolean);
+  const pieces: string[] = [];
+  for (const clause of clauses) {
+    if (clause.length <= max) {
+      pieces.push(clause);
+      continue;
+    }
+    let line = "";
+    for (const word of clause.split(/\s+/)) {
+      if (line && (line + " " + word).length > max) {
+        pieces.push(line);
+        line = word;
+      } else line = line ? `${line} ${word}` : word;
+    }
+    if (line) pieces.push(line);
   }
-  if (line) chunks.push(line);
+  const chunks: string[] = [];
+  for (const piece of pieces) {
+    const last = chunks[chunks.length - 1];
+    // Join short clauses into one caption; a new sentence starts a new caption unless the last one was very short.
+    if (last !== undefined && (last + " " + piece).length <= max && !(/[.!?。！？।]$/u.test(last) && last.length >= 20)) chunks[chunks.length - 1] = `${last} ${piece}`;
+    else chunks.push(piece);
+  }
   const total = chunks.reduce((sum, c) => sum + c.length, 0) || 1;
   let at = cue.startMs;
   return chunks.map((text) => {
@@ -147,6 +252,29 @@ export function captionChunks(cue: { startMs: number; endMs: number; text: strin
     at += length;
     return out;
   });
+}
+
+/** Two caption lines at most, broken where the phrase breaks (after punctuation) and as even as possible. */
+export function captionLines(text: string, measure: (s: string) => number, maxWidth: number): string[] {
+  if (measure(text) <= maxWidth) return [text];
+  const words = text.split(/\s+/).filter(Boolean);
+  let best: string[] = [text];
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (let i = 1; i < words.length; i++) {
+    const a = words.slice(0, i).join(" ");
+    const b = words.slice(i).join(" ");
+    const wa = measure(a);
+    const wb = measure(b);
+    const over = Math.max(0, wa - maxWidth) + Math.max(0, wb - maxWidth);
+    // A break at a comma or full stop is worth a lot; before "and", "but", "because" a little; mid-phrase costs most.
+    const cost = /[,;:.!?\u2014\u2013\uff0c\u3001\u060c]$/u.test(a) ? 0 : /^(and|but|or|so|because|that|who|which|when|while|where|y|et|und|que|e|и|و)$/i.test(words[i]) ? 0.2 : 0.4;
+    const score = over * 10 + Math.abs(wa - wb) + cost * maxWidth + (wb >= wa ? 0 : 1);
+    if (score < bestScore) {
+      bestScore = score;
+      best = [a, b];
+    }
+  }
+  return best;
 }
 
 /** Makes sure a part with pictures on has at least one picture: after the last scene if there is room, else in place of a plain card. */
@@ -231,13 +359,14 @@ export function picturesFor(ms: number, unit: number): number {
   return Math.max(1, Math.min(6, Math.round(ms / 30_000)));
 }
 
-export function featureBoardPrompt(input: { unit: number; bookTitle: string; question: string; sectionTitle: string; arc: string; script: ChapterScript; count: number }) {
+export function featureBoardPrompt(input: { unit: number; bookTitle: string; question: string; sectionTitle: string; arc: string; script: ChapterScript; count: number; art?: ArtDirection }) {
   const system = [
     "You are the director of a calm documentary film made from a book of real people's voices.",
     "The narration is recorded. Choose the pictures on screen while it plays: one picture holds for a long time with a slow camera move, like a documentary.",
     "Rules:",
     `- Return exactly ${input.count} scenes of kind "picture", in order. "segment" is the narration segment where the picture starts; the first starts at 0. Spread them so each holds for a similar time, and change picture where the narration moves to a new idea.`,
-    '- "prompt": one vivid sentence for a picture that fits what is being said: a place, objects, light, weather, hands, people seen from behind or far away. Keep one visual world across the film (the same kind of places, the same warm light), so the film feels like one piece.',
+    '- "prompt": two sentences for a picture that fits what is being said at that moment. First the subject with concrete, scene-specific details taken from the narration (the place, objects, season, weather, time of day, a gesture; people seen from behind, far away or as hands). Then the framing (wide establishing shot, medium shot or close-up) and where the light falls. Do not describe the art style: it is set for the whole film.',
+    input.art ? `- The film's visual world: ${input.art.world} Keep every picture inside it so the film feels like one piece.` : "- Keep one visual world across the film (the same kind of places, the same light), so the film feels like one piece.",
     "- Never put words, signs, names, logos or recognisable real people in a picture. Do not show crowds of a given size.",
     '- Use -1 for "quote".',
   ].join("\n");

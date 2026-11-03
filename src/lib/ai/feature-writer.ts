@@ -17,6 +17,7 @@ export async function writeFeatureBook(input: {
   bookId: string;
   language: string;
   log?: (line: string) => void;
+  deadline?: number;
 }): Promise<BookDocument> {
   let provider = "meta";
   let model = getConfig().writerModel;
@@ -60,6 +61,7 @@ export async function writeFeatureBook(input: {
         ),
     },
     log: input.log,
+    deadline: input.deadline,
     provider,
     model,
   });

@@ -6,6 +6,7 @@ import { reviewWithModel, translateBatch } from "../ai";
 import { writerLive } from "../ai/providers";
 import { bookSpendPaused, recordUsage } from "./spend";
 import { scrubSecrets } from "../scrub";
+import { NeedsMore } from "../book/feature";
 
 const VOICE_STEPS = ["transcribe", "translate", "checks", "decide", "group"] as const;
 
@@ -259,7 +260,7 @@ export function needsBookLanguage(voice: Translatable, target: string): boolean 
  * The original words are never touched. If the AI fails this throws and the job retries later;
  * the voice keeps its original words meanwhile.
  */
-export async function toBookLanguage<T extends Translatable>(voices: T[], target: string, bookId: string): Promise<T[]> {
+export async function toBookLanguage<T extends Translatable>(voices: T[], target: string, bookId: string, deadline?: number): Promise<T[]> {
   const pending = voices.filter((voice) => needsBookLanguage(voice, target));
   const same = pending.filter((voice) => !shouldTranslate(voice.language, voice.originalText, target));
   for (const voice of same) {
@@ -270,8 +271,18 @@ export async function toBookLanguage<T extends Translatable>(voices: T[], target
   }
   const other = pending.filter((voice) => !same.includes(voice));
   // A few at a time keeps each AI call small and fast.
-  for (let start = 0; start < other.length; start += 8) {
-    const batch = other.slice(start, start + 8);
+  const groups: T[][] = [];
+  for (let start = 0; start < other.length; start += 8) groups.push(other.slice(start, start + 8));
+  // Four small calls at a time; a big book stops before its time is up and goes on in the next request.
+  for (let at = 0; at < groups.length; at += 4) {
+    if (deadline && deadline - Date.now() < 90_000) {
+      throw new NeedsMore(`Put ${voices.length - other.length + at * 8} of ${voices.length} voices into the book's language.`);
+    }
+    await Promise.all(groups.slice(at, at + 4).map((batch) => translateOne(batch)));
+  }
+  return voices;
+
+  async function translateOne(batch: T[]) {
     const result = await translateBatch(
       batch.map((voice) => ({ id: voice.id, language: voice.language, text: voice.originalText })),
       bookId,
@@ -290,7 +301,6 @@ export async function toBookLanguage<T extends Translatable>(voices: T[], target
       });
     }
   }
-  return voices;
 }
 
 function keepNotable<T extends object>(checked: T, previous: string | null | undefined): T & { notable?: boolean } {

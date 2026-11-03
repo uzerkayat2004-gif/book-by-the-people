@@ -10,11 +10,23 @@ import { deleteAudio, getAudio, putAudio } from "@/lib/storage";
 import { bookSpendPaused, recordUsage } from "@/lib/services/spend";
 import { isMetaMediaKey, isUploadedKey } from "../render";
 import { voiceOptions } from "./catalog";
+import { FLAG_CODES } from "./flag-codes";
+import { phrasesFor } from "./phrases";
 import { mediaMetaOnly } from "./flag";
 import { isFeatureBook, narrationUnits, unitSource } from "./narrate";
 import { readScript, readState, type AudioResult, type MediaState, type TimedCue } from "./state";
 import {
   PICTURE_STYLE,
+  ART_SCHEMA,
+  CHECK_SCHEMA,
+  PICTURE_AVOID,
+  PLAIN_ART,
+  artLine,
+  artPrompt,
+  checkPrompt,
+  needsRedraw,
+  parseArt,
+  type ArtDirection,
   STORYBOARD_SCHEMA,
   parseStoryboard,
   captionChunks,
@@ -48,9 +60,9 @@ import {
 } from "./audiobook";
 
 /** Bump when the storyboard prompt, picture style or the film's look changes. */
-const SB_V = 3;
-const IMG_V = 1;
-const FILM_V = 3;
+const SB_V = 4;
+const IMG_V = 2;
+const FILM_V = 4;
 const CARD_MS = 8000;
 export const VIDEO_RUNS_PER_DAY = 3;
 export const MAX_PICTURES = 24;
@@ -61,7 +73,7 @@ const END_MS = 4000;
 const leaseKey = (bookId: string) => `${bookId}:mm:video`;
 
 type UnitBoard = { unit: number; title: string; hash: string; scriptKey: string; key?: string; plain?: boolean; note?: string };
-type Picture = { id: string; prompt: string; key?: string; failed?: boolean; note?: string; tries: number };
+type Picture = { id: string; prompt: string; key?: string; failed?: boolean; note?: string; tries: number; score?: number; redrawn?: boolean };
 
 export type VideoRun = {
   id: string;
@@ -74,6 +86,9 @@ export type VideoRun = {
   image: { value: string; label: string };
   units: UnitBoard[];
   pictures: Picture[];
+  /** One look for every picture (feature books). */
+  art?: ArtDirection;
+  artPlain?: boolean;
   planHash?: string;
   startedAt: string;
   finishedAt?: string;
@@ -100,7 +115,7 @@ export type VideoState = {
   run?: VideoRun;
   video?: VideoResult;
   /** Work kept across runs, so a changed pick only redoes what it touches. */
-  cache: { boards: Record<string, { key: string; plain?: boolean; note?: string }>; pictures: Record<string, string> };
+  cache: { boards: Record<string, { key: string; plain?: boolean; note?: string }>; pictures: Record<string, string>; art?: Record<string, ArtDirection> };
   starts?: { day: string; count: number };
 };
 
@@ -110,7 +125,7 @@ export async function readVideo(bookId: string): Promise<VideoState> {
   try {
     const raw = JSON.parse((await getAudio(videoKey(bookId))).toString("utf8")) as VideoState;
     if (raw && raw.v === 1) {
-      return { ...raw, picks: { writer: raw.picks?.writer ?? "", images: raw.picks?.images ?? "" }, cache: { boards: raw.cache?.boards ?? {}, pictures: raw.cache?.pictures ?? {} } };
+      return { ...raw, picks: { writer: raw.picks?.writer ?? "", images: raw.picks?.images ?? "" }, cache: { boards: raw.cache?.boards ?? {}, pictures: raw.cache?.pictures ?? {}, art: raw.cache?.art ?? {} } };
     }
   } catch {
     // none yet
@@ -192,7 +207,9 @@ function setupUnits(run: VideoRun, audio: AudioResult, doc: BookDocument) {
 }
 
 async function makeBoard(bookId: string, run: VideoRun, unit: UnitBoard, doc: BookDocument, state: VideoState, deadline: number): Promise<void> {
-  const cached = state.cache.boards[unit.hash];
+  // A new art direction means new picture prompts.
+  const boardId = run.art ? hash(unit.hash, artLine(run.art)) : unit.hash;
+  const cached = state.cache.boards[boardId];
   if (cached) {
     Object.assign(unit, cached);
     return;
@@ -207,7 +224,7 @@ async function makeBoard(bookId: string, run: VideoRun, unit: UnitBoard, doc: Bo
   const ms = run.audio?.units.find((u) => u.unit === unit.unit)?.ms ?? 60_000;
   const count = picturesFor(ms, unit.unit);
   if (feature && pictures && target) {
-    const prompt = featureBoardPrompt({ unit: unit.unit, bookTitle: doc.title, question: doc.question, sectionTitle: unit.title, arc: doc.outline?.arc ?? "", script, count });
+    const prompt = featureBoardPrompt({ unit: unit.unit, bookTitle: doc.title, question: doc.question, sectionTitle: unit.title, arc: doc.outline?.arc ?? "", script, count, art: run.art });
     for (let attempt = 0; attempt < 3 && !board; attempt += 1) {
       const room = deadline - Date.now();
       if (room < 25_000) return;
@@ -251,12 +268,12 @@ async function makeBoard(bookId: string, run: VideoRun, unit: UnitBoard, doc: Bo
     const fallback = unit.unit === 0 ? `An evocative scene about the question: ${doc.question}` : `An evocative scene about "${unit.title}"${chapter?.theme ? `: ${chapter.theme}` : ""}`;
     board = withPicture(board, script.segments.length, fallback);
   }
-  const key = `book-${bookId}-mm-sb-u${unit.unit}-${unit.hash}.json`;
+  const key = `book-${bookId}-mm-sb-u${unit.unit}-${boardId}.json`;
   await putAudio(key, Buffer.from(JSON.stringify(board)), "application/json");
   unit.key = key;
   unit.plain = plain;
   unit.note = plain && target ? `Built-in storyboard used: ${note ?? "the model did not answer"}` : undefined;
-  state.cache.boards[unit.hash] = { key, plain: unit.plain, note: unit.note };
+  state.cache.boards[boardId] = { key, plain: unit.plain, note: unit.note };
 }
 
 async function readBoard(key: string): Promise<Storyboard> {
@@ -264,7 +281,55 @@ async function readBoard(key: string): Promise<Storyboard> {
 }
 
 const pictureId = (prompt: string, model: string) => hash(prompt, model, IMG_V);
-const fullPrompt = (prompt: string) => `${prompt.replace(/[.\s]+$/, "")}. ${PICTURE_STYLE}`;
+const fullPrompt = (prompt: string, art?: ArtDirection) =>
+  art ? `${prompt.replace(/[.\s]+$/, "")}. ${artLine(art)} ${PICTURE_AVOID}` : `${prompt.replace(/[.\s]+$/, "")}. ${PICTURE_STYLE}`;
+
+/** One art direction per book, from its outline. Kept, so a re-make draws in the same look. */
+async function makeArt(bookId: string, run: VideoRun, doc: BookDocument, state: VideoState): Promise<void> {
+  const id = hash(doc.title, doc.question, doc.outline?.arc ?? "", run.writer.value);
+  const kept = state.cache.art?.[id];
+  if (kept) {
+    run.art = kept;
+    return;
+  }
+  const target = run.writer.value ? await writerTarget(bookId, run.writer.value).catch(() => null) : null;
+  if (target) {
+    try {
+      const out = await chatJson(target, { ...artPrompt(doc), schemaName: "art_direction", schema: ART_SCHEMA, maxTokens: 2000, reasoningEffort: "low", timeoutMs: 60_000 });
+      await recordUsage({ kind: "media-storyboard", provider: target.tag, model: out.model, bookId, usage: out.usage }).catch(() => undefined);
+      run.art = parseArt(extractJson(out.content));
+      state.cache.art = { ...(state.cache.art ?? {}), [id]: run.art };
+      return;
+    } catch {
+      // the house look below
+    }
+  }
+  run.art = PLAIN_ART;
+  run.artPlain = true;
+}
+
+/** Muse Spark looks at a new picture; a clear fault (text, a bad hand, off-brief) gets one redraw. */
+async function checkPicture(bookId: string, run: VideoRun, picture: Picture, made: { bytes: Buffer; mime: string }, timeLeft: number) {
+  if (!run.writer.value || timeLeft < 30_000) return null;
+  const target = await writerTarget(bookId, run.writer.value).catch(() => null);
+  if (!target) return null;
+  try {
+    const brief = picture.prompt.split(" Style: ")[0];
+    const out = await chatJson(target, {
+      ...checkPrompt(brief),
+      schemaName: "picture_check",
+      schema: CHECK_SCHEMA,
+      maxTokens: 1500,
+      reasoningEffort: "low",
+      timeoutMs: Math.min(45_000, timeLeft - 10_000),
+      images: [`data:${made.mime};base64,${made.bytes.toString("base64")}`],
+    });
+    await recordUsage({ kind: "media-storyboard", provider: target.tag, model: out.model, bookId, usage: out.usage }).catch(() => undefined);
+    return needsRedraw(extractJson(out.content));
+  } catch {
+    return null;
+  }
+}
 
 async function listPictures(run: VideoRun, state: VideoState) {
   if (run.image.value === "none") {
@@ -277,7 +342,7 @@ async function listPictures(run: VideoRun, state: VideoState) {
     const board = await readBoard(unit.key!);
     for (const scene of board.scenes) {
       if (scene.kind !== "picture" || !scene.prompt) continue;
-      const prompt = fullPrompt(scene.prompt);
+      const prompt = fullPrompt(scene.prompt, run.art);
       const id = pictureId(prompt, run.image.value);
       if (seen.has(id) || pictures.length >= MAX_PICTURES) continue;
       seen.add(id);
@@ -374,7 +439,12 @@ export async function advanceVideo(bookId: string, budgetMs = 150_000): Promise<
     }
 
     if (!run.waitingForAudio) {
-      // 2. Storyboards, four at a time.
+      // 2. One art direction for the whole film, then storyboards, four at a time.
+      if (isFeatureBook(doc) && run.image.value !== "none" && !run.art) {
+        run.phase = "Choosing the film's look";
+        await makeArt(bookId, run, doc, state);
+        await writeVideo(bookId, state);
+      }
       const needBoard = run.units.filter((u) => !u.key);
       if (needBoard.length) run.phase = run.writer.value ? `Planning the scenes with ${run.writer.label.split(" · ")[0]}` : "Planning the scenes";
       for (let i = 0; i < needBoard.length && left() > 60_000; i += 4) {
@@ -401,8 +471,20 @@ export async function advanceVideo(bookId: string, budgetMs = 150_000): Promise<
           await Promise.all(
             todo.slice(0, 3).map(async (picture) => {
               try {
-                const made = await makePicture(target!, picture.prompt, Math.min(100_000, left() - 15_000));
+                let made = await makePicture(target!, picture.prompt, Math.min(100_000, left() - 15_000));
                 await recordUsage({ kind: "media-image", provider: "meta", model: target!.model, bookId, usd: PICTURE_USD }).catch(() => undefined);
+                const check = await checkPicture(bookId, run, picture, made, left() - 40_000);
+                if (check) picture.score = check.score;
+                if (check?.redo && !picture.redrawn && left() > 60_000 && !(await bookSpendPaused(bookId))) {
+                  picture.redrawn = true;
+                  const fix = check.fix || `Fix: ${check.problems.join(", ")}.`;
+                  try {
+                    made = await makePicture(target!, `${picture.prompt} Correction: ${fix}`.slice(0, 3800), Math.min(100_000, left() - 15_000));
+                    await recordUsage({ kind: "media-image", provider: "meta", model: target!.model, bookId, usd: PICTURE_USD }).catch(() => undefined);
+                  } catch {
+                    // keep the first picture
+                  }
+                }
                 const ext = made.mime === "image/png" ? "png" : made.mime === "image/webp" ? "webp" : "jpg";
                 const key = `book-${bookId}-mm-pic-${picture.id}.${ext}`;
                 await putAudio(key, made.bytes, made.mime);
@@ -463,7 +545,14 @@ export type PlanScene = {
   credits?: string[];
 };
 
+/** The branded opening: every country's flag behind the title, the logo, and exactly how many took part. */
+export type FilmOpening = { flags: string[]; people: number; countries: number; voices: string; from: string; logo: string };
+
+/** How long the opening scene stays up before it crossfades into the first picture. */
+const OPEN_MS = 7500;
+
 export type FilmPlan = {
+  opening?: FilmOpening;
   hash: string;
   width: number;
   height: number;
@@ -484,6 +573,28 @@ export type FilmPlan = {
 };
 
 const assetUrl = (bookId: string, key: string) => `/api/books/${bookId}/media/meta/asset?key=${encodeURIComponent(key)}`;
+
+/** Flags are drawn from bundled SVGs in code (never by an image model), most voices first. */
+async function openingOf(bookId: string, doc: BookDocument, lang: string): Promise<FilmOpening> {
+  const ids = [...new Set((doc.outline?.clusters ?? []).flatMap((c) => c.voiceIds))];
+  const rows = await prisma.voice
+    .findMany({ where: ids.length ? { id: { in: ids } } : { bookId, status: "READY", hidden: false }, select: { countryCode: true } })
+    .catch(() => [] as { countryCode: string | null }[]);
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const code = (row.countryCode ?? "").trim().toLowerCase();
+    if (code) counts.set(code, (counts.get(code) ?? 0) + 1);
+  }
+  const people = doc.outline?.total || rows.length;
+  const countries = doc.outline?.countries ?? counts.size;
+  const say = phrasesFor(lang);
+  const flags = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([code]) => code)
+    .filter((code) => FLAG_CODES.has(code))
+    .map((code) => `/flags/${code}.svg`);
+  return { flags, people, countries, voices: people > 0 ? say.voices(people) : "", from: countries > 0 ? say.countries(countries) : "", logo: "/brand/logo.svg" };
+}
 
 export async function filmPlan(bookId: string): Promise<FilmPlan> {
   const state = await readVideo(bookId);
@@ -528,16 +639,16 @@ export async function filmPlan(bookId: string): Promise<FilmPlan> {
       const base: PlanScene = { startMs, endMs, unit: unit.unit, kind: "card", title: unit.unit === 0 ? doc.title : unit.title, subtitle: unit.unit === 0 ? doc.question : doc.title };
       if (unit.unit === 0 && index === 0) {
         // The film opens on the title card; a picture planned for the opening follows it once the title has been seen.
-        const key = scene.kind === "picture" && scene.prompt ? pictures.get(pictureId(fullPrompt(scene.prompt), run.image.value)) : undefined;
-        if (key && endMs - startMs > 9000) {
-          scenes.push({ startMs, endMs: startMs + 5000, kind: "opening", title: doc.title, subtitle: doc.question });
-          scenes.push({ startMs: startMs + 5000, endMs, unit: 0, kind: "picture", image: assetUrl(bookId, key) });
+        const key = scene.kind === "picture" && scene.prompt ? pictures.get(pictureId(fullPrompt(scene.prompt, run.art), run.image.value)) : undefined;
+        if (key && endMs - startMs > OPEN_MS + 4000) {
+          scenes.push({ startMs, endMs: startMs + OPEN_MS, kind: "opening", title: doc.title, subtitle: doc.question });
+          scenes.push({ startMs: startMs + OPEN_MS, endMs, unit: 0, kind: "picture", image: assetUrl(bookId, key) });
           return;
         }
         Object.assign(base, { kind: "opening", title: doc.title, subtitle: doc.question });
       } else if (scene.kind === "quote" && scene.quote !== undefined && quotes[scene.quote]) Object.assign(base, { kind: "quote", quote: quotes[scene.quote] });
       else if (scene.kind === "picture" && scene.prompt) {
-        const key = pictures.get(pictureId(fullPrompt(scene.prompt), run.image.value));
+        const key = pictures.get(pictureId(fullPrompt(scene.prompt, run.art), run.image.value));
         if (key) Object.assign(base, { kind: "picture", image: assetUrl(bookId, key) });
       }
       if (index === 0 && unit.unit > 0) base.chapter = unit.title;
@@ -555,6 +666,7 @@ export async function filmPlan(bookId: string): Promise<FilmPlan> {
   scenes.push({ startMs: audio.ms, endMs: audio.ms + END_MS, kind: "end", title: doc.title });
   const credit = filmCredit(run);
   return {
+    opening: await openingOf(bookId, doc, run.lang),
     hash: run.planHash ?? planHashOf(run),
     width: 1280,
     height: 720,
@@ -622,7 +734,7 @@ async function documentaryPlan(bookId: string, run: VideoRun, doc: BookDocument,
       const startMs = index === 0 ? times.startMs : Math.max(times.startMs, Math.round(segmentStart(scene.segment)));
       const next = board.scenes[index + 1];
       const endMs = next ? Math.max(startMs + 4000, Math.round(segmentStart(next.segment))) : times.startMs + times.ms;
-      const key = scene.kind === "picture" && scene.prompt ? pictures.get(pictureId(fullPrompt(scene.prompt), run.image.value)) : undefined;
+      const key = scene.kind === "picture" && scene.prompt ? pictures.get(pictureId(fullPrompt(scene.prompt, run.art), run.image.value)) : undefined;
       const chapterTitle = index === 0 && unit.unit > 0 && doc.form !== "continuous" ? unit.title : undefined;
       if (!key) {
         // A missing picture: the one before it holds on, so the film never drops to a blank card mid-story.
@@ -635,22 +747,27 @@ async function documentaryPlan(bookId: string, run: VideoRun, doc: BookDocument,
         scenes.push({ startMs, endMs, unit: unit.unit, kind: "card", title: chapterTitle ?? doc.title, subtitle: chapterTitle ? doc.title : doc.standfirst || doc.question });
         return;
       }
-      if (unit.unit === 0 && index === 0 && endMs - startMs > 10_000) {
-        scenes.push({ startMs, endMs: startMs + 6500, kind: "opening", title: doc.title, subtitle: doc.standfirst || doc.question });
-        scenes.push({ startMs: startMs + 6500, endMs, unit: 0, kind: "picture", image: assetUrl(bookId, key) });
+      if (unit.unit === 0 && index === 0 && endMs - startMs > OPEN_MS + 4000) {
+        scenes.push({ startMs, endMs: startMs + OPEN_MS, kind: "opening", title: doc.title, subtitle: doc.standfirst || doc.question });
+        scenes.push({ startMs: startMs + OPEN_MS, endMs, unit: 0, kind: "picture", image: assetUrl(bookId, key) });
         return;
       }
       scenes.push({ startMs, endMs, unit: unit.unit, kind: "picture", image: assetUrl(bookId, key), chapter: chapterTitle });
     });
   }
-  if (!scenes.length || scenes[0].kind !== "opening") scenes.unshift({ startMs: 0, endMs: Math.min(6500, scenes[0]?.endMs ?? 6500), kind: "opening", title: doc.title, subtitle: doc.standfirst || doc.question });
+  if (!scenes.length || scenes[0].kind !== "opening") {
+    // The opening always gets its full time: anything planned under it starts once it is over.
+    const later = scenes.filter((scene) => scene.endMs > OPEN_MS + 1500);
+    for (const scene of later) scene.startMs = Math.max(scene.startMs, OPEN_MS);
+    scenes.length = 0;
+    scenes.push({ startMs: 0, endMs: OPEN_MS, kind: "opening", title: doc.title, subtitle: doc.standfirst || doc.question }, ...later);
+  }
   scenes.sort((a, b) => a.startMs - b.startMs);
   for (let i = 1; i < scenes.length; i += 1) if (scenes[i].startMs < scenes[i - 1].startMs + 500) scenes[i].startMs = scenes[i - 1].startMs + 500;
   for (let i = 0; i < scenes.length - 1; i += 1) scenes[i].endMs = scenes[i + 1].startMs;
-  // How many took part, once, while the title is up.
+  // How many took part is in the opening scene itself (with every country's flag).
   const total = outline?.total ?? 0;
   const countries = outline?.countries ?? 0;
-  if (total > 1) overlays.unshift({ startMs: 1800, endMs: 6200, kind: "count", text: String(total), sub: countries > 1 ? `voices from ${countries} countries` : "voices" });
   const creditsAt = Math.max(1000, Math.min(audio.ms, (narrationEnd || audio.ms) + 1200));
   if (scenes.length) scenes[scenes.length - 1].endMs = creditsAt;
   const totalMs = Math.max(audio.ms, creditsAt + 8000);
@@ -661,6 +778,7 @@ async function documentaryPlan(bookId: string, run: VideoRun, doc: BookDocument,
   ].filter(Boolean);
   scenes.push({ startMs: creditsAt, endMs: totalMs, kind: "end", title: doc.title, credits });
   return {
+    opening: await openingOf(bookId, doc, run.lang),
     hash: run.planHash ?? planHashOf(run),
     width: 1280,
     height: 720,

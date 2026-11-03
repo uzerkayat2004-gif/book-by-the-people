@@ -401,7 +401,16 @@ export function StudioDesk({
             busy={busy}
             writerLine={writerLine}
             usage={usage}
-            onMake={() => run("make", async () => void (await post(`/api/books/${book.id}/generate`)))}
+            onMake={() =>
+              run("make", async () => {
+                // A big book is written over several requests; each one saves its progress.
+                for (let round = 0; round < 40; round += 1) {
+                  const data = await post(`/api/books/${book.id}/generate`);
+                  if (!data.continue) return;
+                }
+                throw new Error("The book is still being written. Press Make again to go on.");
+              })
+            }
             onQuick={() => run("local", () => post(`/api/books/${book.id}/generate?engine=local`).then(() => undefined))}
             onPublish={() => run("publish", () => post(`/api/books/${book.id}/publish`).then(() => undefined))}
             onBackup={() => run("backup", () => post(`/api/books/${book.id}/backup`).then(() => undefined))}

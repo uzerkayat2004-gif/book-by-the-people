@@ -155,3 +155,62 @@ export function wavToPcm(wav: Buffer): Int16Array {
   }
   return new Int16Array(0);
 }
+
+/** One RBJ biquad, run in place. */
+function biquad(audio: Float32Array, rate: number, kind: "highpass" | "peak", freq: number, q: number, gainDb = 0): void {
+  const w = (2 * Math.PI * freq) / rate;
+  const cos = Math.cos(w);
+  const alpha = Math.sin(w) / (2 * q);
+  const a = Math.pow(10, gainDb / 40);
+  let b0: number, b1: number, b2: number, a0: number, a1: number, a2: number;
+  if (kind === "highpass") {
+    b0 = (1 + cos) / 2; b1 = -(1 + cos); b2 = (1 + cos) / 2;
+    a0 = 1 + alpha; a1 = -2 * cos; a2 = 1 - alpha;
+  } else {
+    b0 = 1 + alpha * a; b1 = -2 * cos; b2 = 1 - alpha * a;
+    a0 = 1 + alpha / a; a1 = -2 * cos; a2 = 1 - alpha / a;
+  }
+  let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+  for (let i = 0; i < audio.length; i++) {
+    const x = audio[i];
+    const y = (b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2) / a0;
+    x2 = x1; x1 = x; y2 = y1; y1 = y;
+    audio[i] = y;
+  }
+}
+
+/**
+ * Narration polish, tuned by A/B on the MMS voice: cut rumble below 75 Hz, ease the boxy 250 Hz a little,
+ * lift presence at 3.2 kHz, then a gentle 2.5:1 compressor so soft words don't drop out. Loudness stays where it was.
+ */
+export function polishVoice(input: Float32Array, rate: number): Float32Array {
+  const audio = Float32Array.from(input);
+  if (audio.length === 0) return audio;
+  biquad(audio, rate, "highpass", 75, 0.707);
+  biquad(audio, rate, "peak", 250, 1, -2);
+  biquad(audio, rate, "peak", 3200, 1.2, 2.5);
+  const before = voicedRms(input, rate);
+  const threshold = Math.max(before, 1e-4) * 0.7;
+  const ratio = 2.5;
+  const attack = Math.exp(-1 / (0.008 * rate));
+  const release = Math.exp(-1 / (0.12 * rate));
+  let envelope = 0;
+  for (let i = 0; i < audio.length; i++) {
+    const x = Math.abs(audio[i]);
+    envelope = x > envelope ? attack * envelope + (1 - attack) * x : release * envelope + (1 - release) * x;
+    if (envelope > threshold) audio[i] *= Math.pow(envelope / threshold, 1 / ratio - 1);
+  }
+  // Back to the loudness it came in at (plus about 1.5 dB, like a finished audiobook), with a peak limiter
+  // instead of turning everything down for one loud consonant.
+  const after = voicedRms(audio, rate);
+  const gain = after > 0 ? (before / after) * 1.19 : 1;
+  const ceiling = 0.85;
+  const fall = Math.exp(-1 / (0.06 * rate));
+  let held = 0;
+  for (let i = 0; i < audio.length; i++) {
+    const x = audio[i] * gain;
+    held = Math.max(Math.abs(x), held * fall);
+    audio[i] = held > ceiling ? (x * ceiling) / held : x;
+  }
+  return audio;
+}

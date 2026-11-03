@@ -17,6 +17,7 @@ import {
   canEncodeAudio,
   getFirstEncodableVideoCodec,
 } from "mediabunny";
+import { captionLines } from "./storyboard";
 
 export type PlanScene = {
   startMs: number;
@@ -33,7 +34,11 @@ export type PlanScene = {
 
 export type Overlay = { startMs: number; endMs: number; kind: "quote" | "count"; text: string; who?: string; sub?: string };
 
+/** The branded opening: every country's flag (bundled SVGs), the logo, exact counts. */
+export type FilmOpening = { flags: string[]; people: number; countries: number; voices: string; from: string; logo: string };
+
 export type FilmPlan = {
+  opening?: FilmOpening;
   hash: string;
   width: number;
   height: number;
@@ -341,29 +346,222 @@ function drawChapter(ctx: Ctx, w: number, h: number, title: string, local: numbe
 }
 
 function drawCaption(ctx: Ctx, w: number, h: number, text: string, fonts: Fonts) {
-  ctx.font = `500 30px ${fonts.sans}`;
-  const lines = wrap(ctx, text, w - 260).slice(0, 2);
-  const boxW = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 48;
-  const boxH = lines.length * 40 + 22;
+  const maxW = w - 260;
+  let size = 30;
+  let lines: string[] = [];
+  for (; size >= 22; size -= 2) {
+    ctx.font = `500 ${size}px ${fonts.sans}`;
+    lines = captionLines(text, (s) => ctx.measureText(s).width, maxW);
+    if (lines.every((l) => ctx.measureText(l).width <= maxW)) break;
+  }
+  const lineH = Math.round(size * 1.33);
+  const boxW = Math.min(w - 120, Math.max(...lines.map((l) => ctx.measureText(l).width)) + 48);
+  const boxH = lines.length * lineH + 22;
   ctx.fillStyle = "rgba(0,0,0,0.62)";
   ctx.fillRect((w - boxW) / 2, h - 46 - boxH, boxW, boxH);
   ctx.fillStyle = "#fff";
   ctx.textAlign = "center";
-  lines.forEach((line, i) => ctx.fillText(line, w / 2, h - 46 - boxH + 42 + i * 40));
+  lines.forEach((line, i) => ctx.fillText(line, w / 2, h - 46 - boxH + 11 + size + i * lineH, w - 140));
+}
+
+/**
+ * Where each flag sits in the opening's background: a brick grid of 4:3 tiles that fills the frame for any number
+ * of countries (1 to 250). Small counts repeat so the wall is always full; every country appears at least once.
+ */
+export function mosaicLayout(count: number, width: number, height: number, minCells = 56) {
+  const n = Math.max(1, count);
+  const cells = Math.max(n, minCells);
+  for (let cols = 3; ; cols += 1) {
+    const pitch = width / cols;
+    const tileW = pitch * 0.86;
+    const tileH = tileW * 0.75;
+    const rowPitch = tileH + pitch * 0.14;
+    const rows = Math.ceil(height / rowPitch) + 1;
+    if (cols * rows >= cells || cols > 400) {
+      const tiles: { x: number; y: number; w: number; h: number; flag: number }[] = [];
+      const shift = cols % n === 0 ? 1 : 0;
+      for (let r = 0; r < rows; r += 1) {
+        for (let c = 0; c < cols + 1; c += 1) {
+          const x = c * pitch - (r % 2 ? pitch / 2 : 0) + (pitch - tileW) / 2;
+          const y = r * rowPitch - rowPitch / 2;
+          if (x + tileW < 0 || x > width) continue;
+          tiles.push({ x, y, w: tileW, h: tileH, flag: (r * cols + c + r * shift) % n });
+        }
+      }
+      return { cols, rows, tileW, tileH, tiles };
+    }
+  }
+}
+
+/** Draws the flag wall once, softly blurred and dimmed; the opening then moves it slowly. */
+export function composeMosaic(flags: CanvasImageSource[], w: number, h: number): OffscreenCanvas | null {
+  if (!flags.length || typeof OffscreenCanvas === "undefined") return null;
+  const W = Math.round(w * 1.18);
+  const H = Math.round(h * 1.18);
+  const sharp = new OffscreenCanvas(W, H);
+  const s = sharp.getContext("2d")!;
+  s.fillStyle = "#151112";
+  s.fillRect(0, 0, W, H);
+  const layout = mosaicLayout(flags.length, W, H);
+  const radius = Math.max(2, layout.tileW * 0.06);
+  for (const tile of layout.tiles) {
+    s.save();
+    s.beginPath();
+    s.roundRect(tile.x, tile.y, tile.w, tile.h, radius);
+    s.clip();
+    s.drawImage(flags[tile.flag], tile.x, tile.y, tile.w, tile.h);
+    s.restore();
+  }
+  const soft = new OffscreenCanvas(W, H);
+  const c = soft.getContext("2d")!;
+  c.filter = `blur(${Math.max(1.2, Math.min(3, layout.tileW / 60))}px) saturate(0.8) brightness(0.85)`;
+  c.drawImage(sharp, 0, 0);
+  c.filter = "none";
+  return soft;
+}
+
+const OPEN_FADE_MS = 1200;
+const easeOut = (x: number) => 1 - Math.pow(1 - Math.max(0, Math.min(1, x)), 3);
+const reveal = (local: number, from: number, length = 800) => easeOut((local - from) / length);
+
+function drawOpening(ctx: Ctx, w: number, h: number, scene: PlanScene, local: number, duration: number, fonts: Fonts, plan: FilmPlan, images: Map<string, ImageBitmap | OffscreenCanvas>) {
+  const opening = plan.opening!;
+  const p = Math.min(1, Math.max(0, local / Math.max(1, duration)));
+  ctx.fillStyle = "#0e0c0c";
+  ctx.fillRect(0, 0, w, h);
+  const mosaic = images.get("__mosaic");
+  if (mosaic) {
+    // The flag wall drifts and pushes in slowly behind a dark veil (a slow parallax against the still title).
+    const zoom = 1 + 0.07 * p;
+    const mw = mosaic.width * zoom * (w / (mosaic.width / 1.18));
+    const mh = mosaic.height * zoom * (h / (mosaic.height / 1.18));
+    const x = (w - mw) / 2 - w * 0.035 * (p - 0.5);
+    const y = (h - mh) / 2 + h * 0.025 * (p - 0.5);
+    ctx.drawImage(mosaic, x, y, mw, mh);
+  } else backdrop(ctx, w, h, local);
+  ctx.fillStyle = "rgba(12,9,9,0.66)";
+  ctx.fillRect(0, 0, w, h);
+  const veil = ctx.createRadialGradient(w / 2, h / 2, h * 0.12, w / 2, h / 2, w * 0.62);
+  veil.addColorStop(0, "rgba(12,9,9,0.55)");
+  veil.addColorStop(0.7, "rgba(12,9,9,0.2)");
+  veil.addColorStop(1, "rgba(12,9,9,0.5)");
+  ctx.fillStyle = veil;
+  ctx.fillRect(0, 0, w, h);
+  const glow = ctx.createLinearGradient(0, h * 0.7, 0, h);
+  glow.addColorStop(0, "rgba(201,46,52,0)");
+  glow.addColorStop(1, "rgba(201,46,52,0.22)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, w, h);
+
+  ctx.save();
+  const lift = 1 + 0.018 * p;
+  ctx.translate(w / 2, h / 2);
+  ctx.scale(lift, lift);
+  ctx.translate(-w / 2, -h / 2);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  // The mark and the name.
+  const a0 = reveal(local, 150);
+  ctx.globalAlpha = a0;
+  ctx.font = `700 19px ${fonts.sans}`;
+  const brand = "BOOK BY THE PEOPLE";
+  const brandW = ctx.measureText(brand).width;
+  const logo = images.get("__logo");
+  const mark = 44;
+  const rowW = (logo ? mark + 14 : 0) + brandW;
+  const top = h * 0.17 + (1 - a0) * 8;
+  if (logo) ctx.drawImage(logo, w / 2 - rowW / 2, top - mark / 2 - 6, mark, mark);
+  ctx.fillStyle = "#f6efe6";
+  ctx.textAlign = "left";
+  ctx.fillText(brand, w / 2 - rowW / 2 + (logo ? mark + 14 : 0), top + 1);
+  ctx.textAlign = "center";
+  // The title and the question.
+  const title = fitText(ctx, scene.title ?? plan.title, (s) => `600 ${s}px ${fonts.display}`, w * 0.8, 2, 66, 34);
+  const sub = scene.subtitle ? fitText(ctx, scene.subtitle, (s) => `italic ${s}px ${fonts.serif}`, w * 0.68, 2, 29, 20) : null;
+  // Two lines read better when they are about even (no lone last word).
+  if (title.lines.length === 2) {
+    ctx.font = `600 ${title.size}px ${fonts.display}`;
+    title.lines = captionLines(title.lines.join(" "), (t) => ctx.measureText(t).width, w * 0.8);
+  }
+  if (sub && sub.lines.length === 2) {
+    ctx.font = `italic ${sub.size}px ${fonts.serif}`;
+    sub.lines = captionLines(sub.lines.join(" "), (t) => ctx.measureText(t).width, w * 0.68);
+  }
+  const titleH = title.lines.length * title.size * 1.12;
+  const subH = sub ? sub.lines.length * sub.size * 1.35 + 22 : 0;
+  let y = h * 0.47 - (titleH + subH) / 2 + title.size;
+  const a1 = reveal(local, 450, 900);
+  ctx.globalAlpha = a1;
+  ctx.fillStyle = RED;
+  ctx.fillRect(w / 2 - 36, y - title.size - 26, 72 * a1, 4);
+  ctx.fillStyle = "#f6efe6";
+  ctx.font = `600 ${title.size}px ${fonts.display}`;
+  for (const line of title.lines) {
+    ctx.fillText(line, w / 2, y + (1 - a1) * 14);
+    y += title.size * 1.12;
+  }
+  if (sub) {
+    const a2 = reveal(local, 1000, 900);
+    ctx.globalAlpha = a2;
+    y += 22 - title.size * 0.12;
+    ctx.fillStyle = "rgba(246,239,230,0.82)";
+    ctx.font = `italic ${sub.size}px ${fonts.serif}`;
+    for (const line of sub.lines) {
+      ctx.fillText(line, w / 2, y + (1 - a2) * 10);
+      y += sub.size * 1.35;
+    }
+  }
+  // Exactly how many took part, and from how many countries.
+  const a3 = reveal(local, 1700, 900);
+  if (opening.voices) {
+    ctx.globalAlpha = a3;
+    const parts = [opening.voices, opening.from].filter(Boolean);
+    ctx.font = `600 30px ${fonts.display}`;
+    const voicesW = ctx.measureText(parts[0]).width;
+    ctx.font = `500 24px ${fonts.sans}`;
+    const fromW = parts[1] ? ctx.measureText(parts[1]).width : 0;
+    const gap = parts[1] ? 34 : 0;
+    const boxW = voicesW + fromW + gap + 56;
+    const boxY = h * 0.77 + (1 - a3) * 10;
+    ctx.fillStyle = "rgba(12,9,9,0.72)";
+    ctx.beginPath();
+    ctx.roundRect(w / 2 - boxW / 2, boxY - 34, boxW, 54, 27);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(201,46,52,0.85)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.textAlign = "left";
+    let x = w / 2 - boxW / 2 + 28;
+    ctx.fillStyle = "#f6efe6";
+    ctx.font = `600 30px ${fonts.display}`;
+    ctx.fillText(parts[0], x, boxY + 3);
+    x += voicesW;
+    if (parts[1]) {
+      ctx.fillStyle = RED;
+      ctx.beginPath();
+      ctx.arc(x + gap / 2, boxY - 7, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(246,239,230,0.88)";
+      ctx.font = `500 24px ${fonts.sans}`;
+      ctx.fillText(parts[1], x + gap, boxY + 1);
+    }
+  }
+  ctx.restore();
+  ctx.globalAlpha = 1;
 }
 
 /** Draws the frame at time t (ms). Exported for tests and the preview. */
-export function drawFrame(ctx: Ctx, plan: FilmPlan, images: Map<string, ImageBitmap>, t: number, fonts: Fonts) {
+export function drawFrame(ctx: Ctx, plan: FilmPlan, images: Map<string, ImageBitmap | OffscreenCanvas>, t: number, fonts: Fonts) {
   const { width: w, height: h } = plan;
   const documentary = plan.style === "documentary";
-  const fade = documentary ? DOC_FADE_MS : FADE_MS;
   const found = plan.scenes.findIndex((s) => t >= s.startMs && t < s.endMs);
   const index = found === -1 ? plan.scenes.length - 1 : found;
   const paint = (i: number) => {
     const scene = plan.scenes[i];
     const local = t - scene.startMs;
-    const image = scene.image ? images.get(scene.image) : undefined;
-    if (scene.kind === "picture" && image) drawPicture(ctx, w, h, image, local, scene.endMs - scene.startMs + fade, i, documentary);
+    const image = scene.image ? (images.get(scene.image) as ImageBitmap | undefined) : undefined;
+    if (scene.kind === "opening" && plan.opening) drawOpening(ctx, w, h, scene, local, scene.endMs - scene.startMs, fonts, plan, images);
+    else if (scene.kind === "picture" && image) drawPicture(ctx, w, h, image, local, scene.endMs - scene.startMs + fade, i, documentary);
     else if (scene.kind === "end" && scene.credits) drawCredits(ctx, w, h, scene, local, fonts, plan.credit);
     else {
       // Cards and quotes drift in slowly so they never sit still.
@@ -382,6 +580,8 @@ export function drawFrame(ctx: Ctx, plan: FilmPlan, images: Map<string, ImageBit
   };
   const scene = plan.scenes[index];
   const local = t - scene.startMs;
+  // The branded opening hands over with a longer, softer crossfade.
+  const fade = index > 0 && plan.scenes[index - 1].kind === "opening" && plan.opening ? OPEN_FADE_MS : documentary ? DOC_FADE_MS : FADE_MS;
   if (index > 0 && local < fade) {
     // Crossfade: the scene before stays underneath while the new one comes up. Never a hard cut.
     paint(index - 1);
@@ -400,7 +600,7 @@ export function drawFrame(ctx: Ctx, plan: FilmPlan, images: Map<string, ImageBit
     }
   }
   // Captions follow the narration, but step aside while a quote is on screen (the quote is the caption then).
-  if (scene.kind !== "quote" && scene.kind !== "end" && !quote) {
+  if (scene.kind !== "quote" && scene.kind !== "end" && !(scene.kind === "opening" && plan.opening) && !quote) {
     const caption = plan.captions.find((c) => t >= c.startMs && t < c.endMs);
     if (caption) drawCaption(ctx, w, h, caption.text, fonts);
   }
@@ -427,6 +627,18 @@ async function fetchBytes(url: string, signal?: AbortSignal) {
   }
 }
 
+/** An SVG (a flag, the logo) drawn at a fixed size: browsers can't make an ImageBitmap from SVG bytes directly. */
+async function loadSvg(url: string, width: number, height: number): Promise<ImageBitmap> {
+  const image = new Image(width, height);
+  image.decoding = "async";
+  image.src = url;
+  await image.decode();
+  const canvas = new OffscreenCanvas(width, height);
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(image, 0, 0, width, height);
+  return createImageBitmap(canvas);
+}
+
 /** Can this browser make the film? */
 export function canMakeFilm() {
   return typeof window !== "undefined" && "VideoEncoder" in window && typeof OffscreenCanvas !== "undefined";
@@ -439,7 +651,7 @@ export async function renderFilm(plan: FilmPlan, onProgress: (p: FilmProgress) =
   if (typeof document !== "undefined" && document.fonts) await document.fonts.ready;
   const fonts: Fonts = { display: cssFont("--display", "Georgia, serif"), serif: cssFont("--serif", "Georgia, serif"), sans: cssFont("--sans", "system-ui, sans-serif") };
   const audioBytes = await fetchBytes(plan.audio.src, signal);
-  const images = new Map<string, ImageBitmap>();
+  const images = new Map<string, ImageBitmap | OffscreenCanvas>();
   const urls = Array.from(new Set(plan.scenes.map((s) => s.image).filter(Boolean) as string[]));
   let loaded = 0;
   for (const url of urls) {
@@ -453,6 +665,19 @@ export async function renderFilm(plan: FilmPlan, onProgress: (p: FilmProgress) =
   }
 
   const { width: w, height: h, fps } = plan;
+  if (plan.opening) {
+    onProgress({ stage: "load", percent: 100, note: "Laying out the flags" });
+    const flags: ImageBitmap[] = [];
+    for (const url of plan.opening.flags) {
+      const flag = await loadSvg(url, 160, 120).catch(() => null);
+      if (flag) flags.push(flag);
+    }
+    const mosaic = composeMosaic(flags, w, h);
+    if (mosaic) images.set("__mosaic", mosaic);
+    for (const flag of flags) flag.close();
+    const logo = await loadSvg(plan.opening.logo, 128, 128).catch(() => null);
+    if (logo) images.set("__logo", logo);
+  }
   const canvas = new OffscreenCanvas(w, h);
   const ctx = canvas.getContext("2d")!;
   const format = new Mp4OutputFormat({ fastStart: "in-memory" });
@@ -514,7 +739,7 @@ export async function renderFilm(plan: FilmPlan, onProgress: (p: FilmProgress) =
   }
   await pumpAudio(Number.POSITIVE_INFINITY);
   await output.finalize();
-  for (const image of images.values()) image.close();
+  for (const image of images.values()) if ("close" in image) image.close();
   const buffer = (output.target as BufferTarget).buffer;
   if (!buffer) throw new Error("the film came out empty");
   return { bytes: new Uint8Array(buffer), codec: `${codec}+${passThrough ? "mp3" : "re-encoded audio"}` };

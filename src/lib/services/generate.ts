@@ -12,8 +12,16 @@ import { languageByCode } from "../languages";
 import { spendPaused } from "./spend";
 import { nextVersion } from "./books";
 import { scrubSecrets } from "../scrub";
+import { NeedsMore } from "../book/feature";
+
+/** One request writes for at most this long; a big book goes on over several requests. */
+function budgetMs() {
+  const set = Number(process.env.GENERATE_BUDGET_MS);
+  return Number.isFinite(set) && set >= 20_000 ? set : 240_000;
+}
 
 export async function generateBook(bookId: string, userId: string, engine: "auto" | "local") {
+  const startedAt = Date.now();
   const book = await prisma.book.findUnique({ where: { id: bookId } });
   if (!book || book.creatorId !== userId) throw new AppError("That book is not in your studio.", 404);
   if (
@@ -60,6 +68,7 @@ export async function generateBook(bookId: string, userId: string, engine: "auto
           voices.map((voice) => Object.assign(voice, { bookLanguage: voice.bookLanguage ?? "" })),
           target,
           book.id,
+          startedAt + budgetMs(),
         );
       }
       log.push(`Reading all ${voices.length} voices and planning the book.`);
@@ -71,6 +80,7 @@ export async function generateBook(bookId: string, userId: string, engine: "auto
         bookId: book.id,
         language: book.language || "en",
         log: (line) => log.push(line),
+        deadline: startedAt + budgetMs(),
       });
       provider = written.provider;
       model = written.model;
@@ -93,6 +103,15 @@ export async function generateBook(bookId: string, userId: string, engine: "auto
     await recordMakeSteps(book.id);
     return await storeDraft(book.id, previous, document, log);
   } catch (error) {
+    if (error instanceof NeedsMore) {
+      // Not a failure: the work so far is saved. The Studio calls again to go on.
+      log.push(error.message);
+      await prisma.book.update({
+        where: { id: book.id },
+        data: { status: previous as never, generationStartedAt: null, generationError: null, generationLog: JSON.stringify(log) },
+      });
+      return { continue: true as const, progress: error.message, log, status: previous };
+    }
     const message = error instanceof Error ? scrubSecrets(error.message) : "The book could not be written.";
     log.push(message);
     await prisma.book.update({

@@ -17,14 +17,16 @@ import { mmsFor, voiceOptions } from "./catalog";
 import { mediaMetaOnly } from "./flag";
 import { MMS_RATE, mmsSpeakTimed, type Cue } from "./mms";
 import { NARRATION_SCHEMA, SPOKEN_SCHEMA, applySpoken, featureNarration, isFeatureBook, narrationPrompt, narrationUnits, parseNarration, plainNarration, spokenPrompt, unitSource } from "./narrate";
-import { crossfadeJoin, pcmToWav, toFloat, toInt16, wavToPcm, withMusicBed } from "./sound";
+import { crossfadeJoin, pcmToWav, polishVoice, toFloat, toInt16, wavToPcm, withMusicBed } from "./sound";
 import { readScript, readState, writeState, type AudioResult, type MediaState, type Run, type TimedCue, type UnitState } from "./state";
 import { safeError, writerOptions, writerTarget } from "./targets";
 import type { ChapterScript, Segment } from "./text";
 
 /** Bump when the narrator prompt changes (scripts are made again) or the voice settings change. */
-const SCRIPT_V = 2;
-const VOICE_V = 3;
+const SCRIPT_V = 3;
+const VOICE_V = 4;
+/** The final mix (polish, limiter, bitrate). A change re-joins the parts without speaking them again. */
+const MIX_V = 2;
 const PART_CHARS = 1800;
 export const RUNS_PER_DAY = 3;
 const LEASE_MS = 240_000;
@@ -127,7 +129,7 @@ export async function startAudiobook(bookId: string): Promise<MediaState> {
       const voiceHash = hash(scriptHash, voices[lang], VOICE_V);
       const old = previous.get(`${lang}:${unit}`);
       const reuseScript = old && old.scriptHash === scriptHash && old.scriptKey;
-      const reuseVoice = reuseScript && old.voiceHash === voiceHash && old.parts && old.partCount && old.parts.length === old.partCount;
+      const reuseVoice = reuseScript && old.voiceHash === voiceHash && !old.joined && state.run?.status !== "ready" && old.parts && old.partCount && old.parts.length === old.partCount;
       units.push({
         lang,
         unit,
@@ -167,7 +169,7 @@ export async function startAudiobook(bookId: string): Promise<MediaState> {
 }
 
 export function runHash(run: Run, lang: string) {
-  return hash(...run.units.filter((u) => u.lang === lang).map((u) => u.voiceHash), run.music === false ? "quiet" : "music");
+  return hash(...run.units.filter((u) => u.lang === lang).map((u) => u.voiceHash), run.music === false ? "quiet" : "music", MIX_V);
 }
 
 export async function takeLease(bookId: string, key = leaseKey(bookId), step = "audiobook"): Promise<boolean> {
@@ -283,6 +285,26 @@ async function join(bookId: string, state: MediaState, run: Run, lang: string): 
   const cues: TimedCue[] = [];
   const unitTimes: AudioResult["units"] = [];
   const allParts = units.flatMap((u) => u.parts ?? []);
+  // Pieces of an older, finished run may already be gone: record those chapters again.
+  const missing: UnitState[] = [];
+  const pieces = new Map<string, Buffer>();
+  for (const unit of units) {
+    for (const part of unit.parts ?? []) {
+      const bytes = await getAudio(part.key).catch(() => null);
+      if (bytes) pieces.set(part.key, bytes);
+      else {
+        missing.push(unit);
+        break;
+      }
+    }
+  }
+  if (missing.length) {
+    for (const unit of missing) {
+      unit.parts = undefined;
+      unit.joined = false;
+    }
+    return;
+  }
   const raw = allParts.length > 0 && allParts.every((p) => p.key.endsWith(".wav"));
   const music = raw && run.music !== false;
   let at = 0;
@@ -290,7 +312,7 @@ async function join(bookId: string, state: MediaState, run: Run, lang: string): 
     chapters.push({ title: unit.title, startMs: at });
     const unitStart = at;
     for (const part of unit.parts ?? []) {
-      files.push(await getAudio(part.key));
+      files.push(pieces.get(part.key)!);
       for (const cue of part.cues ?? []) cues.push({ unit: unit.unit, seg: cue.seg, startMs: at + cue.startMs, endMs: at + cue.endMs, text: cue.text });
       at += part.ms;
     }
@@ -299,14 +321,14 @@ async function join(bookId: string, state: MediaState, run: Run, lang: string): 
   let audio: Buffer;
   if (raw) {
     // One voice, one loudness, joined with tiny crossfades and encoded once: no seams between parts.
-    let voice = crossfadeJoin(files.map((file) => toFloat(wavToPcm(file))), MMS_RATE, 20);
+    let voice = polishVoice(crossfadeJoin(files.map((file) => toFloat(wavToPcm(file))), MMS_RATE, 20), MMS_RATE);
     let offset = 0;
     if (music) {
       const bed = withMusicBed(voice, MMS_RATE);
       voice = bed.audio;
       offset = bed.offsetMs;
     }
-    audio = await pcmToMp3(toInt16(voice), MMS_RATE, 48);
+    audio = await pcmToMp3(toInt16(voice), MMS_RATE, 64);
     const total = Math.round((voice.length / MMS_RATE) * 1000);
     // Everything moves later by the music's lead-in, and 20 ms earlier at each crossfade between parts.
     let delta = offset;
@@ -362,7 +384,10 @@ async function join(bookId: string, state: MediaState, run: Run, lang: string): 
   }
   if (old?.cuesKey && old.cuesKey !== cuesKey) await deleteAudio(old.cuesKey).catch(() => undefined);
   // The joined file holds everything; the pieces are not needed any more.
-  for (const unit of units) for (const part of unit.parts ?? []) await deleteAudio(part.key).catch(() => undefined);
+  for (const unit of units) {
+    unit.joined = true;
+    for (const part of unit.parts ?? []) await deleteAudio(part.key).catch(() => undefined);
+  }
 }
 
 export type AudiobookProgress = {

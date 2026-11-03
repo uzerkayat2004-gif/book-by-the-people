@@ -166,7 +166,10 @@ export async function makePicture(target: CallTarget, prompt: string, timeoutMs:
     size: "1792x1024",
     response_format: "b64_json",
     output_format: "jpeg",
-    reasoning_strength: "low",
+    // "high" lets Muse Image refine its picture over several passes: same price, better hands and faces.
+    reasoning_strength: "high",
+    // No web or image search (no real people or logos pulled in) and no code-drawn charts.
+    tool_enablement: { enable_web_search: false, enable_image_search: false, enable_shell: false },
   };
   const send = () =>
     fetch(`${target.baseUrl.replace(/\/$/, "")}/images/generations`, {
@@ -179,7 +182,8 @@ export async function makePicture(target: CallTarget, prompt: string, timeoutMs:
   if (response.status === 400) {
     // An older model may not know the optional fields: ask again with the basics only.
     const text = await response.text().catch(() => "");
-    if (/reasoning_strength|output_format|size/i.test(text)) {
+    if (/reasoning_strength|output_format|size|tool_enablement/i.test(text)) {
+      delete body.tool_enablement;
       delete body.reasoning_strength;
       delete body.output_format;
       delete body.size;

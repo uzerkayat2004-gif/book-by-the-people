@@ -23,6 +23,8 @@ export type UnitState = {
   /** How many parts the narration is cut into (known once the script exists). */
   partCount?: number;
   tries: number;
+  /** The parts were joined and deleted; a remake must record them again. */
+  joined?: boolean;
 };
 
 export type AudioResult = {
