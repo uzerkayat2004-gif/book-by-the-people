@@ -16,6 +16,7 @@ import { prisma } from "@/lib/db";
 import { planChapters } from "@/lib/book/plan";
 import type { SourceVoice } from "@/lib/book/types";
 import { currentDocument } from "@/lib/load-book";
+import { bookPlainText } from "@/lib/book/plain-text";
 import { bookLimit, bookUsage, spendPaused } from "@/lib/services/spend";
 import { limitShare, usageLine } from "@/lib/ai/spend";
 
@@ -204,6 +205,14 @@ export default async function StudioBookPage({
           reached: paused,
         }}
         chapters={document?.chapters.map((chapter) => chapter.title) ?? []}
+        bookText={
+          document
+            ? bookPlainText(document, {
+                people: book.voices.filter((voice) => voice.status === "READY" && !voice.hidden).length,
+                countries: new Set(book.voices.filter((voice) => voice.status === "READY" && !voice.hidden && voice.countryCode).map((voice) => voice.countryCode)).size,
+              })
+            : ""
+        }
         themes={themes}
         books={mine}
         backups={book.backups.map((backup) => ({

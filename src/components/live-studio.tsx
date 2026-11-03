@@ -139,6 +139,7 @@ export function StudioDesk({
   canChangeType,
   usage,
   chapters,
+  bookText = "",
   themes,
   books = [],
   backups = [],
@@ -176,6 +177,8 @@ export function StudioDesk({
   canChangeType: boolean;
   usage: Usage;
   chapters: string[];
+  /** The whole finished book as plain text for the copy button ("" when there is no draft yet). */
+  bookText?: string;
   themes: { label: string; count: number }[];
   books?: { id: string; slug: string; title: string; status?: string }[];
   backups?: { id: string; label: string; voices: number; note: string; restorable: boolean }[];
@@ -462,12 +465,12 @@ export function StudioDesk({
                     <MetaAudiobook bookId={book.id} slug={book.slug} locked={book.status !== "PUBLISHED"} />
                     <MetaVideobook bookId={book.id} slug={book.slug} locked={book.status !== "PUBLISHED"} />
                     <details className="s5-own" data-testid="media-own">
-                      <summary>Or upload your own audio or video (for example from NotebookLM)</summary>
+                      <summary>Or upload your own audio or video made with another tool</summary>
                       <ol className="s2-steps">
                         <MediaRow step={1} bookId={book.id} kind="audiobook" label="Audiobook" href={media.audioHref} name={media.audioName} bytes={media.audioBytes} />
                         <MediaRow step={2} bookId={book.id} kind="video" label="Video" href={media.videoHref} name={media.videoName} bytes={media.videoBytes} />
                       </ol>
-                      <small>Use &ldquo;Copy text for audio and video&rdquo; below to give NotebookLM the book. An upload replaces the Meta file readers get.</small>
+                      <small>Use &ldquo;Copy the whole book&rdquo; below to make audio or video in another app, such as Meta AI. An upload replaces the Meta file readers get.</small>
                     </details>
                   </>
                 ) : (
@@ -498,7 +501,12 @@ export function StudioDesk({
                   </button>
                 )}
                 <p className="s3-quietline">
-                  <CopyButton text={`${book.title}\n${book.question}\n${chapters.join("\n")}`} label="Copy text for audio and video" />
+                  <CopyButton text={bookText} label="Copy the whole book" disabled={!bookText} testId="copy-book" />
+                  <small className="s3-copynote" data-testid="copy-book-note">
+                    {bookText
+                      ? "Copy the whole book to make audio or video in another app, such as Meta AI."
+                      : "Make the book first. Then you can copy the whole book to make audio or video in another app."}
+                  </small>
                   {book.status === "PUBLISHED" && drafts.length ? (
                     <button className="s2-link" type="button" disabled={busy !== null} onClick={() => run("publish", () => post(`/api/books/${book.id}/publish`).then(() => undefined))}>
                       {busy === "publish" ? "Publishing…" : "Publish latest version"}
@@ -918,20 +926,50 @@ function snippet(text: string, max: number) {
   return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
 }
 
-function CopyButton({ text, label = "Copy" }: { text: string | (() => string); label?: string }) {
-  const [done, setDone] = useState(false);
+/** Puts text on the clipboard; falls back to a hidden textarea where the Clipboard API is missing (plain http). */
+async function copyToClipboard(value: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+  } catch {
+    // fall through to the textarea copy
+  }
+  const area = document.createElement("textarea");
+  area.value = value;
+  area.setAttribute("readonly", "");
+  area.style.position = "fixed";
+  area.style.opacity = "0";
+  document.body.appendChild(area);
+  area.select();
+  let ok = false;
+  try {
+    ok = document.execCommand("copy");
+  } catch {
+    ok = false;
+  }
+  area.remove();
+  return ok;
+}
+
+function CopyButton({ text, label = "Copy", disabled = false, testId }: { text: string | (() => string); label?: string; disabled?: boolean; testId?: string }) {
+  const [state, setState] = useState<"idle" | "done" | "failed">("idle");
   return (
     <button
       className="s2-btn s2-btn--sm"
       type="button"
+      disabled={disabled}
+      data-testid={testId}
+      aria-live="polite"
       onClick={() =>
-        void navigator.clipboard.writeText(typeof text === "function" ? text() : text).then(() => {
-          setDone(true);
-          window.setTimeout(() => setDone(false), 1600);
+        void copyToClipboard(typeof text === "function" ? text() : text).then((ok) => {
+          setState(ok ? "done" : "failed");
+          window.setTimeout(() => setState("idle"), 1800);
         })
       }
     >
-      {done ? "Copied" : label}
+      {state === "done" ? "Copied ✓" : state === "failed" ? "Could not copy" : label}
     </button>
   );
 }

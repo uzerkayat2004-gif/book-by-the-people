@@ -149,3 +149,5 @@
 .rl__add{display:flex;gap:8px}
 .rl__add .s2-sel{flex:1 1 auto;min-width:0}
 .rl__err{margin:10px 0 0;font-size:13px;color:#ffb4ab;line-height:1.45}
+.s3-quietline .s3-copynote { flex-basis: 100%; font-size: 12.5px; color: var(--muted); }
+.s3-quietline .s2-btn:disabled { opacity: .5; cursor: not-allowed; text-decoration: none; }
