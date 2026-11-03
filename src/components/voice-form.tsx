@@ -426,7 +426,14 @@ export function VoiceForm({
                       <span className="vs__spin" aria-hidden /> {t.warmingUp}
                     </b>
                     <span className="vs__sub" data-testid="prep-sub">
-                      {speech.stage === "retrying" ? t.retrying : speech.stage === "warming" ? t.almostReady : t.openingModel}
+                      {speech.stage === "retrying"
+                        ? t.retrying
+                        : speech.prepSec >= 15
+                          ? t.slowStart
+                          : speech.stage === "warming"
+                            ? t.almostReady
+                            : t.openingModel}
+                      {/* Time spent so far (counts up), never a promise of how long is left. */}
                       {speech.prepSec >= 3 ? ` · ${speech.prepSec} s` : ""}
                     </span>
                   </>

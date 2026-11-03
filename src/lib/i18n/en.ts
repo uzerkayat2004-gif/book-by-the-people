@@ -108,6 +108,7 @@ export const EN = {
   errUnsupported: "This browser can't turn speech into words. Try the latest Chrome, Edge or Safari, or write your answer instead.",
   openingModel: "Opening the voice model",
   almostReady: "Almost ready",
+  slowStart: "Slower on this device, still working",
   warmingUp: "Warming up the voice model, please wait…",
   pleaseWait: "Please wait. The mic turns on when it's ready.",
   startSpeaking: "Start speaking",

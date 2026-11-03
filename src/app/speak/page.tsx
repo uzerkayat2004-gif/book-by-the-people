@@ -2,6 +2,7 @@ import { SignInForm } from "@/components/sign-in-form";
 import { VoiceForm } from "@/components/voice-form";
 import { getCurrentUser } from "@/lib/auth";
 import { getConfig } from "@/lib/config";
+import { signInOptions } from "@/lib/sign-in-options";
 import { voiceBookLite } from "@/lib/public-books";
 import { voicesLeftToday } from "@/lib/services/pipeline";
 import { releaseLabel } from "@/lib/stage";
@@ -27,7 +28,7 @@ export default async function SpeakPage({ searchParams }: { searchParams: Promis
           <SignInForm
             nextPath="/speak"
             error={null}
-            google={Boolean(cfg.googleClientId && cfg.googleClientSecret)}
+            {...signInOptions()}
             demoEmail={null}
           />
         </div>

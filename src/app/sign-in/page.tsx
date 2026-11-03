@@ -1,6 +1,6 @@
 import { SignInForm } from "@/components/sign-in-form";
 import { getConfig } from "@/lib/config";
-import { canSendEmail } from "@/lib/mailer";
+import { signInOptions } from "@/lib/sign-in-options";
 
 export const metadata = { title: "Sign in", robots: { index: false, follow: false } };
 
@@ -38,8 +38,7 @@ export default async function SignInPage({
         <SignInForm
           nextPath={nextPath}
           error={error}
-          google={Boolean(cfg.googleClientId && cfg.googleClientSecret)}
-          email={!(cfg.googleClientId && cfg.googleClientSecret) || canSendEmail() || cfg.exposeMagicLinks}
+          {...signInOptions()}
           demoEmail={cfg.aiMode === "mock" && cfg.exposeMagicLinks ? "demo@bookbythepeople.dev" : null}
         />
       </div>

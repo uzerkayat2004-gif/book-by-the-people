@@ -112,6 +112,12 @@ test("a stuck start on several threads quietly restarts Whisper on one thread", 
   await page.goto("/b/gate-check/voice?guest=1&debug=1&preload=1");
   await expect(page.getByTestId("prep-sub")).toBeVisible({ timeout: 120_000 });
   await expect(page.getByTestId("mic")).toBeDisabled();
+  // A slow start says so honestly, and the seconds keep counting up (never a fixed "4 s").
+  await expect(page.getByTestId("prep-sub")).toContainText("Slower on this device", { timeout: 60_000 });
+  const secs = async () => Number(/(\d+) s/.exec((await page.getByTestId("prep-sub").innerText()) || "")?.[1] ?? 0);
+  const first = await secs();
+  await page.waitForTimeout(2500);
+  expect(await secs()).toBeGreaterThan(first);
   await expect(page.getByTestId("mic")).toBeEnabled({ timeout: 180_000 });
   const took = Date.now() - started;
   await page.getByTestId("mic").click();
@@ -124,6 +130,26 @@ test("a stuck start on several threads quietly restarts Whisper on one thread", 
   console.log(`[watchdog] listening after ${took} ms; diag: ${await page.getByTestId("voice-diag").innerText()}`);
   await page.getByTestId("mic").click();
   await expect.poll(async () => (await voice(page)).phase, { timeout: 60_000 }).toBe("idle");
+  await page.evaluate(() => localStorage.removeItem("bbtp:voice-safe"));
+});
+
+test("if Whisper never gets ready, a clear message and Write show up (no endless spinner)", async ({ page }) => {
+  test.skip(test.info().project.name !== "speak-en", "once is enough");
+  test.setTimeout(300_000);
+  await page.route("**/voice/whisper.worker.js", async (route) => {
+    const response = await route.fetch();
+    const body = (await response.text()).replace(
+      'post({ type: "status", stage: "warming", device });',
+      'post({ type: "status", stage: "warming", device }); await new Promise(() => {});',
+    );
+    await route.fulfill({ response, body });
+  });
+  await page.addInitScript(() => localStorage.removeItem("bbtp:voice-safe"));
+  await page.goto("/b/gate-check/voice?guest=1&preload=1");
+  await expect(page.getByTestId("prep-sub")).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByTestId("prep-sub")).toBeHidden({ timeout: 200_000 });
+  await expect(page.getByText(/voice model did not load/i)).toBeVisible();
+  await expect(page.getByTestId("tab-write")).toBeVisible();
   await page.evaluate(() => localStorage.removeItem("bbtp:voice-safe"));
 });
 

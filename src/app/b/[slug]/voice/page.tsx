@@ -5,6 +5,7 @@ import { VoiceForm } from "@/components/voice-form";
 import { getCurrentUser } from "@/lib/auth";
 import { canAcceptVoice } from "@/lib/book/lifecycle";
 import { getConfig } from "@/lib/config";
+import { signInOptions } from "@/lib/sign-in-options";
 import { loadBookBySlug, pausedNow } from "@/lib/load-book";
 import { voicesLeftToday } from "@/lib/services/pipeline";
 import { releaseLabel } from "@/lib/stage";
@@ -63,8 +64,7 @@ export default async function VoicePage({
   const wrapped = (
     <div {...lang}>{form}</div>
   );
-  if (query.step) return wrapped;
-
+  // A closed, paused or released book never shows the form, whatever the link says.
   if (!gate.ok) {
     return (
       <main className="page speak" {...lang}>
@@ -82,6 +82,8 @@ export default async function VoicePage({
     );
   }
 
+  if (query.step) return wrapped;
+
   if (!user && !query.guest && loaded.type !== "INVITED") {
     const next = `/b/${loaded.slug}/voice${query.invite ? `?invite=${query.invite}` : ""}`;
     return (
@@ -96,7 +98,7 @@ export default async function VoicePage({
           <h1>{ui.addYourVoice}</h1>
           <p className="lead">{ui.signInToAdd}</p>
           <div className="grow" />
-          <SignInForm nextPath={next} error={null} google={Boolean(cfg.googleClientId && cfg.googleClientSecret)} demoEmail={null} />
+          <SignInForm nextPath={next} error={null} {...signInOptions()} demoEmail={null} />
           {loaded.type === "OPEN" ? (
             <Link className="link" href={`/b/${loaded.slug}/voice?guest=1`} style={{ display: "block", textAlign: "center", marginTop: 16 }}>
               {ui.noAccount}
