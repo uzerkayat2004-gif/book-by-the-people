@@ -56,7 +56,7 @@ export function storyboardPrompt(input: { unit: number; total: number; bookTitle
     "Rules:",
     `- Return 1 to ${MAX_SCENES_PER_UNIT} scenes in order. "segment" is the number of the narration segment where the scene starts. The first scene starts at segment 0. Each scene lasts until the next one, so give every scene at least two segments where you can.`,
     input.pictures
-      ? `- kind "picture": write "prompt", one vivid sentence describing a picture that fits what is being said (a place, an object, a mood, people seen from behind or far away). At most ${MAX_PICTURES_PER_UNIT} pictures. Never put words, signs, names or real people in a picture.`
+      ? `- kind "picture": write "prompt", one vivid sentence describing a picture that fits what is being said (a place, an object, a mood, people seen from behind or far away). Use at least 1 and at most ${MAX_PICTURES_PER_UNIT} pictures, spread across the whole part, and alternate pictures with quotes (a picture after a quote where there is room). Never put words, signs, names or real people in a picture.`
       : '- Pictures are off: do not use kind "picture".',
     input.quotes.length
       ? '- kind "quote": show one of the listed quotes as a card while the narration reads it. "quote" is its number. Use each quote at most once, at the segment where it is read.'
@@ -147,4 +147,78 @@ export function captionChunks(cue: { startMs: number; endMs: number; text: strin
     at += length;
     return out;
   });
+}
+
+/** Makes sure a part with pictures on has at least one picture: after the last scene if there is room, else in place of a plain card. */
+export function withPicture(board: Storyboard, segments: number, prompt: string): Storyboard {
+  if (board.scenes.some((scene) => scene.kind === "picture")) return board;
+  const scenes = [...board.scenes];
+  const last = scenes[scenes.length - 1];
+  if (!last) return { scenes: [{ kind: "picture", segment: 0, prompt }] };
+  if (last.segment + 1 < segments && scenes.length < MAX_SCENES_PER_UNIT) scenes.push({ kind: "picture", segment: last.segment + 1, prompt });
+  else {
+    const card = scenes.findIndex((scene) => scene.kind === "card");
+    if (card >= 0) scenes[card] = { kind: "picture", segment: scenes[card].segment, prompt };
+  }
+  return { scenes };
+}
+
+export type PaceScene = { startMs: number; endMs: number; kind: string; image?: string; unit?: number; chapter?: string };
+
+/**
+ * Keeps the film moving: no card or quote stays on screen longer than about `capMs`, and no picture longer than
+ * 1.5 × `capMs`. The rest of a long scene is filled with pictures, from the same chapter first, never the same
+ * picture twice in a row and never the same quote again. With no pictures at all, the scene stays (it still moves).
+ */
+export function paceScenes<T extends PaceScene>(scenes: T[], capMs = 8000): T[] {
+  const pool = scenes.filter((scene) => scene.kind === "picture" && scene.image);
+  const uses = new Map<string, number>();
+  for (const scene of pool) uses.set(scene.image!, (uses.get(scene.image!) ?? 0) + 1);
+  const out: T[] = [];
+  const capOf = (scene: PaceScene) => (scene.kind === "picture" ? capMs * 1.5 : capMs);
+  let carry: number | null = null;
+  scenes.forEach((original, index) => {
+    // The previous scene handed its last seconds to this one (it shows the same picture).
+    const scene: T = carry === null ? original : { ...original, startMs: carry };
+    carry = null;
+    const cap = capOf(scene);
+    const following = scenes[index + 1]?.image;
+    if (scene.kind === "end" || scene.endMs - scene.startMs <= cap + 2000 || !pool.length) {
+      out.push(scene);
+      return;
+    }
+    let t = scene.startMs;
+    let current: T = scene;
+    while (t < scene.endMs) {
+      const left = scene.endMs - t;
+      let length = Math.min(capOf(current), left);
+      if (left - length < 3000) length = left;
+      out.push({ ...current, startMs: t, endMs: t + length, chapter: t === scene.startMs ? scene.chapter : undefined });
+      t += length;
+      if (t >= scene.endMs) break;
+      const previous = out[out.length - 1].image;
+      const mid = t + Math.min(capMs, scene.endMs - t) / 2;
+      const last = scene.endMs - t <= capMs * 1.5 + 3000;
+      const pick = [...pool]
+        .filter((p) => p.image !== previous && !(last && p.image === following && pool.some((q) => q.image !== previous && q.image !== following)))
+        .sort(
+          (a, b) =>
+            Number(a.unit !== scene.unit) - Number(b.unit !== scene.unit) ||
+            (uses.get(a.image!) ?? 0) - (uses.get(b.image!) ?? 0) ||
+            Math.abs((a.startMs + a.endMs) / 2 - mid) - Math.abs((b.startMs + b.endMs) / 2 - mid),
+        )[0];
+      if (pick && last && pick.image === following) {
+        carry = t;
+        break;
+      }
+      if (!pick) {
+        // Only one picture and it is already showing: let it run on.
+        out[out.length - 1] = { ...out[out.length - 1], endMs: scene.endMs };
+        break;
+      }
+      uses.set(pick.image!, (uses.get(pick.image!) ?? 0) + 1);
+      current = { ...scene, kind: "picture", image: pick.image, quote: undefined, title: undefined, subtitle: undefined } as T;
+    }
+  });
+  return out;
 }

@@ -19,6 +19,8 @@ import {
   parseStoryboard,
   captionChunks,
   plainStoryboard,
+  paceScenes,
+  withPicture,
   storyboardPrompt,
   unitQuotes,
   type QuoteRef,
@@ -40,9 +42,10 @@ import {
 } from "./audiobook";
 
 /** Bump when the storyboard prompt, picture style or the film's look changes. */
-const SB_V = 1;
+const SB_V = 2;
 const IMG_V = 1;
-const FILM_V = 1;
+const FILM_V = 2;
+const CARD_MS = 8000;
 export const VIDEO_RUNS_PER_DAY = 3;
 export const MAX_PICTURES = 18;
 const PICTURE_USD = 0.01;
@@ -211,9 +214,12 @@ async function makeBoard(bookId: string, run: VideoRun, unit: UnitBoard, doc: Bo
     }
   }
   const plain = !board;
-  if (!board) {
-    const chapter = unit.unit > 0 ? doc.chapters[unit.unit - 1] : null;
-    board = plainStoryboard({ unit: unit.unit, script, quotes, pictures, title: unit.title, theme: chapter?.theme, question: doc.question });
+  const chapter = unit.unit > 0 ? doc.chapters[unit.unit - 1] : null;
+  if (!board) board = plainStoryboard({ unit: unit.unit, script, quotes, pictures, title: unit.title, theme: chapter?.theme, question: doc.question });
+  // Every chapter gets at least one picture when pictures are on.
+  if (pictures) {
+    const fallback = unit.unit === 0 ? `An evocative scene about the question: ${doc.question}` : `An evocative scene about "${unit.title}"${chapter?.theme ? `: ${chapter.theme}` : ""}`;
+    board = withPicture(board, script.segments.length, fallback);
   }
   const key = `book-${bookId}-mm-sb-u${unit.unit}-${unit.hash}.json`;
   await putAudio(key, Buffer.from(JSON.stringify(board)), "application/json");
@@ -421,6 +427,8 @@ export type PlanScene = {
   quote?: QuoteRef;
   /** Shown over the first seconds of a chapter. */
   chapter?: string;
+  /** Which part of the book (0 is the opening). */
+  unit?: number;
 };
 
 export type FilmPlan = {
@@ -481,13 +489,13 @@ export async function filmPlan(bookId: string): Promise<FilmPlan> {
       const startMs = index === 0 ? times.startMs : Math.max(times.startMs, Math.round(segmentStart(scene.segment)));
       const next = board.scenes[index + 1];
       const endMs = next ? Math.max(startMs + 1000, Math.round(segmentStart(next.segment))) : times.startMs + times.ms;
-      const base: PlanScene = { startMs, endMs, kind: "card", title: unit.unit === 0 ? doc.title : unit.title, subtitle: unit.unit === 0 ? doc.question : doc.title };
+      const base: PlanScene = { startMs, endMs, unit: unit.unit, kind: "card", title: unit.unit === 0 ? doc.title : unit.title, subtitle: unit.unit === 0 ? doc.question : doc.title };
       if (unit.unit === 0 && index === 0) {
         // The film opens on the title card; a picture planned for the opening follows it once the title has been seen.
         const key = scene.kind === "picture" && scene.prompt ? pictures.get(pictureId(fullPrompt(scene.prompt), run.image.value)) : undefined;
         if (key && endMs - startMs > 9000) {
           scenes.push({ startMs, endMs: startMs + 5000, kind: "opening", title: doc.title, subtitle: doc.question });
-          scenes.push({ startMs: startMs + 5000, endMs, kind: "picture", image: assetUrl(bookId, key) });
+          scenes.push({ startMs: startMs + 5000, endMs, unit: 0, kind: "picture", image: assetUrl(bookId, key) });
           return;
         }
         Object.assign(base, { kind: "opening", title: doc.title, subtitle: doc.question });
@@ -504,6 +512,10 @@ export async function filmPlan(bookId: string): Promise<FilmPlan> {
   scenes.sort((a, b) => a.startMs - b.startMs);
   for (let i = 0; i < scenes.length - 1; i += 1) scenes[i].endMs = Math.max(scenes[i].startMs + 500, scenes[i + 1].startMs);
   if (scenes.length) scenes[scenes.length - 1].endMs = audio.ms;
+  // Nothing stays still too long: long quotes and cards hand over to pictures.
+  const paced = paceScenes(scenes, CARD_MS);
+  scenes.length = 0;
+  scenes.push(...paced);
   scenes.push({ startMs: audio.ms, endMs: audio.ms + END_MS, kind: "end", title: doc.title });
   const credit = filmCredit(run);
   return {
@@ -627,7 +639,8 @@ export async function videoPanel(bookId: string) {
   const state = await readVideo(bookId);
   const audioState = await readState(bookId);
   const docs = await documentsFor(bookId).catch(() => null);
-  const lang = docs?.mainLang ?? "en";
+  // Before release there is no book text yet: show the pickers for the book's own language.
+  const lang = docs?.mainLang ?? (await prisma.book.findUnique({ where: { id: bookId }, select: { language: true } }))?.language ?? "en";
   const doc = docs?.docs.get(lang);
   const metaOnly = mediaMetaOnly();
   const [writers, images] = await Promise.all([writerOptions(bookId), imageOptions(bookId)]);

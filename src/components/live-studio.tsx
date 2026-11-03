@@ -347,6 +347,7 @@ export function StudioDesk({
 
         {tab === "settings" ? (
           <SettingsTab
+            metaOnly={Boolean(media.metaOnly)}
             book={book}
             pollOptions={pollOptions}
             accepting={accepting}
@@ -437,14 +438,34 @@ export function StudioDesk({
                       Time
                     </button>
                   </li>
-                  <MediaRow step={2} bookId={book.id} kind="audiobook" label="Audiobook" href={media.audioHref} name={media.audioName} bytes={media.audioBytes} />
-                  <MediaRow step={3} bookId={book.id} kind="video" label="Video" href={media.videoHref} name={media.videoName} bytes={media.videoBytes} />
+                  {media.metaOnly ? null : (
+                    <>
+                      <MediaRow step={2} bookId={book.id} kind="audiobook" label="Audiobook" href={media.audioHref} name={media.audioName} bytes={media.audioBytes} />
+                      <MediaRow step={3} bookId={book.id} kind="video" label="Video" href={media.videoHref} name={media.videoName} bytes={media.videoBytes} />
+                    </>
+                  )}
                 </ol>
-                {media.metaOnly ? null : (
-                  <MakeMedia key={`${media.status}:${media.note ?? ""}`} bookId={book.id} status={media.status} note={media.note} hasDraft={drafts.length > 0} hasAudio={Boolean(media.audioHref)} />
+                {media.metaOnly ? (
+                  <>
+                    {/* Meta-only: the Meta audiobook and video book come first; before release they show the models they will use. */}
+                    <MetaAudiobook bookId={book.id} slug={book.slug} locked={book.status !== "PUBLISHED"} />
+                    <MetaVideobook bookId={book.id} slug={book.slug} locked={book.status !== "PUBLISHED"} />
+                    <details className="s5-own" data-testid="media-own">
+                      <summary>Or upload your own audio or video (for example from NotebookLM)</summary>
+                      <ol className="s2-steps">
+                        <MediaRow step={1} bookId={book.id} kind="audiobook" label="Audiobook" href={media.audioHref} name={media.audioName} bytes={media.audioBytes} />
+                        <MediaRow step={2} bookId={book.id} kind="video" label="Video" href={media.videoHref} name={media.videoName} bytes={media.videoBytes} />
+                      </ol>
+                      <small>Use &ldquo;Copy text for audio and video&rdquo; below to give NotebookLM the book. An upload replaces the Meta file readers get.</small>
+                    </details>
+                  </>
+                ) : (
+                  <>
+                    <MakeMedia key={`${media.status}:${media.note ?? ""}`} bookId={book.id} status={media.status} note={media.note} hasDraft={drafts.length > 0} hasAudio={Boolean(media.audioHref)} />
+                    {book.status === "PUBLISHED" ? <MetaAudiobook bookId={book.id} slug={book.slug} /> : null}
+                    {book.status === "PUBLISHED" ? <MetaVideobook bookId={book.id} slug={book.slug} /> : null}
+                  </>
                 )}
-                {book.status === "PUBLISHED" ? <MetaAudiobook bookId={book.id} slug={book.slug} /> : null}
-                {book.status === "PUBLISHED" ? <MetaVideobook bookId={book.id} slug={book.slug} /> : null}
                 <ReleaseLanguages bookId={book.id} bookLang={settings.language || "en"} published={book.status === "PUBLISHED"} initial={settings.releaseLanguages ?? []} />
                 <p className="s4-note">
                   {media.emails
@@ -1091,7 +1112,9 @@ function SettingsTab({
   ai,
   usage,
   quotes,
+  metaOnly = false,
 }: {
+  metaOnly?: boolean;
   book: { id: string; title: string; question: string; closesAt: string | null; pollQuestion: string; type: string; invitePath: string };
   pollOptions: { label: string; votes: number }[];
   accepting: boolean;
@@ -1566,10 +1589,12 @@ function SettingsTab({
               <h4>Free Meta models</h4>
               <LocalModels onChange={onDone} />
             </div>
-            <div className="s2-sub">
-              <h4>Audio tools</h4>
-              <AudioTools />
-            </div>
+            {metaOnly ? null : (
+              <div className="s2-sub">
+                <h4>Audio tools</h4>
+                <AudioTools />
+              </div>
+            )}
           </section>
 
           <section className="s2-card s2-danger" id="s-data">

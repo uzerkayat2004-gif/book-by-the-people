@@ -95,3 +95,43 @@ describe("storyboard", () => {
     expect(chunks.map((c) => c.text).join(" ")).toBe(text);
   });
 });
+
+describe("withPicture", () => {
+  it("adds a picture after the last scene when a chapter has none", async () => {
+    const { withPicture } = await import("./storyboard");
+    const board = withPicture({ scenes: [{ kind: "quote", segment: 0, quote: 0 }] }, 3, "A kitchen");
+    expect(board.scenes).toEqual([{ kind: "quote", segment: 0, quote: 0 }, { kind: "picture", segment: 1, prompt: "A kitchen" }]);
+    const kept = withPicture({ scenes: [{ kind: "picture", segment: 0, prompt: "x" }] }, 3, "A kitchen");
+    expect(kept.scenes).toHaveLength(1);
+    const card = withPicture({ scenes: [{ kind: "card", segment: 0 }] }, 1, "A kitchen");
+    expect(card.scenes[0].kind).toBe("picture");
+  });
+});
+
+describe("paceScenes", () => {
+  it("caps quotes at about 8 s and fills the rest with pictures, same chapter first, never twice in a row", async () => {
+    const { paceScenes } = await import("./storyboard");
+    const scenes = [
+      { startMs: 0, endMs: 6000, kind: "picture", image: "a", unit: 1, chapter: "One" },
+      { startMs: 6000, endMs: 30000, kind: "quote", unit: 1 },
+      { startMs: 30000, endMs: 36000, kind: "picture", image: "b", unit: 2 },
+      { startMs: 36000, endMs: 40000, kind: "end" },
+    ];
+    const out = paceScenes(scenes, 8000);
+    // No gaps, same total.
+    for (let i = 1; i < out.length; i += 1) expect(out[i].startMs).toBe(out[i - 1].endMs);
+    expect(out[out.length - 1].endMs).toBe(40000);
+    const quotes = out.filter((s) => s.kind === "quote");
+    expect(quotes).toHaveLength(1);
+    expect(quotes[0].endMs - quotes[0].startMs).toBeLessThanOrEqual(8000);
+    for (const s of out) if (s.kind !== "end") expect(s.endMs - s.startMs).toBeLessThanOrEqual(14000);
+    for (let i = 1; i < out.length; i += 1) if (out[i].image) expect(out[i].image).not.toBe(out[i - 1].image);
+    // The first fill comes from the same chapter.
+    expect(out[2]).toMatchObject({ kind: "picture", image: "a", chapter: undefined });
+  });
+  it("leaves scenes alone when there are no pictures", async () => {
+    const { paceScenes } = await import("./storyboard");
+    const scenes = [{ startMs: 0, endMs: 30000, kind: "quote" }];
+    expect(paceScenes(scenes)).toEqual(scenes);
+  });
+});

@@ -35,7 +35,7 @@ const minutes = (ms: number) => {
 };
 
 /** Release tab: make the audiobook with Meta models, pick the model for each step, and follow the progress. */
-export function MetaAudiobook({ bookId, slug }: { bookId: string; slug: string }) {
+export function MetaAudiobook({ bookId, slug, locked = false }: { bookId: string; slug: string; locked?: boolean }) {
   const router = useRouter();
   const [panel, setPanel] = useState<Panel | null>(null);
   const [error, setError] = useState("");
@@ -94,14 +94,14 @@ export function MetaAudiobook({ bookId, slug }: { bookId: string; slug: string }
     const timer = window.setTimeout(() => {
       void load().then((data) => {
         // A run left half done (tab closed, network gone) carries on by itself.
-        if (data?.progress.status === "running" || data?.progress.status === "busy") void drive();
+        if (!locked && (data?.progress.status === "running" || data?.progress.status === "busy")) void drive();
       });
     }, 0);
     return () => {
       alive.current = false;
       window.clearTimeout(timer);
     };
-  }, [load, drive]);
+  }, [load, drive, locked]);
 
   async function save(body: { writer?: string; voices?: Record<string, string> }) {
     setError("");
@@ -139,7 +139,7 @@ export function MetaAudiobook({ bookId, slug }: { bookId: string; slug: string }
 
   if (!panel) {
     return (
-      <div className="s5-meta" data-testid="meta-audiobook">
+      <div className={`s5-meta${locked ? " s5-meta--locked" : ""}`} data-testid="meta-audiobook">
         <div className="s5-meta__head">
           <b>Audiobook with Meta</b>
           <span>{error || "Loading…"}</span>
@@ -148,24 +148,29 @@ export function MetaAudiobook({ bookId, slug }: { bookId: string; slug: string }
     );
   }
 
-  const running = progress?.status === "running" || progress?.status === "busy";
+  const running = !locked && (progress?.status === "running" || progress?.status === "busy");
   const writerValue = panel.writerPicked || panel.writers.find((w) => w.recommended)?.value || "";
   const made = panel.languages.filter((l) => panel.audio[l.lang]);
   const noWriter = panel.writers.length === 0;
 
   return (
-    <div className="s5-meta" data-testid="meta-audiobook">
+    <div className={`s5-meta${locked ? " s5-meta--locked" : ""}`} data-testid="meta-audiobook">
       <div className="s5-meta__head">
         <b>Audiobook with Meta</b>
         <span>Muse Spark writes the narration · Meta MMS-TTS reads it</span>
       </div>
+      {locked ? (
+        <p className="s5-meta__lock" data-testid="meta-audiobook-locked">
+          Unlocks after Publish. These are the models it will use.
+        </p>
+      ) : null}
 
       <div className="s5-meta__picks">
         <label className="s5-meta__pick">
           Script writer
           <select
             value={writerValue}
-            disabled={running || noWriter}
+            disabled={locked || running || noWriter}
             onChange={(event) => void save({ writer: event.target.value })}
             data-testid="meta-writer"
           >
@@ -186,7 +191,7 @@ export function MetaAudiobook({ bookId, slug }: { bookId: string; slug: string }
             Voice · {language.name}
             <select
               value={language.picked || language.voices.find((v) => v.recommended)?.id || ""}
-              disabled={running || language.voices.length === 0}
+              disabled={locked || running || language.voices.length === 0}
               onChange={(event) => void save({ voices: { [language.lang]: event.target.value } })}
               data-testid={`meta-voice-${language.lang}`}
             >
@@ -202,7 +207,7 @@ export function MetaAudiobook({ bookId, slug }: { bookId: string; slug: string }
         ))}
       </div>
 
-      {!running ? (
+      {!running && !locked ? (
         <p className="s5-meta__est">
           About {Math.max(1, panel.estimate.minutes)} min of listening · {panel.estimate.usd < 0.01 ? "less than $0.01" : `about $${panel.estimate.usd.toFixed(2)}`} of Meta usage on your key ·{" "}
           {panel.runsLeftToday} {panel.runsLeftToday === 1 ? "run" : "runs"} left today
@@ -210,7 +215,7 @@ export function MetaAudiobook({ bookId, slug }: { bookId: string; slug: string }
         </p>
       ) : null}
 
-      {progress && progress.status !== "none" && progress.status !== "ready" ? (
+      {!locked && progress && progress.status !== "none" && progress.status !== "ready" ? (
         <div aria-live="polite">
           <div className={`s5-meta__status${progress.status === "failed" ? " s5-meta__status--failed" : ""}`}>
             <span>{progress.status === "failed" ? progress.error || "The audiobook stopped." : progress.phase || "Working"}</span>
@@ -250,11 +255,11 @@ export function MetaAudiobook({ bookId, slug }: { bookId: string; slug: string }
         <button
           className="s2-btn s2-btn--sm s2-btn--red"
           type="button"
-          disabled={running || panel.runsLeftToday <= 0}
+          disabled={locked || running || panel.runsLeftToday <= 0}
           onClick={() => void start()}
           data-testid="meta-make"
         >
-          {running ? "Making…" : progress?.status === "failed" ? "Try again" : made.length ? "Make again" : "Make audiobook"}
+          {locked ? "Unlocks after Publish" : running ? "Making…" : progress?.status === "failed" ? "Try again" : made.length ? "Make again" : "Make audiobook"}
         </button>
         {changed && !running ? <small className="s5-meta__est">Saved. Press Make again to use it; only the changed steps run again.</small> : null}
       </div>

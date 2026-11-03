@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BookCover } from "@/components/book-cover";
 import { SPEAK_LANGUAGES } from "@/lib/speak-languages";
+import { BOOK_LANGUAGES } from "@/lib/languages";
 import { AiSourcePicker, type AiPick } from "@/components/ai/ai-source-picker";
 import type { AiOptions } from "@/lib/ai/book-source";
 
@@ -37,6 +38,7 @@ export function CreateBookForm({ suggestion = "", ai }: { suggestion?: string; a
   const [title, setTitle] = useState("");
   const [mode, setMode] = useState("OPEN");
   const [language, setLanguage] = useState("en");
+  const [extra, setExtra] = useState<string[]>([]);
   const [date, setDate] = useState(start.date);
   const [time, setTime] = useState(start.time);
   const [limit, setLimit] = useState(3);
@@ -71,6 +73,7 @@ export function CreateBookForm({ suggestion = "", ai }: { suggestion?: string; a
         coverVibe: "ember",
         closesAt,
         language,
+        releaseLanguages: extra.filter((code) => code !== language),
         voiceLimitPerDay: limit,
         ai: aiPick.choice,
       }),
@@ -211,7 +214,40 @@ export function CreateBookForm({ suggestion = "", ai }: { suggestion?: string; a
               <input id="time" className="input" type="time" value={time} onChange={(event) => setTime(event.target.value)} />
             </label>
           </div>
-          <p className="hint">Voices close at this moment and the book is written. People can write in any of 30 languages.</p>
+          <div className="newbook__row">
+            <label className="field" htmlFor="release-language">
+              <span>Also release in (optional)</span>
+              <select
+                id="release-language"
+                className="input"
+                value=""
+                data-testid="new-release-language"
+                onChange={(event) => {
+                  const code = event.target.value;
+                  if (code) setExtra((list) => (list.includes(code) || list.length >= 12 ? list : [...list, code]));
+                }}
+              >
+                <option value="">{extra.length ? "Add another language…" : "Only the main language"}</option>
+                {BOOK_LANGUAGES.filter((item) => item.code !== language && !extra.includes(item.code)).map((item) => (
+                  <option key={item.code} value={item.code}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {extra.filter((code) => code !== language).length ? (
+            <p className="newbook__langs" data-testid="new-release-languages">
+              {extra
+                .filter((code) => code !== language)
+                .map((code) => (
+                  <button key={code} type="button" className="chip" onClick={() => setExtra((list) => list.filter((item) => item !== code))} aria-label={`Remove ${BOOK_LANGUAGES.find((item) => item.code === code)?.name ?? code}`}>
+                    {BOOK_LANGUAGES.find((item) => item.code === code)?.name ?? code} ×
+                  </button>
+                ))}
+            </p>
+          ) : null}
+          <p className="hint">Voices close at this moment and the book is written. People can write in any of 30 languages. Extra release languages are translated when you publish; you can change them later in Release.</p>
         </section>
 
         <AiSourcePicker options={ai} onChange={onAi} alert={aiError} />

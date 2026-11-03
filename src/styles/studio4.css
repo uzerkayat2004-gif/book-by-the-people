@@ -122,4 +122,10 @@
 .s5-meta__done { display: grid; gap: 6px; }
 .s5-meta__done audio { width: 100%; height: 36px; }
 .s5-meta__done video { width: 100%; aspect-ratio: 16 / 9; border-radius: 10px; background: #000; }
+.s5-meta--locked .s5-meta__picks { opacity: .6; }
+.s5-meta__lock { margin: 0; font-size: 13px; color: var(--s2-muted, #8a8580); }
+.s5-own { margin: 14px 0 0; padding: 12px 16px; border-radius: 14px; border: 1px dashed var(--s2-line); }
+.s5-own > summary { cursor: pointer; font-size: 14px; color: var(--s2-muted, #8a8580); }
+.s5-own[open] > summary { margin-bottom: 10px; }
+.s5-own small { display: block; margin-top: 8px; font-size: 12px; color: var(--s2-muted, #8a8580); }
 .s5-meta__done small { font-size: 12px; color: var(--muted); }

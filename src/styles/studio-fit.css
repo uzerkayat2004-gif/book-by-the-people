@@ -190,6 +190,9 @@
 .newbook .ta{min-height:70px;font-size:15px}
 .newbook select.input{appearance:auto}
 .newbook__row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.newbook__langs{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 0}
+.newbook__langs .chip{font:inherit;font-size:13px;padding:5px 12px;border-radius:999px;border:1px solid var(--line,rgba(0,0,0,.15));background:transparent;color:inherit;cursor:pointer}
+.newbook__langs .chip:hover{border-color:var(--red,#c92e34)}
 .topicchips{display:flex;flex-wrap:wrap;gap:6px;margin:-4px 0 12px}
 .topicchips .chip{padding:5px 10px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--soft);font-size:11.5px}
 .topicchips .chip:hover{border-color:var(--line-strong);color:var(--text)}

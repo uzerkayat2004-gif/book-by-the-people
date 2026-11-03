@@ -27,6 +27,7 @@ export type PlanScene = {
   subtitle?: string;
   quote?: { text: string; speaker: string; country: string | null };
   chapter?: string;
+  unit?: number;
 };
 
 export type FilmPlan = {
@@ -231,8 +232,20 @@ export function drawFrame(ctx: Ctx, plan: FilmPlan, images: Map<string, ImageBit
     const local = t - scene.startMs;
     const image = scene.image ? images.get(scene.image) : undefined;
     if (scene.kind === "picture" && image) drawPicture(ctx, w, h, image, local, scene.endMs - scene.startMs + FADE_MS, i);
-    else if (scene.kind === "quote" && scene.quote) drawQuote(ctx, w, h, scene, local, fonts, plan.lang);
-    else drawCard(ctx, w, h, scene, local, fonts, plan.credit);
+    else {
+      // Cards and quotes drift in slowly so they never sit still.
+      const p = Math.min(1, Math.max(0, local / Math.max(1, scene.endMs - scene.startMs + FADE_MS)));
+      const zoom = 1 + 0.035 * p;
+      ctx.fillStyle = "#0e0c0c";
+      ctx.fillRect(0, 0, w, h);
+      ctx.save();
+      ctx.translate(w / 2, h / 2);
+      ctx.scale(zoom, zoom);
+      ctx.translate(-w / 2 + (i % 2 ? -1 : 1) * 10 * (p - 0.5), -h / 2);
+      if (scene.kind === "quote" && scene.quote) drawQuote(ctx, w, h, scene, local, fonts, plan.lang);
+      else drawCard(ctx, w, h, scene, local, fonts, plan.credit);
+      ctx.restore();
+    }
   };
   const scene = plan.scenes[index];
   const local = t - scene.startMs;

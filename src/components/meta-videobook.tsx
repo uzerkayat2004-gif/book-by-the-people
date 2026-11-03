@@ -41,7 +41,7 @@ const clock = (ms: number) => {
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Release tab: make the video book with Meta models (scenes, pictures, voice), pick the model for each step, and follow the progress. */
-export function MetaVideobook({ bookId, slug }: { bookId: string; slug: string }) {
+export function MetaVideobook({ bookId, slug, locked = false }: { bookId: string; slug: string; locked?: boolean }) {
   const router = useRouter();
   const [panel, setPanel] = useState<Panel | null>(null);
   const [error, setError] = useState("");
@@ -133,14 +133,14 @@ export function MetaVideobook({ bookId, slug }: { bookId: string; slug: string }
     const timer = window.setTimeout(() => {
       void load().then((data) => {
         // A run left half done (tab closed, network gone) carries on by itself, including the film itself.
-        if (data && ["running", "busy", "assemble"].includes(data.progress.status)) void drive();
+        if (!locked && data && ["running", "busy", "assemble"].includes(data.progress.status)) void drive();
       });
     }, 0);
     return () => {
       alive.current = false;
       window.clearTimeout(timer);
     };
-  }, [load, drive]);
+  }, [load, drive, locked]);
 
   async function save(body: { writer?: string; images?: string; voice?: string }) {
     setError("");
@@ -178,7 +178,7 @@ export function MetaVideobook({ bookId, slug }: { bookId: string; slug: string }
 
   if (!panel) {
     return (
-      <div className="s5-meta" data-testid="meta-video">
+      <div className={`s5-meta${locked ? " s5-meta--locked" : ""}`} data-testid="meta-video">
         <div className="s5-meta__head">
           <b>Video book with Meta</b>
           <span>{error || "Loading…"}</span>
@@ -187,8 +187,8 @@ export function MetaVideobook({ bookId, slug }: { bookId: string; slug: string }
     );
   }
 
-  const running = Boolean(film) || progress?.status === "running" || progress?.status === "busy";
-  const assembling = progress?.status === "assemble";
+  const running = !locked && (Boolean(film) || progress?.status === "running" || progress?.status === "busy");
+  const assembling = !locked && progress?.status === "assemble";
   const writerValue = panel.writerPicked || panel.writers.find((w) => w.recommended)?.value || "";
   const imageValue = panel.imagePicked || panel.images.find((w) => w.recommended)?.value || "none";
   const noWriter = panel.writers.length === 0;
@@ -197,16 +197,21 @@ export function MetaVideobook({ bookId, slug }: { bookId: string; slug: string }
   const many = (list: Option[]) => list.some((o) => o.provider !== list[0]?.provider && o.value !== "none");
 
   return (
-    <div className="s5-meta" data-testid="meta-video">
+    <div className={`s5-meta${locked ? " s5-meta--locked" : ""}`} data-testid="meta-video">
       <div className="s5-meta__head">
         <b>Video book with Meta</b>
         <span>Muse Spark plans the scenes · Muse Image draws them · the Meta voice narrates</span>
       </div>
+      {locked ? (
+        <p className="s5-meta__lock" data-testid="meta-video-locked">
+          Unlocks after Publish. These are the models it will use.
+        </p>
+      ) : null}
 
       <div className="s5-meta__picks">
         <label className="s5-meta__pick">
           Scene writer
-          <select value={writerValue} disabled={running || noWriter} onChange={(event) => void save({ writer: event.target.value })} data-testid="meta-video-writer">
+          <select value={writerValue} disabled={locked || running || noWriter} onChange={(event) => void save({ writer: event.target.value })} data-testid="meta-video-writer">
             {noWriter ? <option value="">No Meta key yet: simple scenes</option> : null}
             {panel.writers.map((option) => (
               <option key={option.value} value={option.value} disabled={!option.usable}>
@@ -220,7 +225,7 @@ export function MetaVideobook({ bookId, slug }: { bookId: string; slug: string }
         </label>
         <label className="s5-meta__pick">
           Pictures
-          <select value={imageValue} disabled={running} onChange={(event) => void save({ images: event.target.value })} data-testid="meta-video-images">
+          <select value={imageValue} disabled={locked || running} onChange={(event) => void save({ images: event.target.value })} data-testid="meta-video-images">
             {panel.images.map((option) => (
               <option key={option.value} value={option.value} disabled={!option.usable}>
                 {option.model}
@@ -235,7 +240,7 @@ export function MetaVideobook({ bookId, slug }: { bookId: string; slug: string }
           Voice · {panel.langName}
           <select
             value={panel.voicePicked || panel.voices.find((v) => v.recommended)?.id || ""}
-            disabled={running || panel.voices.length === 0}
+            disabled={locked || running || panel.voices.length === 0}
             onChange={(event) => void save({ voice: event.target.value })}
             data-testid="meta-video-voice"
           >
@@ -251,7 +256,7 @@ export function MetaVideobook({ bookId, slug }: { bookId: string; slug: string }
         </label>
       </div>
 
-      {!running && !assembling ? (
+      {!running && !assembling && !locked ? (
         <p className="s5-meta__est">
           About {panel.estimate.minutes} min of film{panel.estimate.pictures ? ` · up to ${panel.estimate.pictures} pictures` : ""} ·{" "}
           {panel.estimate.usd < 0.01 ? "less than $0.01" : `about $${panel.estimate.usd.toFixed(2)}`} of Meta usage on your key · takes about {panel.estimate.makeMinutes} min, keep this tab open ·{" "}
@@ -259,7 +264,7 @@ export function MetaVideobook({ bookId, slug }: { bookId: string; slug: string }
         </p>
       ) : null}
 
-      {progress && (running || (progress.status !== "none" && progress.status !== "ready")) ? (
+      {!locked && progress && (running || (progress.status !== "none" && progress.status !== "ready")) ? (
         <div aria-live="polite">
           <div className={`s5-meta__status${progress.status === "failed" && !film ? " s5-meta__status--failed" : ""}`}>
             <span>{progress.status === "failed" && !film ? progress.error || "The video book stopped." : phase}</span>
@@ -298,11 +303,11 @@ export function MetaVideobook({ bookId, slug }: { bookId: string; slug: string }
         <button
           className="s2-btn s2-btn--sm s2-btn--red"
           type="button"
-          disabled={running || (!assembling && panel.runsLeftToday <= 0)}
+          disabled={locked || running || (!assembling && panel.runsLeftToday <= 0)}
           onClick={() => (assembling ? void drive() : void start())}
           data-testid="meta-video-make"
         >
-          {running ? "Making…" : assembling ? "Finish the film" : progress?.status === "failed" ? "Try again" : panel.video ? "Make again" : "Make video book"}
+          {locked ? "Unlocks after Publish" : running ? "Making…" : assembling ? "Finish the film" : progress?.status === "failed" ? "Try again" : panel.video ? "Make again" : "Make video book"}
         </button>
         {changed && !running ? <small className="s5-meta__est">Saved. Press Make again to use it; only the changed steps run again.</small> : null}
       </div>

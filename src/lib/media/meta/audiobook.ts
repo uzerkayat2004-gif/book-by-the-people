@@ -432,7 +432,13 @@ export async function audiobookPanel(bookId: string) {
   const { docs, skipped } = await documentsFor(bookId).catch(() => ({ docs: new Map<string, BookDocument>(), skipped: [] as { lang: string; reason: string }[] }));
   const metaOnly = mediaMetaOnly();
   const writers = await writerOptions(bookId);
-  const languages = [...docs.keys()].map((lang) => ({
+  // Before release there is no book text yet: show the voice pickers for the languages it will be released in.
+  let langs = [...docs.keys()];
+  if (!langs.length) {
+    const book = await prisma.book.findUnique({ where: { id: bookId }, select: { language: true, releaseLanguages: true } });
+    if (book) langs = [...new Set([book.language || "en", ...parseLanguages(book.releaseLanguages)])];
+  }
+  const languages = langs.map((lang) => ({
     lang,
     name: bookLanguage(lang).name,
     voices: voiceOptions(lang, metaOnly),

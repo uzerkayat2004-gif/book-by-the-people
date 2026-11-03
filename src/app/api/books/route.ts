@@ -6,6 +6,7 @@ import { clientIp, jsonError } from "@/lib/http";
 import { hourly } from "@/lib/rate-limit";
 import { applyAiChoice, checkAiChoice } from "@/lib/ai/book-ai";
 import { createBook } from "@/lib/services/books";
+import { setReleaseLanguages } from "@/lib/services/translations";
 
 const schema = z.object({
   title: z.string(),
@@ -14,6 +15,8 @@ const schema = z.object({
   coverVibe: z.string().optional(),
   closesAt: z.string().nullable().optional(),
   language: z.string().max(16).optional(),
+  /** Optional extra languages to release the book in. */
+  releaseLanguages: z.array(z.string().max(16)).max(12).optional(),
   voiceLimitPerDay: z.number().int().optional(),
   maxVoiceSeconds: z.number().int().optional(),
   /** Where the book's AI comes from. Required: see lib/ai/book-source.ts. */
@@ -44,6 +47,7 @@ export async function POST(request: Request) {
       maxVoiceSeconds: parsed.maxVoiceSeconds,
     });
     await applyAiChoice(user.id, book.id, ai);
+    if (parsed.releaseLanguages?.length) await setReleaseLanguages(book.id, user.id, parsed.releaseLanguages);
     return NextResponse.json({ id: book.id, slug: book.slug });
   } catch (error) {
     return fromError(error);
