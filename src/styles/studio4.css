@@ -103,3 +103,22 @@
 @media (prefers-reduced-motion: reduce) {
   .s4-skel, .s4-spin { animation-duration: 2.4s; }
 }
+
+/* Release: the Meta audiobook card. */
+.s5-meta { display: grid; gap: 14px; margin: 14px 0 0; padding: 16px; border-radius: 16px; border: 1px solid var(--s2-line); background: var(--s2-card-2, rgba(255,255,255,.02)); }
+.s5-meta__head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.s5-meta__head b { font-size: 15px; }
+.s5-meta__head span { font-size: 12.5px; color: var(--muted); }
+.s5-meta__picks { display: grid; gap: 10px; }
+.s5-meta__pick { display: grid; gap: 5px; font-size: 12.5px; color: var(--soft); }
+.s5-meta__pick select { height: 38px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--s2-line); background: var(--s2-card, #16171b); color: var(--text); font-size: 13.5px; }
+.s5-meta__pick small { color: var(--muted); }
+.s5-meta__est { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+.s5-meta__bar { height: 6px; border-radius: 99px; background: rgba(255,255,255,.08); overflow: hidden; }
+.s5-meta__bar i { display: block; height: 100%; border-radius: inherit; background: var(--red, #e5383b); transition: width .6s ease; }
+.s5-meta__status { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--soft); }
+.s5-meta__status--failed { color: var(--red-text, #ff7a75); }
+.s5-meta__row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.s5-meta__done { display: grid; gap: 6px; }
+.s5-meta__done audio { width: 100%; height: 36px; }
+.s5-meta__done small { font-size: 12px; color: var(--muted); }

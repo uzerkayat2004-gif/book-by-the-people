@@ -9,6 +9,7 @@ import { isLocalType, modelChoices, modelLabel, type ProviderView } from "@/lib/
 import { releaseLabel } from "@/lib/stage";
 import { SPEAK_LANGUAGES } from "@/lib/speak-languages";
 import { ReleaseLanguages } from "@/components/studio/release-languages";
+import { MetaAudiobook } from "@/components/meta-audiobook";
 
 const STATUS_SHORT: Record<string, string> = {
   COLLECTING: "Open",
@@ -177,7 +178,7 @@ export function StudioDesk({
   books?: { id: string; slug: string; title: string; status?: string }[];
   backups?: { id: string; label: string; voices: number; note: string; restorable: boolean }[];
   settings: StudioSettings;
-  media: { audioHref: string | null; videoHref: string | null; audioBytes: number; videoBytes: number; audioName: string; videoName: string; status: string; note: string | null; emails?: boolean };
+  media: { audioHref: string | null; videoHref: string | null; audioBytes: number; videoBytes: number; audioName: string; videoName: string; status: string; note: string | null; emails?: boolean; metaOnly?: boolean };
   aiPaused?: boolean;
   showPoll?: boolean;
   bookNumber?: number;
@@ -438,7 +439,10 @@ export function StudioDesk({
                   <MediaRow step={2} bookId={book.id} kind="audiobook" label="Audiobook" href={media.audioHref} name={media.audioName} bytes={media.audioBytes} />
                   <MediaRow step={3} bookId={book.id} kind="video" label="Video" href={media.videoHref} name={media.videoName} bytes={media.videoBytes} />
                 </ol>
-                <MakeMedia key={`${media.status}:${media.note ?? ""}`} bookId={book.id} status={media.status} note={media.note} hasDraft={drafts.length > 0} hasAudio={Boolean(media.audioHref)} />
+                {media.metaOnly ? null : (
+                  <MakeMedia key={`${media.status}:${media.note ?? ""}`} bookId={book.id} status={media.status} note={media.note} hasDraft={drafts.length > 0} hasAudio={Boolean(media.audioHref)} />
+                )}
+                {book.status === "PUBLISHED" ? <MetaAudiobook bookId={book.id} slug={book.slug} /> : null}
                 <ReleaseLanguages bookId={book.id} bookLang={settings.language || "en"} published={book.status === "PUBLISHED"} initial={settings.releaseLanguages ?? []} />
                 <p className="s4-note">
                   {media.emails

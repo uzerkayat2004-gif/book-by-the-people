@@ -56,7 +56,6 @@ function pcmOf(wav: Buffer): { pcm: Int16Array; rate: number; channels: number }
 
 /** WAV → mp3 (mono, 48 kbps for speech) in plain JavaScript. */
 export async function wavToMp3(wav: Buffer, kbps = 48): Promise<Buffer> {
-  const { Mp3Encoder } = await import("@breezystack/lamejs");
   const { pcm, rate, channels } = pcmOf(wav);
   // Mix stereo down to mono: speech does not need two channels.
   let mono = pcm;
@@ -68,6 +67,12 @@ export async function wavToMp3(wav: Buffer, kbps = 48): Promise<Buffer> {
       mono[i] = Math.round(sum / channels);
     }
   }
+  return pcmToMp3(mono, rate, kbps);
+}
+
+/** Mono 16-bit samples → mp3. */
+export async function pcmToMp3(mono: Int16Array, rate: number, kbps = 48): Promise<Buffer> {
+  const { Mp3Encoder } = await import("@breezystack/lamejs");
   const encoder = new Mp3Encoder(1, rate, kbps);
   const parts: Buffer[] = [];
   const block = 1152;

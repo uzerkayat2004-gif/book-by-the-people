@@ -63,6 +63,8 @@ export function AudioPlayer({
   downloadHref,
   autoPlay = false,
   compact = false,
+  tracks,
+  credit,
 }: {
   src: string;
   title: string;
@@ -73,7 +75,18 @@ export function AudioPlayer({
   downloadHref?: string;
   autoPlay?: boolean;
   compact?: boolean;
+  /** Narrations with chapters (Meta audiobook), one per language. The first is the book's own language. */
+  tracks?: AudioTrack[];
+  /** Who made the narration, e.g. "Words: Muse Spark · Voice: Meta MMS-TTS". */
+  credit?: string;
 }) {
+  const [trackIndex, setTrackIndex] = useState(0);
+  const track = tracks?.[trackIndex] ?? null;
+  if (track) {
+    src = track.src;
+    downloadHref = track.downloadHref;
+    bytes = track.bytes;
+  }
   const audio = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
   const [time, setTime] = useState(0);
@@ -181,15 +194,69 @@ export function AudioPlayer({
             {speed}×
           </button>
         </div>
-        {downloadHref ? (
+        {tracks && tracks.length > 1 ? (
+          <div className="aplayer__langs" role="group" aria-label="Language">
+            {tracks.map((item, index) => (
+              <button
+                key={item.lang}
+                type="button"
+                className={`aplayer__lang${index === trackIndex ? " is-on" : ""}`}
+                aria-pressed={index === trackIndex}
+                onClick={() => {
+                  setTrackIndex(index);
+                  setTime(0);
+                  setPlaying(false);
+                }}
+              >
+                {item.name}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {track && track.chapters.length > 1 ? (
+          <ol className="aplayer__chapters" data-testid="audio-chapters">
+            {track.chapters.map((chapter, index) => {
+              const start = chapter.startMs / 1000;
+              const next = track.chapters[index + 1]?.startMs;
+              const on = time >= start && (next === undefined || time < next / 1000);
+              return (
+                <li key={`${index}-${chapter.startMs}`}>
+                  <button
+                    type="button"
+                    className={on ? "is-on" : ""}
+                    onClick={() => {
+                      seek(start);
+                      const el = audio.current;
+                      if (el?.paused) void el.play().catch(() => setPlaying(false));
+                    }}
+                  >
+                    <span>{chapter.title}</span>
+                    <small>{formatTime(start)}</small>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        ) : null}
+        {downloadHref || credit ? (
           <div className="aplayer__foot">
-            <DownloadButton href={downloadHref} label="Download MP3" bytes={bytes} />
+            {downloadHref ? <DownloadButton href={downloadHref} label="Download MP3" bytes={bytes} /> : null}
+            {credit ? <span className="aplayer__credit">{credit}</span> : null}
           </div>
         ) : null}
       </div>
     </div>
   );
 }
+
+export type AudioTrack = {
+  lang: string;
+  name: string;
+  src: string;
+  downloadHref: string;
+  bytes: number;
+  chapters: { title: string; startMs: number }[];
+};
 
 /** The film: a cover-style poster with a play button; the video loads only when someone presses play. */
 export function FilmCard({

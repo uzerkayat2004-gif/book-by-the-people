@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { getAudio, publicAudioUrl } from "@/lib/storage";
 import { getCurrentUser } from "@/lib/auth";
 import { canGetMedia, isReleasedBook } from "@/lib/privacy";
+import { audiobookFor } from "@/lib/media/meta/audiobook";
 
 export async function GET(request: Request, context: { params: Promise<{ slug: string; kind: string }> }) {
   const { slug, kind } = await context.params;
@@ -16,7 +17,12 @@ export async function GET(request: Request, context: { params: Promise<{ slug: s
       return new Response("Not found", { status: 404, headers: { "Cache-Control": "private, no-store" } });
     }
   }
-  const key = kind === "audiobook" ? book.audiobookKey : book.videoKey;
+  // ?lang=xx picks the Meta audiobook in one of the book's release languages.
+  const lang = (new URL(request.url).searchParams.get("lang") ?? "").toLowerCase();
+  let key = kind === "audiobook" ? book.audiobookKey : book.videoKey;
+  if (kind === "audiobook" && /^[a-z]{2,3}$/.test(lang) && lang !== (book.language || "en")) {
+    key = (await audiobookFor(book.id, lang).catch(() => null))?.key ?? null;
+  }
   if (!key) return new Response("Not found", { status: 404 });
   const wantsDownload = new URL(request.url).searchParams.get("download") === "1";
   if (released) {
@@ -28,7 +34,7 @@ export async function GET(request: Request, context: { params: Promise<{ slug: s
   const video = kind === "video";
   const name =
     (video ? book.videoName : book.audiobookName) ||
-    (video ? `${book.slug}.mp4` : key.endsWith(".mp3") ? `${book.slug}.mp3` : `${book.slug}.wav`);
+    (video ? `${book.slug}.mp4` : key.endsWith(".mp3") ? `${book.slug}${lang && lang !== (book.language || "en") ? `-${lang}` : ""}.mp3` : `${book.slug}.wav`);
   const download = wantsDownload;
   const type = video ? "video/mp4" : key.endsWith(".mp3") ? "audio/mpeg" : "audio/wav";
   const cache = released ? "public, max-age=300" : "private, no-store";

@@ -1,6 +1,6 @@
 import { expect, type APIRequestContext, type Page } from "@playwright/test";
 
-export const BASE = "http://localhost:43123";
+export const BASE = process.env.E2E_BASE ?? "http://localhost:43123";
 
 /** Signs in through the dev magic link (mock mode returns it instead of emailing). */
 export async function signIn(page: Page, email: string, next = "/") {

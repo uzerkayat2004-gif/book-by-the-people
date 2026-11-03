@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { mediaMetaOnly } from "@/lib/media/meta/flag";
 import { StudioDesk } from "@/components/live-studio";
 import { getCurrentUser } from "@/lib/auth";
 import { getConfig } from "@/lib/config";
@@ -222,6 +223,7 @@ export default async function StudioBookPage({
           status: mediaStatus,
           note: mediaJob?.lastError ?? null,
           emails: canSendEmail(),
+          metaOnly: mediaMetaOnly(),
         }}
         settings={{
           language: book.language,

@@ -1,3 +1,4 @@
+import type { AudioTrack } from "@/components/media-player";
 import Link from "next/link";
 import { BookCover } from "@/components/book-cover";
 import { Countdown } from "@/components/countdown";
@@ -63,7 +64,7 @@ export function BookHome({
   languages?: React.ReactNode;
   title?: string;
   slug?: string;
-  media?: { audio: boolean; video: boolean; audioBytes?: number; videoBytes?: number };
+  media?: { audio: boolean; video: boolean; audioBytes?: number; videoBytes?: number; tracks?: AudioTrack[]; credit?: string };
   stage: Stage;
   question: string;
   voiceCount: number;

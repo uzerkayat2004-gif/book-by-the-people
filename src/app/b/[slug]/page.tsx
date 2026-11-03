@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { readerTracks } from "@/lib/media/meta/audiobook";
 import { BookHome } from "@/components/book-home";
 import { getCurrentUser } from "@/lib/auth";
 import { canAcceptVoice } from "@/lib/book/lifecycle";
@@ -62,6 +63,7 @@ export default async function BookPage({
   const ui = uiFor(pageLang, edition ? null : loaded.uiJson);
   if (loaded.status === "PUBLISHED") await refreshStaleMedia(loaded.id).catch(() => undefined);
   const vote = await voterChoice(loaded.id);
+  const meta = loaded.status === "PUBLISHED" ? await readerTracks(loaded, pageLang).catch(() => ({ tracks: [], credit: "" })) : { tracks: [], credit: "" };
   const model = presentHome({
     readQuery: edition ? `lang=${wanted}` : "",
     status: loaded.status,
@@ -86,7 +88,7 @@ export default async function BookPage({
     <BookHome
       {...model}
       slug={loaded.slug}
-      media={{ audio: Boolean(loaded.audiobookKey), video: Boolean(loaded.videoKey), audioBytes: loaded.audiobookBytes, videoBytes: loaded.videoBytes }}
+      media={{ audio: Boolean(loaded.audiobookKey), video: Boolean(loaded.videoKey), audioBytes: loaded.audiobookBytes, videoBytes: loaded.videoBytes, tracks: meta.tracks, credit: meta.credit }}
       mode="book"
       owner={ownerName(loaded.creator)}
       ui={ui}

@@ -58,12 +58,29 @@ const nextConfig: NextConfig = {
   // time, so the build must not trace or copy it.
   // The built-in voice (eSpeak NG in WebAssembly) loads its .wasm next to its own file, so it stays a
   // plain node_modules package and its files ship with every server function (Vercel included).
-  serverExternalPackages: ["espeak-ng"],
+  serverExternalPackages: ["espeak-ng", "onnxruntime-node"],
   outputFileTracingIncludes: {
     "*": ["./node_modules/espeak-ng/dist/**/*", "./src/generated/prisma/*.node"],
+    // The Meta voice's runtime library is loaded by the binding at run time, so the tracer can't see it.
+    "/api/books/*/media/meta": [
+      "./node_modules/onnxruntime-node/bin/napi-v3/linux/x64/libonnxruntime.so.1",
+      "./node_modules/onnxruntime-node/bin/napi-v3/linux/x64/libonnxruntime_providers_shared.so",
+    ],
   },
   outputFileTracingExcludes: {
-    "*": ["./data/**/*", "./.tmp/**/*", "./test-results/**/*", "./playwright-report/**/*"],
+    "*": [
+      "./data/**/*",
+      "./.tmp/**/*",
+      "./test-results/**/*",
+      "./playwright-report/**/*",
+      // The Meta voice runs on the CPU: GPU libraries (≈340 MB) and other platforms' builds are left out.
+      "./node_modules/onnxruntime-node/bin/napi-v3/linux/x64/libonnxruntime_providers_cuda.so",
+      "./node_modules/onnxruntime-node/bin/napi-v3/linux/x64/libonnxruntime_providers_tensorrt.so",
+      "./node_modules/onnxruntime-node/bin/napi-v3/linux/x64/libonnxruntime.so.1.21.0",
+      "./node_modules/onnxruntime-node/bin/napi-v3/darwin/**/*",
+      "./node_modules/onnxruntime-node/bin/napi-v3/win32/**/*",
+      "./node_modules/onnxruntime-node/bin/napi-v3/linux/arm64/**/*",
+    ],
   },
   // Sessions, live voice counts, and drafts are request data. Cache Components
   // would try to prerender a shell around a database that changes every voice,

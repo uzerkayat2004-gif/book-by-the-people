@@ -37,6 +37,9 @@ export { narrationScript };
 /** Files the creator uploaded are stored as book-<id>-<kind>-upload.<ext>; anything else was made here. */
 export const isUploadedKey = (key: string | null | undefined) => /-upload\.[a-z0-9]+$/i.test(key ?? "");
 
+/** Files the Meta audiobook pipeline made (book-<id>-mm-…). The built-in voice never replaces them on its own. */
+export const isMetaMediaKey = (key: string | null | undefined) => /-mm-/.test(key ?? "");
+
 export { MEDIA_VERSION, mediaVersionKey } from "./version";
 
 /** Video is a still cover under the narration. Hosts without ffmpeg (Vercel) skip it; MEDIA_VIDEO=off skips it anywhere. */
@@ -157,7 +160,7 @@ export async function renderReleaseMedia(bookId: string, document: BookDocument,
   const data: { audiobookKey?: string; audiobookBytes?: number; audiobookName?: string; videoKey?: string | null; videoBytes?: number; videoName?: string } = {};
   let wroteAudio = false;
   let wroteVideo = false;
-  if (options.force || !isUploadedKey(current?.audiobookKey)) {
+  if (options.force || !(isUploadedKey(current?.audiobookKey) || isMetaMediaKey(current?.audiobookKey))) {
     const audioKey = `book-${bookId}-audiobook.${audioExt}`;
     await putAudio(audioKey, audio, audioMime);
     data.audiobookKey = audioKey;

@@ -4,7 +4,7 @@ import { applyEdits, parseDocument, visibleQuotes } from "../book/assemble";
 import { selectRollback, slugify } from "../book/lifecycle";
 import type { EditorEdits } from "../book/types";
 import { after } from "next/server";
-import { mediaVersionKey, isUploadedKey, renderReleaseMedia } from "../media/render";
+import { mediaVersionKey, isUploadedKey, isMetaMediaKey, renderReleaseMedia } from "../media/render";
 import { notifyReleased } from "../notify";
 import { prisma } from "../db";
 import { AppError } from "../errors";
@@ -335,7 +335,7 @@ export async function refreshStaleMedia(bookId: string) {
     select: { status: true, audiobookKey: true, publishedDraftId: true },
   });
   // Only the creator's own upload is left alone; older seeded or auto-made audio is narrated again.
-  if (!book || book.status !== "PUBLISHED" || isUploadedKey(book.audiobookKey) || !book.publishedDraftId) return;
+  if (!book || book.status !== "PUBLISHED" || isUploadedKey(book.audiobookKey) || isMetaMediaKey(book.audiobookKey) || !book.publishedDraftId) return;
   const marker = await prisma.pipelineJob.findUnique({ where: { key: mediaVersionKey(bookId) } });
   if (marker) return;
   const running = await prisma.pipelineJob.findUnique({ where: { key: `${bookId}:make:media` } });

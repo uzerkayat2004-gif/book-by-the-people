@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { BookCover } from "@/components/book-cover";
-import { AudioPlayer, FilmCard } from "@/components/media-player";
+import { AudioPlayer, FilmCard, type AudioTrack } from "@/components/media-player";
 
 export type ShelfOpen = {
   id: string;
@@ -178,7 +178,7 @@ export function BookMedia({
   countries,
 }: {
   slug: string;
-  media: { audio: boolean; video: boolean; audioBytes?: number; videoBytes?: number };
+  media: { audio: boolean; video: boolean; audioBytes?: number; videoBytes?: number; tracks?: AudioTrack[]; credit?: string };
   title: string;
   question: string;
   people: number;
@@ -206,6 +206,8 @@ export function BookMedia({
               countries={countries}
               bytes={media.audioBytes}
               downloadHref={`/api/media/${slug}/audiobook?download=1`}
+              tracks={media.tracks?.length ? media.tracks : undefined}
+              credit={media.credit || undefined}
             />
           </div>
         ) : null}
