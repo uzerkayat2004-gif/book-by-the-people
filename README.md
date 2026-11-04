@@ -15,7 +15,7 @@
 
 <img src="docs/images/hero.jpg" alt="Opening scene of a video book: 'The Teacher Who Stayed', 92 voices from 10 countries, over a wall of country flags" width="820">
 
-**[Try it live](https://book-by-the-people.vercel.app)** · **Demo video: link coming soon** · [How it works](#how-it-works) · [Meta models](#where-each-meta-model-is-used) · [Run it locally](#run-it-locally)
+**[Try it live](https://book-by-the-people.vercel.app)** · **[Watch the demo video](https://youtu.be/0tCJ3Fv0c2Q)** · [How it works](#how-it-works) · [Meta models](#where-each-meta-model-is-used) · [Run it locally](#run-it-locally)
 
 </div>
 
@@ -194,7 +194,7 @@ Built for the **Meta Global AI Developer Hackathon** (2026).
 - **Problem statement:** Build for your world
 - **Meta tooling:** Muse Spark 1.3, Muse Image 1.0, Muse Spark vision, Meta MMS-TTS
 - **Live app:** https://book-by-the-people.vercel.app
-- **Demo video:** link coming soon
+- **Demo video:** [youtu.be/0tCJ3Fv0c2Q](https://youtu.be/0tCJ3Fv0c2Q)
 
 ## License
 
