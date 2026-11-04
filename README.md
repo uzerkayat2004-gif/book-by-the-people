@@ -11,6 +11,22 @@ Anyone can create a book.
 
 The interface follows the live Book by the People design: the same type, color, globe, and page flow. The books, studio, and providers are the v2 app. 
 
+## Meta Global AI Hackathon 2026 — Submission Overview
+
+- **Track & Problem Statement**: Indie Developer · Build for Your World
+- **Hackathon Provenance (Oct 26 – Nov 4, 2026)**: Rebuilt for this hackathon on Meta models during the event window. Live app: https://book-by-the-people.vercel.app
+- **Meta AI Runtime Models**:
+  - `Muse Spark 1.3` (Meta Model API) — book writing, structure, editing
+  - `Muse Image 1.0` — video-book scene pictures
+  - `Muse Voice Transcribe` — speech to text
+  - Meta MMS-TTS (open Meta voice, in-app) — audiobook and video-book narration
+  - Optional fallback: Muse Spark Open via an OpenAI-compatible host
+- **Bonus Prize Categories Targeted**:
+  - Best Creative Build · Best Agentic Use-Case
+- **3-Minute Demo Video**: (paste YouTube URL after upload)
+- **Quickstart**: `cp .env.example .env` then `npm install && npm run setup && npm run dev` (AI_MODE=mock runs without keys)
+
+
 ## Run it
 
 ```bash
