@@ -3,12 +3,12 @@
 How a crowd of answers becomes one smooth book, then one audiobook and one documentary-style film,
 all with Meta models. Plain words first; file names at the end.
 
-## What NotebookLM does well, and what we took
+## What good audio and video summaries do, and what we took
 
-We studied Google NotebookLM's Audio Overviews and Video Overviews (public help pages and Google's
-announcements, 2025 to 2026).
+We studied how today's AI audio and video summary tools present a set of sources (public help
+pages and announcements, 2025 to 2026).
 
-**Audio Overviews**
+**Audio summaries**
 - Formats: *Deep Dive* (two hosts talking), *Brief* (one speaker, under 2 minutes), *Critique*
   (expert review) and *Debate* (two sides, without false balance).
 - You can steer it with a focus prompt and pick a length.
@@ -17,7 +17,7 @@ announcements, 2025 to 2026).
 - It hooks the listener early, builds up, contrasts and ends with a takeaway. It signposts ("first…",
   "on the other hand…") and recaps.
 
-**Video Overviews**
+**Video summaries**
 - *Explainer* and *Brief*: narrated, illustrated slides in one consistent visual style (several style
   presets).
 - *Cinematic*: a model acts as the "creative director", plans the scenes and refines them so the
@@ -25,7 +25,7 @@ announcements, 2025 to 2026).
 - *Review producer notes*: you see a written plan of the film before it is rendered.
 
 **What we use**
-1. **The arc.** Hook, build-up, contrast, resolution and closing, as in the overviews. The plan step
+1. **The arc.** Hook, build-up, contrast, resolution and closing, as in those summaries. The plan step
    gives every section one of these roles.
 2. **Fair contrast.** We avoid false balance (from *Debate*): a minority view gets its true size
    ("a handful of you…") and is not pushed up to look like half the crowd.
@@ -38,7 +38,7 @@ announcements, 2025 to 2026).
    "producer notes". The audiobook and the film both follow it, so all three tell the same story in
    the same order.
 6. **One visual style.** Every picture is made in one shared style and then given one colour grade,
-   and the film uses one set of fonts, like the Video Overview style presets.
+   and the film uses one set of fonts, like a video style preset.
 7. **Visuals that follow the narration.** A picture changes when the narration moves to a new idea,
    not on a timer.
 

@@ -57,7 +57,7 @@ Limits to say out loud:
   (provider type `meta`, plus the Meta MMS voice). Off: the same pickers also list the creator's other saved models
   (OpenAI-compatible, Gemini, and so on) and the built-in eSpeak voice. No code is deleted. One helper,
   `mediaMetaOnly()`, reads it, and every option list goes through `filterOptions()`.
-- NotebookLM stays: the creator can still upload an audio or video file, or paste a NotebookLM link, in the same Studio card.
+- Uploads stay: the creator can still upload their own audio or video file in the same Studio card.
   An upload always wins over a made file until the creator deletes it.
 - While `HACKATHON_META_ONLY` is on, **Publish no longer makes the built-in eSpeak audiobook and video** on its own,
   stale media is not refreshed by eSpeak, and the old "Make audiobook" (eSpeak) endpoint answers 409. The creator
@@ -189,7 +189,7 @@ time to make, runs left today.
 - Book page and Library card: an "Listen" player with a chapter list (it jumps to `startMs`) and a language
   switch for each release language that has a voice. A "Watch" player shows the video book with captions.
 - Credits line under each player. Download buttons stay as they are.
-- A book with a NotebookLM upload shows that file, labelled "Made with NotebookLM".
+- A book with an uploaded audio or video file shows that file instead.
 
 ## 7. Data changes
 

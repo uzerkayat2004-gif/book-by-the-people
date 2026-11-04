@@ -1,222 +1,209 @@
-# Book by the People
+<div align="center">
 
-A book written from real voices. Someone asks one question. People record short answers in any language. When the voices close, the creator makes a book: chapters from what was actually said, verbatim quotations, and a play button that starts at that line in the original recording.
+# 📖 Book by the People
 
-Anyone can create a book.
+**Thousands of real voices, one beautiful book. Plus an audiobook and a video book, all made with Meta's models.**
 
-- **Solo.** One person, over time.
-- **Invited.** A private link. Only people who have it can speak.
-- **Open.** Anyone with the link, on a public page with a live globe.
-- **Famous voices.** Public quotations the creator pastes, each with a source URL. The app does not invent quotations and does not synthesize a famous person's voice.
+[![Live demo](https://img.shields.io/badge/Live%20demo-book--by--the--people.vercel.app-e11d48?style=for-the-badge)](https://book-by-the-people.vercel.app)
 
-The interface follows the live Book by the People design: the same type, color, globe, and page flow. The books, studio, and providers are the v2 app. 
+![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
+![Meta Muse Spark](https://img.shields.io/badge/Meta-Muse%20Spark%201.3-0866FF?logo=meta&logoColor=white)
+![Meta Muse Image](https://img.shields.io/badge/Meta-Muse%20Image%201.0-0866FF?logo=meta&logoColor=white)
+![Meta MMS-TTS](https://img.shields.io/badge/Meta-MMS--TTS-0866FF?logo=meta&logoColor=white)
+![License: MIT](https://img.shields.io/badge/License-MIT-green)
 
-## Meta Global AI Hackathon 2026 — Submission Overview
+<img src="docs/images/hero.jpg" alt="Opening scene of a video book: 'The Teacher Who Stayed', 92 voices from 10 countries, over a wall of country flags" width="820">
 
-- **Track & Problem Statement**: Indie Developer · Build for Your World
-- **Hackathon Provenance (Oct 26 – Nov 4, 2026)**: Rebuilt for this hackathon on Meta models during the event window. Live app: https://book-by-the-people.vercel.app
-- **Meta AI Runtime Models**:
-  - `Muse Spark 1.3` (Meta Model API) — book writing, structure, editing
-  - `Muse Image 1.0` — video-book scene pictures
-  - `Muse Voice Transcribe` — speech to text
-  - Meta MMS-TTS (open Meta voice, in-app) — audiobook and video-book narration
-  - Optional fallback: Muse Spark Open via an OpenAI-compatible host
-- **Bonus Prize Categories Targeted**:
-  - Best Creative Build · Best Agentic Use-Case
-- **3-Minute Demo Video**: (paste YouTube URL after upload)
-- **Quickstart**: `cp .env.example .env` then `npm install && npm run setup && npm run dev` (AI_MODE=mock runs without keys)
+**[Try it live](https://book-by-the-people.vercel.app)** · **Demo video: link coming soon** · [How it works](#how-it-works) · [Meta models](#where-each-meta-model-is-used) · [Run it locally](#run-it-locally)
 
+</div>
 
-## Run it
+---
 
-```bash
-npm install
-npm run setup     # prisma db push + seed (wipes and recreates the demo data)
-npm run dev       # http://localhost:43123
+## The problem
+
+When millions of people share opinions online, their voices get lost in endless comments and feeds. Nobody reads them all, and nothing lasting is made from them. Communities, creators, teachers and organisations have no simple way to collect what many people really think and turn it into something people want to read.
+
+**Book by the People** turns a crowd of answers into a real book, written in one calm narrator voice, with true counts ("nearly fifty of you said…") and people's exact words. Then it reads the book aloud and turns it into a film.
+
+## How it works
+
+1. **Create.** A creator asks one question, for example *"What makes a good teacher?"* The book can be solo, invite-only, open to anyone, or built from sourced public quotes.
+2. **Contribute.** Anyone answers by speaking or typing, in their own language. Speech is turned into text privately in the browser. Muse Spark translates each answer into the book's language. A live 3D globe shows every voice as it arrives.
+3. **The AI writes the book.** When voices close, Muse Spark reads every answer, groups similar opinions with real counts, decides the shape of the book (chapters, or one flowing piece when most people agree), and writes it. A final editor pass smooths the flow without changing any number or quote.
+4. **Audiobook.** The book is narrated by Meta's open MMS-TTS voice in up to 11 languages, with natural pauses, light EQ and compression, and even loudness.
+5. **Video book.** Muse Spark plans the scenes and one shared art style, Muse Image draws them, and Muse Spark checks every picture and redraws weak ones once. The film opens on a wall of every participating country's flag, with captions, quotes and slow pan-and-zoom. It is put together in the creator's browser.
+
+```mermaid
+flowchart LR
+    A[Creator asks<br/>one question] --> B[People answer<br/>by voice or text,<br/>any language]
+    B --> C[In-browser<br/>speech to text]
+    C --> D[Muse Spark<br/>translate + checks]
+    D --> E[Muse Spark<br/>map: read every answer]
+    E --> F[Group into themes<br/>with true counts]
+    F --> G[Muse Spark<br/>plan the structure]
+    G --> H[Muse Spark<br/>write + editor pass]
+    H --> I[📖 Book<br/>web reader]
+    H --> J[🎧 Audiobook<br/>Meta MMS-TTS]
+    H --> K[Muse Spark<br/>storyboard + art direction]
+    K --> L[Muse Image<br/>scene pictures]
+    L --> M[Muse Spark vision<br/>picture check, 1 redraw]
+    M --> N[🎬 Video book<br/>assembled in browser]
+    J --> N
 ```
 
-System tools: `ffmpeg` (mp3, release video, 24 kHz WAV for speech-to-text). On Windows, or anywhere without it, Book settings → AI model → Audio tools has a **Get ffmpeg** button (about 30 MB, saved under `data/models/runtime/tools`); `FFMPEG_PATH` points at your own copy. The audiobook voice is the built-in Windows voice (SAPI) on Windows, `say` on macOS, and `espeak-ng` on Linux. Optional `MEDIA_FONT` points the video renderer at a TTF if the default font is missing.
+## Where each Meta model is used
 
-### Seeded data (`npm run db:seed`, also run on first `npm run dev`)
+In hackathon mode (`HACKATHON_META_ONLY`, on by default) every AI picker shows only Meta models.
 
-The seed **wipes the local database** and creates:
+| Step | Meta model | Where it runs |
+|---|---|---|
+| Translate answers into the book's language | **Muse Spark** `muse-spark-1.3` | Meta Model API |
+| On-topic, duplicate and impersonation checks | **Muse Spark** | Meta Model API |
+| Read all answers in batches, pull out opinions and exact phrases | **Muse Spark** | Meta Model API |
+| Merge themes across batches, pick structure and story arc | **Muse Spark** | Meta Model API |
+| Write every section in one narrator voice, then edit | **Muse Spark** | Meta Model API |
+| Narration polish (short spoken sentences, numbers as words) | **Muse Spark** | Meta Model API |
+| Storyboard and one shared art direction for the film | **Muse Spark** | Meta Model API |
+| Draw each scene of the video book | **Muse Image** `muse-image-1.0` | Meta Model API |
+| Check each picture (text, bad hands or faces) and ask for a redraw | **Muse Spark** (vision) | Meta Model API |
+| Narrate the audiobook and the video book | **Meta MMS-TTS** (open weights, ONNX) | Our own server, free |
 
-| Book | Slug | Mode | State | Owner |
-| --- | --- | --- | --- | --- |
-| Book 1 · Is AI making you smarter or lazier? | `smarter-or-lazier` | Open | Released (reader, audiobook, video, share cards, backups history) | `demo@bookbythepeople.dev` |
-| Sunday table | `sunday-table` | Invited | Taking voices | `demo@bookbythepeople.dev` |
-| On the record | `on-the-record` | Famous | Released, real dated quotes with source URLs | `asha@bookbythepeople.dev` |
-| Notes to my younger self | `notes-to-my-younger-self` | Solo | Taking voices | `asha@bookbythepeople.dev` |
-| City at night | `city-at-night` | Open | Taking voices | `rafael@bookbythepeople.dev` |
+Optional: server speech-to-text with Muse Voice Transcribe, and a fallback writer pointed at self-hosted Muse Spark Open on any OpenAI-compatible host.
 
-Sample clips are spoken locally by eSpeak NG so the reader works with no key; they are not recordings of real people. Sign in from `/sign-in` (dev mode shows the magic link on screen; use `localhost`, not `127.0.0.1`, so the cookie matches). Any seeded email works.
+## See it
 
-### Where things are
+<img src="docs/images/video-book-frames.jpg" alt="Frames from a finished video book: Muse Image scenes with captions and count chips" width="820">
 
-| Page | Route |
-| --- | --- |
-| Home (featured book) | `/` (`?stage=before|closed|after`) |
-| Any book | `/b/[slug]`, speak `/b/[slug]/speak`, reader `/b/[slug]/read`, share/credit card `/b/[slug]/credit/[voiceId]` |
-| Explore | `/explore` |
-| Create a book | `/books/new` (linked from home, My page, Studio) |
-| Studio (owner only) | `/studio` (your books) and `/studio/[slug]` (Settings · AI at work · Make the book · Release, pill book switcher) |
-| My page | `/me` |
+*Frames from a finished video book. Every picture is by Muse Image in one shared style, with captions and count chips.*
+
+<img src="docs/images/studio-release.jpg" alt="Studio Release tab: Meta model pickers for scenes, pictures and voice, with a cost estimate" width="820">
+
+*The Studio Release tab. Each step has its own Meta model picker, a cost estimate, and resume if the tab closes.*
+
+## Features
+
+- **Four kinds of book:** solo, invite-only (private link), open (public page with live globe), and famous voices (only quotes the creator pastes with a source link; the app never invents quotes or copies anyone's voice).
+- **Any language in, any language out.** Answers are translated with Muse Spark; release languages each get their own narration where a Meta voice exists.
+- **Honest numbers.** Counts come from real grouped answers, never from the model's guess.
+- **Exact quotes only.** Any quoted phrase must appear word for word in a real answer, or its quote marks are removed.
+- **Well-known mark.** A famous name is shown only when verified by the creator; a voice that only *claims* a famous name is never named.
+- **Big books.** Writing saves a checkpoint after every step and continues across requests, so large books finish inside serverless time limits.
+- **Re-run only what changed.** Scripts, voice parts and pictures are cached by hash. Change the voice and only the voice is redone.
+- **Copy the whole book** as plain text, or upload your own audio or video made with another tool.
+- **Usage limits per book** (no limit, dollars or tokens), with every AI call logged in Studio.
+- **Daily limits** for fairness: 3 voices per person per book per day, and 3 media runs per book per day.
+
+## Tech stack
+
+| Layer | What we use |
+|---|---|
+| App | Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS |
+| Data | Prisma, SQLite locally, Neon Postgres in production |
+| Files | Vercel Blob in production, local disk or any S3 store elsewhere |
+| AI | Meta Model API (Muse Spark, Muse Image), OpenAI-compatible client |
+| Voice | Meta MMS-TTS through `onnxruntime-node`, MP3 encoding with lamejs |
+| Speech to text | Whisper Base running in the browser (no audio leaves the device for typing) |
+| Film | Browser rendering with WebCodecs and mediabunny (H.264, 1280×720) |
+| Flags | flag-icons SVGs (MIT), 257 flags bundled in `public/flags` |
+| Hosting | Vercel Hobby (free) |
+| Tests | Vitest (unit), Playwright (end to end) |
+
+## Architecture
+
+- **Short, resumable steps.** Vercel Hobby allows 300 seconds per function. The Studio page drives the work one step at a time (`POST /api/books/<id>/media/meta/step`). Each step takes a lease, does under about 200 seconds of work and saves it. If the tab closes, the next visit resumes. Each unit retries up to 3 times.
+- **Writer pipeline:** map (batches of about 60 answers, 6 at a time) → reduce (merge themes, true counts) → plan (form, arc of up to 8 sections, standout quotes) → write (sections in parallel) → edit (refused if it changes any number or shrinks a paragraph too much). The saved outline is the "producer notes" that the audiobook and film both follow.
+- **Audio:** each sentence is read phrase by phrase, trimmed, levelled, given light EQ and compression, joined with short crossfades and encoded once to MP3 (64 kbps). Chapter marks and per-sentence timings are saved, so captions stay in sync.
+- **Film:** scene times come from the sentence timings. The browser draws the film on a canvas and uploads it in 3 MB parts; the server joins and checks the MP4.
+- **No schema change for media.** Media state lives in a JSON file per book in storage.
+
+More detail: [docs/book-v2.md](docs/book-v2.md) (writer, audiobook, video book) and [docs/meta-media-pipeline.md](docs/meta-media-pipeline.md) (Meta media pipeline).
+
+## Security and privacy
+
+- **Bring your own key.** Each creator saves their own Meta API key. The app is free to use.
+- **Encrypted at rest** with AES-256-GCM (`AI_KEY_SECRET`). Keys are never sent back to the browser; only the last 4 characters are shown.
+- Keys are opened only inside the server step, used in the request header, and dropped. Errors are scrubbed of secrets. Prompts carry only book text, never keys or emails.
+- Owner-only and same-origin checks on every Studio and media route. An end-to-end test (`e2e/key-privacy.spec.ts`) checks the key never appears in any response.
+- Speech for typing is turned into text in the browser.
+
+## Cost and scale
+
+- A full 92-voice run (book, audiobook and video book) cost about **$0.40** in Meta credits in our test.
+- Pictures cost about $0.01 each. The writer used about 44k tokens for a 92-voice book.
+- Narration is free: MMS-TTS runs on our own server, faster than real time on one CPU.
+- Writing was load-tested with **1,500 voices from 45 countries** (against a fake Meta server): it finished in two requests with no step repeated.
+
+## Honest limits
+
+- **Meta has no hosted text-to-speech or video API yet.** We self-host MMS-TTS for the voice and build the film from Muse Image stills in the browser.
+- **MMS-TTS is licensed CC-BY-NC 4.0** (non-commercial). Fine for this free project and the hackathon; it must be replaced or licensed before any commercial use.
+- MMS-TTS has one plain voice per language. Japanese, Italian and Chinese have no MMS voice, so those languages get no audiobook (the app says so instead of switching voices quietly).
+- Vercel has no ffmpeg, so the film is rendered in the creator's browser (Chromium works best).
+
+## Run it locally
+
+Needs Node.js 20+.
+
+```bash
+git clone https://github.com/uzerkayat2004-gif/book-by-the-people.git
+cd book-by-the-people
+cp .env.example .env      # works with no keys: AI_MODE=mock
+npm install
+npm run setup             # prisma db push + seed demo books (wipes the local database)
+npm run dev               # http://localhost:43123
+```
+
+- With no key the app runs in **mock mode**, so you can click through the whole flow for free.
+- To use Meta models, sign in, open **Book settings → AI model**, and add your Meta API key. (Or set `AI_MODE=live` and `META_API_KEY` in `.env` for server-wide use.)
+- In development the sign-in magic link is shown on screen. Use `localhost`, not `127.0.0.1`, so the cookie matches.
 
 ### Tests
 
 ```bash
-npm test          # vitest unit tests
-npm run test:e2e  # Playwright: create-book, speak, studio release, reader (needs the dev server on :43123)
-npm run db:seed   # e2e runs create extra books; reseed afterwards
+npm test           # Vitest unit tests (27 files, 213 tests)
+npm run test:e2e   # Playwright end-to-end tests (needs the dev server on :43123)
+npm run lint       # ESLint
 ```
 
-### AI model (Book settings → AI model, at the bottom)
+The Meta audiobook and video tests can run against a fake Meta server (`e2e/fixtures/fake-meta.mjs`). See [docs/meta-media-pipeline.md](docs/meta-media-pipeline.md).
 
-One **Model** picker, shared by all your books. Whatever is picked runs every AI step: checks, translation, grouping and writing the book.
+### Deploy
 
-- **+ Add model** opens a short sheet: provider → API key → model. The base URL, name and "Used for" are prefilled and sit under **Advanced**.
-- Providers: Meta (Muse Spark), OpenRouter, Together, Fireworks, Groq, OpenAI-compatible, Gemini, Anthropic, Ollama or any local server, and Custom.
-- Downloaded local models appear in the same picker.
-- **Test** sends a real one-line request and shows whether it works.
-- **If it fails, try the next one** is off by default. When on, the other models are tried in list order.
-- Speech-to-text uses the first model marked for speech (Meta Muse Voice, OpenAI, Groq or Together Whisper), otherwise the browser.
-- Keys are encrypted at rest with AES-256-GCM. They are never sent back to the browser; the UI shows only the last 4 characters. `AI_KEY_SECRET` is the encryption secret. If it is unset, a random secret is generated once into `data/ai-key-secret` (git-ignored, mode 600). Back that file up with the database.
-- With no model and no `META_API_KEY`, the app runs in demo (mock) mode.
+Free setup with no card and no domain: **Vercel Hobby** for the app, **Neon Postgres** and **Vercel Blob** added from inside Vercel. `npm run build` writes the Postgres Prisma schema automatically. Full steps in [DEPLOY.md](DEPLOY.md). All settings are listed in [.env.example](.env.example) and the [developer guide](docs/developer-guide.md).
 
-### Usage limit (Book settings → AI for this book)
+## Project layout
 
-Each book has an optional usage limit: **No limit** (default), **Dollars**, or **Tokens** (for example 1,000,000,000). Usage is summed from that book's AI usage log (input + output tokens, estimated dollars). When the limit is reached, AI stops for that book and the Studio shows "Usage limit reached · AI stopped". Already stored voices and drafts are kept. Local models cost $0 but still count tokens.
+| Path | What is there |
+|---|---|
+| `src/app` | Pages and API routes (book page, speak, reader, Studio, media steps) |
+| `src/lib/ai` | Meta Model API client, writer pipeline, key handling |
+| `src/lib/book` | Book logic: grouping, structure, quote checks, plain text |
+| `src/lib/media/meta` | Audiobook (MMS-TTS, sound), storyboard, pictures, film plan, browser film |
+| `src/components` | Reader, Studio, globe, voice recorder |
+| `prisma` | Database schema and demo seed |
+| `e2e` | Playwright tests and the fake Meta server |
+| `docs` | Pipeline write-ups and the developer guide |
 
-`AI_SERVER_CAP_USD` is an optional operator cap in dollars for every book on the server. The old `AI_SPEND_CAP_USD` (default $20) is ignored.
+## Meta Global AI Developer Hackathon
 
-### Meta models on this computer (one click)
+Built for the **Meta Global AI Developer Hackathon** (2026).
 
-| Model | Download | RAM | Notes |
-| --- | --- | --- | --- |
-| Muse Glimmer 30B (Q4_K_M, Meta's official GGUF) | 16.8 GB | 24 GB | Newest open Meta model (Aug 2026), best quality, wants a GPU |
-| Muse Glimmer 30B Compact (unsloth UD-IQ2_M) | 12.3 GB | 16 GB | Same model, smaller; slow on CPU |
-| Llama 3.2 3B | 2.0 GB | 4 GB | Any 8 GB laptop |
-| Llama 3.2 1B | 0.8 GB | 2 GB | Fastest |
+- **Track:** Indie Developer
+- **Problem statement:** Build for your world
+- **Meta tooling:** Muse Spark 1.3, Muse Image 1.0, Muse Spark vision, Meta MMS-TTS
+- **Live app:** https://book-by-the-people.vercel.app
+- **Demo video:** link coming soon
 
-Shown as **Needs a server** (not downloadable here): Muse Spark Open (816B, 42B active, 300 GB+ even at 2-bit) and Llama 4 Scout (109B, about 65 GB at 4-bit). Use them through OpenRouter, Together, Fireworks or Groq.
+## License
 
-**Download** fetches the llama.cpp server for your OS (GitHub release `b11927`) and the GGUF from Hugging Face (no token). Cancel keeps the partial file, so the next click resumes. When it finishes, the model becomes the picked model, starts on `127.0.0.1:43180` and is tested. Muse Glimmer runs with `--jinja` and low reasoning. If Ollama is running and has the model, **Use from Ollama** is offered instead.
+[MIT](LICENSE) © Uzair Kayat. Bundled flag icons are from [flag-icons](https://github.com/lipis/flag-icons) (MIT). The Meta MMS-TTS voice weights are not part of this repo; they are downloaded at run time and are licensed CC-BY-NC 4.0 by Meta.
 
-Where files go: `LOCAL_MODELS_DIR`, else `data/models` in the project. On Windows, if the project drive has under 6 GB free, the app picks the fixed drive with the most free space. For example:
+---
 
-```
-LOCAL_MODELS_DIR="E:\BookByThePeople\models"
-```
+<div align="center">
 
-Meta's Omnilingual ASR has no one-click runtime yet, so it is not bundled.
+Built by **Uzair Kayat** · made by the people, for the people.
 
-### Backups
-
-The Studio's Make the book tab keeps a history of backups (snapshots of voices and drafts) that can be downloaded or restored. Local backups live under `data/`.
-
-## How a book gets made
-
-Each voice is processed as soon as it arrives, and the studio ticks the same jobs every 60 seconds. Jobs are idempotent. A failed step retries with backoff. The AI at work tab shows the step and the decision.
-
-1. Upload. ffmpeg converts the recording to 24 kHz mono WAV.
-2. `muse-voice-transcribe` writes the transcript. In mock mode a local stand-in is used and spend stays $0.
-3. The start word must be said first. If it is missing, nothing is saved: no voice row, no audio, a new word.
-4. The words are translated into the book language when they are not already that language.
-5. Checks: on topic, real person, copy-paste, impersonation, duplicate.
-6. Decide: approve, needs you, not used, or hidden.
-7. Group the approved voices into themes.
-8. When voices close, or the creator clicks Make the book: outline, chapter titles, flowing chapter prose (`muse-spark`), front matter, and a cover byline with the real counts.
-9. Release publishes the reader, an audiobook, a video (cover, chapter titles, narration), and the share cards. Listen and Watch are on the reader. The files download with or without an account.
-
-The reader is plain prose. It does not print “N people said this” inside a chapter. A small voice count sits at the bottom of the chapter. The audiobook and the video narrate that prose. They do not announce how many people spoke.
-
-A person can add 3 voices to a book per day. The speak page and My page show “3 left today”. Invited books use a link (`/b/[slug]/speak?invite=…`). Famous-voice books store only quotations the creator supplies, with a source URL and a date, and show both. The model is not asked to invent a quotation.
-
-Each creator gets the same four-tab studio at `/studio/[slug]`. A book switcher appears when they have more than one. Start your own book is on the home page, My page, and Studio. `/explore` lists open books. `/b/[slug]` is the public page.
-
-The poll is Vote for Book 2. The creator edits the choices. The winning choice is suggested as the question of their next book.
-
-When `RESEND_API_KEY` and `EMAIL_FROM` are set, publishing emails people who spoke in that book. With no key, nothing is sent.
-
-Usage limits are per book (see Usage limit above). Mock mode records $0. Live mode with no `META_API_KEY` stops and says the key is missing.
-
-## Meta models
-
-Configured entirely from the environment. Nothing is hardcoded as a secret.
-
-| Job | Model | Endpoint |
-| --- | --- | --- |
-| Speech to text | `muse-voice-transcribe-1.0` | `POST https://api.meta.ai/v1/asr/transcribe` |
-| Translation, chapters, narrative | `muse-spark-1.3` | `POST https://api.meta.ai/v1/chat/completions` |
-| Fallback writer | OpenAI-compatible host | `POST $WRITER_FALLBACK_BASE_URL/chat/completions` |
-
-Set `AI_MODE=live` and `META_API_KEY` (or `MODEL_API_KEY`) to call Meta. With no key, `AI_MODE` defaults to `mock`: transcripts and the book draft are assembled locally, and the UI still runs the whole path.
-
-Transcription uses `ENDPOINTING` so the response includes turn timestamps. Muse Voice Transcribe does not return word-level timestamps. The play button interpolates inside the matching turn from where the quotation sits in that turn's text. That approximation is labeled in code (`locateSpan`).
-
-The writing call asks for JSON (preface, chapters, verbatim quotes, agreement, disagreement). The server then checks every quotation against the source transcript and drops any speaker the model invented. People the model skipped are appended so a voice is not lost. If the hosted model cannot be reached and a fallback host is configured, the same request is sent there.
-
-Muse Spark Open is not served by the Meta Model API. Run it yourself, or point the fallback at Fireworks, Baseten, or another OpenAI-compatible host. The default fallback model id is the Hugging Face repo `meta-models/Muse-Spark-Open-816B-A42B`. Replace it with the id your host expects.
-
-Spend is estimated from Meta's published standard rates (October 2026): transcription at `$0.18` per hour of audio, billed in whole seconds rounded down, and Muse Spark at `$1.25` / `$0.15` cached / `$4.25` per million input, cached-input, and output tokens. The cap is per book, not per day.
-
-The studio chip names `muse-voice-transcribe` and `muse-spark`.
-
-Audiobook speech is pluggable. `TTS_PROVIDER=mock` (the default) uses the computer's own voice: espeak-ng, the Windows voice, or macOS `say`, and stores a real file. The whole book is spoken in the background after Publish, and Release → **Make again** speaks it again. `TTS_PROVIDER=http` POSTs `{ "text" }` to `TTS_URL`. The video is assembled with ffmpeg: a red cover frame, the chapter titles, and the narration. SQLite and local disk are the default. Set `STORAGE_DRIVER=s3` plus the `S3_*` variables for object storage, and point `DATABASE_URL` at Postgres after switching the Prisma provider.
-
-## Environment
-
-Copy `.env.example` to `.env`.
-
-| Variable | Purpose |
-| --- | --- |
-| `DATABASE_URL` | SQLite by default (`file:./data/bbtp.db`). For Postgres, change the Prisma datasource provider to `postgresql` and set a Postgres URL. The schema uses only types both databases accept. |
-| `AI_MODE` | `mock` or `live` |
-| `APP_URL` | Public origin, used in emails |
-| `META_API_KEY` / `MODEL_API_KEY` | Meta Model API bearer token |
-| `META_API_BASE_URL` | Default `https://api.meta.ai/v1` |
-| `META_TRANSCRIBE_MODEL` | Default `muse-voice-transcribe-1.0` |
-| `META_TRANSCRIBE_MODE` | `ENDPOINTING` (turns), `PUSH_TO_TALK`, or `DIARIZATION` |
-| `META_WRITER_BASE_URL` | Defaults to the Meta base URL |
-| `META_WRITER_API_KEY` | Defaults to the Meta key |
-| `META_WRITER_MODEL` | Default `muse-spark-1.3` |
-| `META_WRITER_REASONING_EFFORT` | `low` by default. `none` is rejected by Muse Spark |
-| `WRITER_FALLBACK_BASE_URL` | OpenAI-compatible base, no trailing path beyond `/v1` |
-| `WRITER_FALLBACK_API_KEY` | Key for that host |
-| `WRITER_FALLBACK_MODEL` | Model id on that host |
-| `AI_SERVER_CAP_USD` | Optional dollar cap for every book. Empty = none. Per-book limits live in Book settings |
-| `AI_PRICE_*` | Overrides for the rate card |
-| `STORAGE_DRIVER` | `local` or `s3` |
-| `LOCAL_STORAGE_DIR` | Default `./data/audio` |
-| `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE` | S3-compatible storage (AWS, R2, MinIO) |
-| `AUTH_DEV_EXPOSE_LINKS` | Show the magic link on the sign-in page. Defaults on outside production |
-| `RESEND_API_KEY`, `EMAIL_FROM` | Optional email delivery |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional Google sign-in. Redirect URL: `{origin}/api/auth/google/callback` |
-| `TTS_PROVIDER`, `TTS_URL`, `TTS_API_KEY` | Audiobook voice. `mock` (this computer's voice: Windows SAPI, macOS say, or espeak-ng) or `http` |
-| `FFMPEG_PATH` | Optional path to ffmpeg. Otherwise the downloaded copy, then `PATH` |
-| `AI_KEY_SECRET` | Secret (16+ chars) that encrypts stored AI keys. Unset = generated once into `data/ai-key-secret` |
-| `LOCAL_MODELS_DIR` | Where local models and the llama.cpp server are saved. Default `data/models` (Windows auto-picks a roomier drive when C: is nearly full) |
-| `LOCAL_MODEL_PORT` | Port for the local model server. Default `43180` |
-| `LOCAL_MODEL_CTX` | Context window for the local model. Default `8192` |
-| `LLAMA_CPP_BUILD` / `LLAMA_CPP_ASSET` | llama.cpp release tag (default `b11927`) and an optional asset file name override |
-| `OLLAMA_HOST` | Ollama address. Default `http://127.0.0.1:11434` |
-| `MEDIA_FONT` | Optional TTF path for the release video titles |
-| `SEED_FORCE` | Set to `1` to allow seeding when `NODE_ENV=production` |
-
-## Deploy
-
-See [DEPLOY.md](DEPLOY.md). Free setup (no card, no domain): **Vercel Hobby** for the app, **Neon** Postgres and **Vercel Blob** for files (both added from inside Vercel), **Google sign-in**, and optionally a Gmail app password (`SMTP_URL`) for emails. The audiobook is narrated with a built-in WebAssembly voice, so nothing needs installing; Vercel has no ffmpeg, so the film is skipped there. Paid alternative: the `Dockerfile` on Railway (about $5–8 a month) also makes the film. `/api/health?deep=1` checks the database, storage, ffmpeg and the speech engine.
-
-| Variable | What it does |
-| --- | --- |
-| `SITE_ADMIN_EMAILS` | Comma-separated emails that may feature a book on the home page |
-| `LOCAL_MODELS` | `off` hides local model downloads (set in the Dockerfile) |
-| `DATA_DIR` | Optional persistent folder for the generated key secret when `AI_KEY_SECRET` is unset |
-
-## Open questions about the Meta API
-
-- Muse Voice Transcribe's file endpoint accepts only WAV (mono 16-bit PCM, 16 or 24 kHz), up to 10 minutes and 32 MB. This app converts with ffmpeg. Confirm that is still the contract when you receive a key.
-- Turn timestamps are explicitly not precise acoustic boundaries, and word timestamps are not provided. The in-turn interpolation is the best the current response allows.
-- Whether `api.meta.ai` is reachable from India was not verified here. That is why the writer has a fallback base URL, model, and key. The exact Fireworks or Baseten model slug for Muse Spark Open was not guessed; set `WRITER_FALLBACK_MODEL` to the id that host publishes.
-- Contributor-tier model ids (`muse-spark-1.3-contributor`) are cheaper and allow training on your prompts. They are not the default. If you switch model ids, also set the `AI_PRICE_*` variables or dollar usage limits will assume standard rates.
-- `reasoning_effort: "none"` returns HTTP 400 on Muse Spark. Some OpenAI-compatible hosts reject `reasoning_effort` or `max_completion_tokens`; the client retries once without the rejected field.
+</div>
