@@ -618,7 +618,9 @@ export function planPrompt(input: {
     "Decide the ORDER like a good feature or documentary: an opening hook (a vivid, surprising or notable voice, or the big picture), build-up through the main views, contrast or disagreement, then resolution and a closing that recaps and ends on a memorable line.",
     "Sections: continuous form uses 2 to 5 movements (their titles are internal only); chapters form uses 2 to 8 chapters. Every cluster id appears in at least one section. The biggest cluster may be spread over more than one section.",
     `Standouts: pick at most ${maxStandouts(input.total)} refs from the standout pool in total, at most 3 per section, only voices whose view is exceptional or distinctive. Notable people (notable: true) are always used and always placed in the FIRST section. Never describe anyone as famous unless notable is true.`,
-    `standfirst: one sentence that hooks the reader. preface: two short sentences telling the reader this book was written from the words of ${input.total} people in ${input.countries} ${input.countries === 1 ? "country" : "countries"}, and that every quotation is exact.`,
+    "standfirst: one sentence that hooks the reader.",
+    "preface: two short sentences that welcome the listener and hook them into the story. Do not mention how many people or countries took part, and do not mention that quotations are exact.",
+    'purpose: one short sentence a reader would see under the chapter title, saying what that chapter is about. Never write editorial directions such as "Open with", "Build through", or "End on".',
     "arc: one or two sentences describing the story the book tells.",
   ].join("\n");
   const user = JSON.stringify({

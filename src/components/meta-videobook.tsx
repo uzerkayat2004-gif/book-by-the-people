@@ -252,7 +252,7 @@ export function MetaVideobook({ bookId, slug, locked = false }: { bookId: string
               </option>
             ))}
           </select>
-          <small>{panel.narration ? `Uses the audiobook narration (${clock(panel.narration.ms)}).` : "Records the audiobook narration first."} Same voice as the audiobook.</small>
+          <small>{panel.narration ? `Uses the audiobook narration (${clock(panel.narration.ms)}).` : "Make the audiobook first, then make the video book."} Same voice as the audiobook.</small>
         </label>
       </div>
 
@@ -303,7 +303,7 @@ export function MetaVideobook({ bookId, slug, locked = false }: { bookId: string
         <button
           className="s2-btn s2-btn--sm s2-btn--red"
           type="button"
-          disabled={locked || running || (!assembling && panel.runsLeftToday <= 0)}
+          disabled={locked || running || (!assembling && (panel.runsLeftToday <= 0 || !panel.narration))}
           onClick={() => (assembling ? void drive() : void start())}
           data-testid="meta-video-make"
         >

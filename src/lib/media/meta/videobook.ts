@@ -54,7 +54,6 @@ import {
   retryable,
   runHash,
   savePicks as saveAudioPicks,
-  startAudiobook,
   takeLease,
   today,
 } from "./audiobook";
@@ -157,7 +156,7 @@ async function pickedImages(bookId: string, pick: string) {
   return chosen && chosen.value !== "none" ? { value: chosen.value, label: `${chosen.model} · ${chosen.provider}` } : { value: "none", label: "No pictures (styled cards)" };
 }
 
-/** Starts the video book with the saved picks. The narration is the audiobook's (made first if it is missing or out of date). */
+/** Starts the video book with the saved picks. Uses a finished audiobook; it does not make or remake one. */
 export async function startVideo(bookId: string): Promise<VideoState> {
   if (await bookSpendPaused(bookId)) throw new AppError("This book reached its usage limit. Raise it in Book settings to make the video book.");
   const { mainLang } = await documentsFor(bookId);
@@ -168,20 +167,20 @@ export async function startVideo(bookId: string): Promise<VideoState> {
   if (!voiceOptions(mainLang, mediaMetaOnly()).length) {
     throw new AppError(`There is no Meta voice for ${bookLanguage(mainLang).name} yet, so the video book can't be narrated.`);
   }
-  // The narration: reuse the audiobook when nothing it depends on changed; otherwise only the changed steps run.
-  let audioState: MediaState;
-  try {
-    audioState = await startAudiobook(bookId);
-  } catch (error) {
-    audioState = await readState(bookId);
-    if (!audioState.audio[mainLang]) throw error;
+  const audioState = await readState(bookId);
+  const ready = narrationReady(audioState, mainLang);
+  if (!ready && audioState.run?.status !== "running") {
+    throw new AppError("Make the audiobook first, then make the video book.");
+  }
+  if (ready && !ready.units?.length) {
+    throw new AppError("The audiobook was made by an older version. Make the audiobook again, then the video book.");
   }
   const run: VideoRun = {
     id: randomUUID(),
     status: "running",
     phase: "Getting ready",
     lang: mainLang,
-    waitingForAudio: !narrationReady(audioState, mainLang),
+    waitingForAudio: !ready,
     writer: await pickedWriter(bookId, state.picks.writer),
     image: await pickedImages(bookId, state.picks.images),
     units: [],

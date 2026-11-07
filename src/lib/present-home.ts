@@ -34,6 +34,8 @@ export function presentHome(input: {
   yourVote: string | null;
   /** Open, listed books light a dot on the globe for each voice while voices are still coming in (no names). */
   liveGlobe?: boolean;
+  /** Finished audiobook size; used for the listen time when there are no quote clips. */
+  audioBytes?: number | null;
 }) {
   const stage: Stage = stageFor(input.status, input.stageOverride);
   const counted = input.voices.filter((voice) => voice.status === "READY" && !voice.hidden);
@@ -119,7 +121,7 @@ export function presentHome(input: {
     readHref: `/b/${input.slug}/read${input.readQuery ? `?${input.readQuery}` : ""}`,
     chapters,
     readMins: Math.max(1, Math.ceil(words / 200) || 1),
-    listenMins: Math.max(1, Math.round(clips.length * 0.4) || 1),
+    listenMins: listenMinutes(clips.length, input.audioBytes),
     pollQuestion: input.pollQuestion,
     poll: input.poll,
     bookId: input.bookId,
@@ -127,6 +129,12 @@ export function presentHome(input: {
     clips,
     flag: flagEmoji,
   };
+}
+
+/** Listen time from the finished file (64 kbps Meta mix) when we have it, otherwise from quote clips. */
+export function listenMinutes(clipCount: number, audioBytes?: number | null): number {
+  if (audioBytes && audioBytes > 1000) return Math.max(1, Math.round((audioBytes * 8) / 64_000 / 60));
+  return Math.max(1, Math.round(clipCount * 0.4) || 1);
 }
 
 /** A contributor's public name: what they typed in About you, never an email address. */

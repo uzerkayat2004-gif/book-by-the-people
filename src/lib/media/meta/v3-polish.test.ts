@@ -37,6 +37,7 @@ describe("phrases", () => {
   });
   it("says the counts exactly", () => {
     expect(phrasesFor("en").intro(92, 10)).toBe("A book written by 92 people from 10 countries.");
+    expect(phrasesFor("en").end(5)).toBe("Thank you for listening.");
     expect(phrasesFor("en").voices(1500)).toBe("1,500 voices");
     expect(phrasesFor("es").named("Ana", "Lima")).toBe("Como dijo Ana, de Lima: ");
     expect(phrasesFor("ru").countries(3)).toBe("из 3 стран");

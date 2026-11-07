@@ -23,7 +23,7 @@ import { safeError, writerOptions, writerTarget } from "./targets";
 import type { ChapterScript, Segment } from "./text";
 
 /** Bump when the narrator prompt changes (scripts are made again) or the voice settings change. */
-const SCRIPT_V = 3;
+const SCRIPT_V = 4;
 const VOICE_V = 4;
 /** The final mix (polish, limiter, bitrate). A change re-joins the parts without speaking them again. */
 const MIX_V = 2;
@@ -33,6 +33,21 @@ const LEASE_MS = 240_000;
 
 export const hash = (...parts: (string | number)[]) => createHash("sha256").update(parts.join("|")).digest("hex").slice(0, 16);
 const leaseKey = (bookId: string) => `${bookId}:mm:audiobook`;
+
+/** The spoken words for this unit, so a remake picks up cleaned or edited text. */
+function unitFingerprint(doc: BookDocument, unit: number): string {
+  if (unit === 0) {
+    return hash(doc.title ?? "", doc.standfirst ?? "", doc.preface ?? "", doc.outline?.total ?? 0, doc.outline?.countries ?? 0);
+  }
+  const chapter = doc.chapters[unit - 1];
+  if (!chapter) return "";
+  return hash(
+    chapter.title,
+    chapter.narrative,
+    ...(chapter.quotes ?? []).filter((quote) => !quote.hidden).map((quote) => `${quote.id}:${quote.englishText}`),
+    ...(chapter.blocks ?? []).map((block) => (block.kind === "p" ? block.text : block.kind === "quote" ? block.quoteId : `break:${block.title ?? ""}`)),
+  );
+}
 export { isMetaMediaKey };
 
 /** Cuts a chapter script into parts of about PART_CHARS characters, at segment boundaries. */
@@ -125,7 +140,7 @@ export async function startAudiobook(bookId: string): Promise<MediaState> {
   for (const lang of languages) {
     const doc = docs.get(lang)!;
     for (let unit = 0; unit < narrationUnits(doc); unit += 1) {
-      const scriptHash = hash(draftId, lang, writer.value, unit, SCRIPT_V);
+      const scriptHash = hash(draftId, lang, writer.value, unit, SCRIPT_V, unitFingerprint(doc, unit));
       const voiceHash = hash(scriptHash, voices[lang], VOICE_V);
       const old = previous.get(`${lang}:${unit}`);
       const reuseScript = old && old.scriptHash === scriptHash && old.scriptKey;

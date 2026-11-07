@@ -44,7 +44,7 @@ describe("bookPlainText", () => {
       "Laughter helped.",
       "“He made us laugh.” — Ana, Brazil",
       "It still does.",
-      "This book was made from the voices of 92 people.",
+      "Thank you for listening.",
     ].map((part) => text.indexOf(part));
     expect(order.every((at) => at >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);

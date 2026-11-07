@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mergeModelReview, reviewVoice } from "@/lib/book/checks";
-import { placeLabel, presentHome, publicName } from "@/lib/present-home";
+import { listenMinutes, placeLabel, presentHome, publicName } from "@/lib/present-home";
 
 const base = {
   id: "v2",
@@ -76,6 +76,11 @@ describe("globe while a book is open", () => {
     const view = presentHome({ ...input, liveGlobe: false });
     expect(view.pins).toHaveLength(0);
     expect(view.people).toHaveLength(0);
+  });
+  it("uses the finished audiobook length for listen time", () => {
+    expect(listenMinutes(0, 2_276_064)).toBe(5);
+    expect(listenMinutes(0)).toBe(1);
+    expect(listenMinutes(3)).toBe(1);
   });
   it("cleans names and places", () => {
     expect(publicName("  Uzer   Kayat ")).toBe("Uzer Kayat");
