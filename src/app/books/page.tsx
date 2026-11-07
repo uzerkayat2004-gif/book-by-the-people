@@ -19,7 +19,9 @@ export default async function BooksPage({ searchParams }: { searchParams: Promis
         <p className="label">Taking voices now</p>
         <h1 className="explore__h">Books</h1>
         <p className="lead">
-          {result.total.toLocaleString("en-US")} {result.total === 1 ? "book" : "books"} {filtered ? "found" : "being written"}. Pick one, add your voice.
+          {result.total === 0 && !filtered
+            ? "No books are being written right now. Start one, or read a released book in the library."
+            : `${result.total.toLocaleString("en-US")} ${result.total === 1 ? "book" : "books"} ${filtered ? "found" : "being written"}. Pick one, add your voice.`}
         </p>
         <SearchBar action="/books" q={result.q} placeholder="Search a topic">
           <select className="findbar__lang" name="lang" defaultValue={result.lang} aria-label="Language">

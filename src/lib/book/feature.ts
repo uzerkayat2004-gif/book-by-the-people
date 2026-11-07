@@ -11,6 +11,7 @@
  * a quoted phrase that is not in anyone's words loses its quotation marks. Pure logic: the caller passes `ask`.
  */
 import { countryByCode } from "../countries";
+import { cleanStandfirst } from "./clean-standfirst";
 import { planChapters } from "./plan";
 import type {
   Block,
@@ -750,7 +751,7 @@ export function parsePlan(
     arc: String(data?.arc ?? "")
       .trim()
       .slice(0, 600),
-    standfirst: String(data?.standfirst ?? "")
+    standfirst: cleanStandfirst(String(data?.standfirst ?? ""))
       .trim()
       .slice(0, 300),
     preface: String(data?.preface ?? "")

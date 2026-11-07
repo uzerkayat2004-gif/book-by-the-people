@@ -1,4 +1,5 @@
 import { reflowBlocks } from "./feature";
+import { cleanStandfirst } from "./clean-standfirst";
 import { stripPeopleCounts } from "./checks";
 import { agreementNotes, planChapters, themeLabel } from "./plan";
 import { bestQuote, locateSpan, snapToVerbatim } from "./speech";
@@ -242,6 +243,7 @@ export function parseDocument(json: string): BookDocument | null {
   try {
     const value = JSON.parse(json) as BookDocument;
     if (!value || !Array.isArray(value.chapters)) return null;
+    if (value.standfirst) value.standfirst = cleanStandfirst(value.standfirst);
     return value;
   } catch {
     return null;
