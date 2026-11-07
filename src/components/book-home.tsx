@@ -119,6 +119,7 @@ export function BookHome({
           readMins={readMins}
           listenMins={listenMins}
           clips={clips}
+          media={media}
           owner={owner}
           ui={ui}
           languages={languages}
@@ -388,6 +389,7 @@ function After({
   readMins,
   listenMins,
   clips,
+  media,
   owner,
   ui,
   languages,
@@ -405,6 +407,7 @@ function After({
   readMins: number;
   listenMins: number;
   clips: HomeClip[];
+  media?: { audio: boolean; video: boolean };
   title?: string;
 }) {
   const date = releaseLabel.split(" · ")[0];
@@ -428,6 +431,7 @@ function After({
             readMins={readMins}
             listenMins={listenMins}
             clips={clips}
+            media={media}
             labels={{ read: ui.read, listen: ui.listen, watch: ui.watch, chapter: ui.chapterWord, chapters: ui.chaptersWord }}
           />
           <div className="bstats in5">

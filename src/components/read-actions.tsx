@@ -15,6 +15,7 @@ export function ReadActions({
   listenMins,
   clips,
   labels,
+  media,
 }: {
   /** Page words in the book's language. */
   labels?: { read: string; listen: string; watch: string; chapter: string; chapters: string };
@@ -24,9 +25,16 @@ export function ReadActions({
   readMins: number;
   listenMins: number;
   clips: Clip[];
+  /** The finished audiobook and video book further down the page (#listen, #watch). */
+  media?: { audio?: boolean; video?: boolean };
 }) {
   const [open, setOpen] = useState<null | "audio" | "video">(null);
   const words = labels ?? { read: "Read", listen: "Listen", watch: "Watch", chapter: "chapter", chapters: "chapters" };
+  const listenMedia = Boolean(media?.audio);
+  const watchMedia = Boolean(media?.video);
+  const listenClips = clips.length > 0;
+  const showListen = listenMedia || listenClips;
+  const showWatch = watchMedia;
   return (
     <>
       <div className="rlw in3">
@@ -42,24 +50,40 @@ export function ReadActions({
           </span>
           <IconArrow />
         </Link>
-        <button className="rlw__alt" type="button" onClick={() => setOpen("audio")}>
-          <span className="rlw__ic">
-            <IconHeadphones />
-          </span>
-          <span>
-            <b>{words.listen}</b>
-            <small>{listenMins} min</small>
-          </span>
-        </button>
-        <button className="rlw__alt" type="button" onClick={() => setOpen("video")}>
-          <span className="rlw__ic">
-            <IconPlay />
-          </span>
-          <span>
-            <b>{words.watch}</b>
-            <small>{Math.max(1, listenMins)} min</small>
-          </span>
-        </button>
+        {showListen ? (
+          listenMedia ? (
+            <a className="rlw__alt" href="#listen">
+              <span className="rlw__ic">
+                <IconHeadphones />
+              </span>
+              <span>
+                <b>{words.listen}</b>
+                <small>{listenMins} min</small>
+              </span>
+            </a>
+          ) : (
+            <button className="rlw__alt" type="button" onClick={() => setOpen("audio")}>
+              <span className="rlw__ic">
+                <IconHeadphones />
+              </span>
+              <span>
+                <b>{words.listen}</b>
+                <small>{listenMins} min</small>
+              </span>
+            </button>
+          )
+        ) : null}
+        {showWatch ? (
+          <a className="rlw__alt" href="#watch">
+            <span className="rlw__ic">
+              <IconPlay />
+            </span>
+            <span>
+              <b>{words.watch}</b>
+              <small>{Math.max(1, listenMins)} min</small>
+            </span>
+          </a>
+        ) : null}
       </div>
       {open ? <Dock kind={open} clips={clips} question={question} onClose={() => setOpen(null)} /> : null}
     </>
